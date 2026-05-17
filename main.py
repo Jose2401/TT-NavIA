@@ -181,10 +181,14 @@ last_result_time = time.time()
 while True:
     loop_start = time.time()
 
+
     ret, frame = cap.read()
     if not ret:
         print("[ERROR] No se pudo leer frame. Verifica la cámara.")
         break
+
+    # Copia del frame original para debug
+    frame_original_debug = frame.copy()
 
     # Procesamiento de imagen
     frame_proc = preprocesar_imagen(frame, tamano_objetivo=(640, 480))
@@ -342,6 +346,7 @@ while True:
 
     cv2.imshow(WINDOW_NAME, frame)
 
+
     key = cv2.waitKey(1) & 0xFF
     if key in (27, ord("q")):
         break
@@ -349,6 +354,14 @@ while True:
         cv2.imwrite(SAVE_PATH, frame)
         print(f"[INFO] Captura guardada en {SAVE_PATH}")
         print(f"[INFO] Objetos detectados: {len(detections)}")
+    elif key == ord("d"):
+        # Guardar frame original y preprocesado
+        nombre_base = f"img_filtros/debug_frame_{frame_count}"
+        cv2.imwrite(f"{nombre_base}_original.jpg", frame_original_debug)
+        # El preprocesado está en float32 [0,1], convertir a uint8 para guardar
+        frame_proc_uint8 = (np.clip(frame_proc, 0, 1) * 255).astype(np.uint8)
+        cv2.imwrite(f"{nombre_base}_preprocesado.jpg", frame_proc_uint8)
+        print(f"[DEBUG] Guardadas capturas: {nombre_base}_original.jpg y {nombre_base}_preprocesado.jpg")
 
 # ── Limpieza ────────────────────────────────────────────
 cap.release()
