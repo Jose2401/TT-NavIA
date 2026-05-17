@@ -142,8 +142,11 @@ seg_map = None
 barrier_mask = None
 floor_mask = None
 
-# Main xd
+
+# Main xd con monitoreo de tiempos
+last_result_time = time.time()
 while True:
+    loop_start = time.time()
     ret, frame = cap.read()
     if not ret:
         print("[ERROR] No se pudo leer frame. Verifica la cámara.")
@@ -153,21 +156,31 @@ while True:
     frame_count += 1
 
     # Segmentación de entorno
+    t0 = time.time()
+    seg_updated = False
     if frame_count % SEGMENT_EVERY_N_FRAMES == 0:
         seg_map = segmenter.segment(frame)
         barrier_mask, floor_mask = segmenter.extract_navigation_mask(seg_map)
+        seg_updated = True
+    t1 = time.time()
 
     # Detección (CNN YOLOv8-seg)
+    t2 = time.time()
     detections = detector.detect(frame)
+    t3 = time.time()
 
     # Filtro de estabilidad
     detections = [d for d in detections if d["confidence"] > DETECTION_CONF_THRESHOLD]
 
     # Movimiento global
+    t4 = time.time()
     scene_moving, motion_ratio = global_motion.detect(frame)
+    t5 = time.time()
 
     # Movimiento por objeto
+    t6 = time.time()
     obj_moving_flags = obj_tracker.update(detections)
+    t7 = time.time()
 
     #if USE_ADVANCED_TRACKER:
     #    adv_flags = adv_tracker.update(detections)
@@ -175,10 +188,10 @@ while True:
     adv_flags = obj_moving_flags
 
     # Clasificación y render
+    t8 = time.time()
     category_counts = defaultdict(int)
 
     for i, (det, is_obj_moving) in enumerate(zip(detections, obj_moving_flags)):
-
         #if USE_ADVANCED_TRACKER:
         #    is_obj_moving = adv_flags[i]
 
@@ -249,6 +262,7 @@ while True:
         )
 
         category_counts[category] += 1
+    t9 = time.time()
 
     #Mini vista de segmentación (llamada xd)
     if barrier_mask is not None and floor_mask is not None:
@@ -262,8 +276,6 @@ while True:
         if roi.shape[:2] == preview.shape[:2]:
             frame[y0:y0 + ph, x0:x0 + pw] = cv2.addWeighted(roi, 0.20, preview, 0.80, 0)
 
-
-
     # || HUD ||
     now = time.time()
     fps = 1.0 / max(now - fps_time, 1e-6)
@@ -275,6 +287,19 @@ while True:
         fps,
         dict(category_counts)
     )
+
+    # Monitoreo de tiempos y generación de resultados
+    render_time = time.time()
+    seg_time = (t1 - t0) if seg_updated else 0.0
+    det_time = t3 - t2
+    global_motion_time = t5 - t4
+    obj_motion_time = t7 - t6
+    render_stage_time = t9 - t8
+    total_loop_time = render_time - loop_start
+    time_since_last_result = render_time - last_result_time
+    last_result_time = render_time
+
+    print(f"[MONITOREO] Frame {frame_count} | Segmentación: {seg_time:.3f}s | Detección: {det_time:.3f}s | GlobalMotion: {global_motion_time:.3f}s | ObjMotion: {obj_motion_time:.3f}s | Render: {render_stage_time:.3f}s | Total: {total_loop_time:.3f}s | Δt desde último resultado: {time_since_last_result:.3f}s \n")
 
     cv2.imshow(WINDOW_NAME, frame)
 

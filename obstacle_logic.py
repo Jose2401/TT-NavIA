@@ -1,15 +1,12 @@
 """
-obstacle_logic.py (PRO EXTENDIDO)
---------------------------------
-Mejoras:
-✔ Clasificación semántica + heurística
-✔ Estabilización de categorías (anti-parpadeo)
-✔ Detección de muebles aunque YOLO no los clasifique bien
-✔ Alias de etiquetas (mejor compatibilidad COCO)
-✔ Estimación de distancia mejorada
+obstacle_logic.py 
+
+Clasificación semántica + heurística
+Alias de etiquetas
+Estimación de distancia 
 """
 
-# ── Alias para mejorar detecciones YOLO ───────────────────────────────────────
+# ─Alias para mejorar detecciones YOLO 
 LABEL_ALIASES: dict[str, str] = {
     "tv": "monitor",
     "tvmonitor": "monitor",
@@ -18,7 +15,7 @@ LABEL_ALIASES: dict[str, str] = {
     "refrigerator": "fridge",
 }
 
-# ── Taxonomía semántica ──────────────────────────────────────────────────────
+# Taxonomía semántica
 
 SIGNAGE_LABELS: set[str] = {
     "stop sign",
@@ -98,19 +95,16 @@ CATEGORY_COLORS = {
 }
 
 
-# ── Clasificador ──────────────────────────────────────────────────────────────
-
+# Clasificador
 class ObstacleClassifier:
 
     def __init__(self):
-        # memoria para estabilización
+        # memoria
         self.prev_classifications = {}
 
-    # ─────────────────────────────────────────────
     def _smooth_ratio(self, ratio: float) -> float:
         return round(ratio, 2)
 
-    # ─────────────────────────────────────────────
     def _is_possible_furniture(self, bbox, frame_w, frame_h):
         x1, y1, x2, y2 = bbox
         w = x2 - x1
@@ -124,7 +118,6 @@ class ObstacleClassifier:
 
         return False
 
-    # ─────────────────────────────────────────────
     def classify(self, detection: dict, frame_w: int, frame_h: int) -> str:
         raw_label = detection["label"].lower()
         bbox = detection["bbox"]
@@ -134,7 +127,7 @@ class ObstacleClassifier:
 
         key = tuple(bbox)
 
-        # ── Estabilización (si ya se vio antes) ──
+        #  (si ya se vio antes)
         if key in self.prev_classifications:
             return self.prev_classifications[key]
 
@@ -142,7 +135,7 @@ class ObstacleClassifier:
         if label in SIGNAGE_LABELS:
             result = "señalización"
 
-        # 2. Barrera
+        # 2. Barrera, no sirve xdd
         elif label in BARRIER_LABELS:
             result = "barrera"
 
@@ -164,12 +157,11 @@ class ObstacleClassifier:
         else:
             result = self._classify_by_size(bbox, frame_w, frame_h)
 
-        # guardar en memoria
+        # guardar
         self.prev_classifications[key] = result
 
         return result
 
-    # ─────────────────────────────────────────────
     def _classify_by_size(self, bbox: tuple, frame_w: int, frame_h: int) -> str:
         x1, y1, x2, y2 = bbox
         area = (x2 - x1) * (y2 - y1)
@@ -186,7 +178,7 @@ class ObstacleClassifier:
         else:
             return "barrera"
 
-    # ─────────────────────────────────────────────
+
     def estimate_dimensions(self, bbox: tuple, frame_w: int, frame_h: int) -> str:
         x1, y1, x2, y2 = bbox
         w_px = x2 - x1
@@ -197,7 +189,8 @@ class ObstacleClassifier:
 
         return f"{w_px}×{h_px}px ({w_pct}%×{h_pct}%)"
 
-    # ─────────────────────────────────────────────
+
+
     def estimate_distance(self, bbox: tuple, frame_h: int) -> str:
         x1, y1, x2, y2 = bbox
         h = y2 - y1
@@ -205,7 +198,6 @@ class ObstacleClassifier:
         if h < 10:
             return "lejos"
 
-        # más estable que 1000/h
         distance = 2.5 * (frame_h / h)
 
         return f"{round(distance, 2)}m"
