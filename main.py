@@ -51,6 +51,39 @@ DETECTION_CONF_THRESHOLD = 0.45
 BARRIER_OVERRIDE_THRESHOLD = 0.55
 PERSON_BARRIER_THRESHOLD = 0.80
 
+# =============================
+# Procesamiento de imágenes
+# =============================
+def preprocesar_imagen(fotograma_crudo, tamano_objetivo=(640, 480)):
+    """
+    Prepara el fotograma para el módulo de visión:
+    - Redimensiona
+    - Normaliza a [0,1]
+    - Igualación de histograma
+    - Filtro gaussiano
+    """
+    if fotograma_crudo is None or fotograma_crudo.size == 0:
+        print("[ERROR] Fotograma vacío en preprocesamiento.")
+        return None
+
+    # Redimensionar
+    imagen_redimensionada = cv2.resize(fotograma_crudo, tamano_objetivo, interpolation=cv2.INTER_AREA)
+
+    # Normalizar a [0,1]
+    imagen_normalizada = imagen_redimensionada.astype(np.float32) / 255.0
+
+    # Igualación de histograma por canal (en color)
+    imagen_ecualizada = np.zeros_like(imagen_normalizada)
+    for c in range(3):
+        canal = (imagen_normalizada[:, :, c] * 255).astype(np.uint8)
+        canal_eq = cv2.equalizeHist(canal)
+        imagen_ecualizada[:, :, c] = canal_eq.astype(np.float32) / 255.0
+
+    # Filtro gaussiano
+    imagen_lista = cv2.GaussianBlur(imagen_ecualizada, (5, 5), sigmaX=0.5, sigmaY=0.5)
+
+    return imagen_lista
+
 # Es para ver la segmentacion de piso y barrera que hace A20k en otra parte extr a la UI
 def build_segmentation_preview(
     barrier_mask: np.ndarray | None,
@@ -147,26 +180,32 @@ floor_mask = None
 last_result_time = time.time()
 while True:
     loop_start = time.time()
+
     ret, frame = cap.read()
     if not ret:
         print("[ERROR] No se pudo leer frame. Verifica la cámara.")
         break
 
-    frame_h, frame_w = frame.shape[:2]
+    # Procesamiento de imagen
+    frame_proc = preprocesar_imagen(frame, tamano_objetivo=(640, 480))
+    if frame_proc is None:
+        continue
+
+    frame_h, frame_w = frame_proc.shape[:2]
     frame_count += 1
 
     # Segmentación de entorno
     t0 = time.time()
     seg_updated = False
     if frame_count % SEGMENT_EVERY_N_FRAMES == 0:
-        seg_map = segmenter.segment(frame)
+        seg_map = segmenter.segment((frame_proc * 255).astype(np.uint8))
         barrier_mask, floor_mask = segmenter.extract_navigation_mask(seg_map)
         seg_updated = True
     t1 = time.time()
 
     # Detección (CNN YOLOv8-seg)
     t2 = time.time()
-    detections = detector.detect(frame)
+    detections = detector.detect((frame_proc * 255).astype(np.uint8))
     t3 = time.time()
 
     # Filtro de estabilidad
@@ -174,7 +213,7 @@ while True:
 
     # Movimiento global
     t4 = time.time()
-    scene_moving, motion_ratio = global_motion.detect(frame)
+    scene_moving, motion_ratio = global_motion.detect((frame_proc * 255).astype(np.uint8))
     t5 = time.time()
 
     # Movimiento por objeto
