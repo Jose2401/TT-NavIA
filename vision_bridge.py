@@ -1,7 +1,7 @@
 """
 vision_bridge.py
-Puente entre el módulo de visión REAL del proyecto (vision/TT-NavIA, basado
-en YOLOv8-seg) y el SLAM.
+Puente entre el módulo de visión REAL del proyecto (paquete vision/,
+basado en YOLOv8-seg + SegFormer) y el SLAM.
 
 Responsabilidades:
 1. Ejecutar el detector real (ObjectDetector) y el rastreo de movimiento
@@ -24,16 +24,15 @@ depende de la cámara: sim_world.py la reutiliza con datos simulados.
 """
 import math
 import os
-import sys
 
 import numpy as np
 
 from interfaces import VisionDetection, Observation
 
-# El paquete de visión vive en vision/TT-NavIA (nombre de carpeta con guion,
-# no importable como paquete normal): se agrega al path explícitamente.
-TTNAVIA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "vision", "TT-NavIA")
+# El paquete de visión (vision/): detector YOLOv8-seg, clasificador,
+# tracker de movimiento y segmentación de escena. Los pesos viven ahí.
+VISION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "vision")
 
 # Clases inherentemente dinámicas: aunque en un frame estén quietas, no son
 # parte estable del cuarto y no deben volverse landmarks.
@@ -100,7 +99,7 @@ def ground_distance_from_row(row, img_h, vfov_rad,
 
 
 class VisionBridge:
-    """Envuelve el detector real de vision/TT-NavIA y produce
+    """Envuelve el detector real de paquete vision/ y produce
     VisionDetection listas para el SLAM."""
 
     def __init__(self, model_path=None, confidence=0.45,
@@ -125,16 +124,14 @@ class VisionBridge:
         hfov_deg = hfov_deg if hfov_deg is not None else profile["hfov_deg"]
         vfov_deg = vfov_deg if vfov_deg is not None else profile["vfov_deg"]
 
-        if TTNAVIA_DIR not in sys.path:
-            sys.path.insert(0, TTNAVIA_DIR)
         # Imports diferidos: ultralytics/torch tardan en cargar y solo se
         # necesitan si realmente se usa la cámara.
-        from detector import ObjectDetector
-        from obstacle_logic import ObstacleClassifier, LABEL_ALIASES
-        from motion import ObjectMotionTracker
+        from vision.detector import ObjectDetector
+        from vision.obstacle_logic import ObstacleClassifier, LABEL_ALIASES
+        from vision.motion import ObjectMotionTracker
 
         if model_path is None:
-            model_path = os.path.join(TTNAVIA_DIR, "yolov8s-seg.pt")
+            model_path = os.path.join(VISION_DIR, "yolov8s-seg.pt")
 
         self.detector = ObjectDetector(model_path=model_path, confidence=confidence)
         self.classifier = ObstacleClassifier()
@@ -269,7 +266,7 @@ class GroundHazardDetector:
     documentación del proyecto ("no detecta obstáculos a nivel de suelo").
 
     Método: la segmentación de escena ADE20K (SegFormer, ya presente en
-    vision/TT-NavIA) clasifica cada pixel. Sobre ella:
+    paquete vision/) clasifica cada pixel. Sobre ella:
       1. AGUA y ESCALERAS son clases directas de ADE20K -> peligro.
       2. HOYOS/COLADERAS: una región que NO es superficie transitable
          pero está RODEADA de superficie transitable en la mitad baja de
@@ -313,9 +310,7 @@ class GroundHazardDetector:
 
     def _ensure_model(self):
         if self._segmenter is None:
-            if TTNAVIA_DIR not in sys.path:
-                sys.path.insert(0, TTNAVIA_DIR)
-            from scene_segmentation import SceneSegmenter
+            from vision.scene_segmentation import SceneSegmenter
             self._segmenter = SceneSegmenter()
 
     def process(self, frame_bgr, yolo_detections=None):

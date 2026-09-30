@@ -5,10 +5,16 @@ numpy>=2.0
 opencv-python>=4.10
 matplotlib>=3.9
 
-# Módulo de visión (vision/TT-NavIA)
+# Módulo de visión (paquete vision/)
 torch>=2.4
 ultralytics>=8.3          # YOLOv8-seg
 transformers>=4.44        # SegFormer ADE20K (peligros de piso)
+
+# Módulo de navegación (DRL)
+gymnasium>=1.0            # entorno de entrenamiento
+stable-baselines3>=2.3    # PPO (solo para ENTRENAR / laptop; en la
+                          # Raspberry la inferencia usa numpy puro con
+                          # models/*_policy.npz)
 
 # Hardware Raspberry Pi (descomentar cuando exista el hardware)
 # smbus2                  # ultrasonido MB1232 por I2C

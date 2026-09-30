@@ -1,0 +1,31 @@
+{
+ "obs_mode": "extended",
+ "obs_dim": 24,
+ "n_actions": 4,
+ "algo": "PPO",
+ "timesteps": 4000000,
+ "seed": 0,
+ "eval": {
+  "success_rate": 0.9916666666666667,
+  "collision_rate": 0.008333333333333333,
+  "fall_rate": 0.0,
+  "timeout_rate": 0.0,
+  "avg_steps_success": 31.34453781512605,
+  "episodes": 120,
+  "by_world": {
+   "gen_room": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "gen_two_rooms": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "gen_outdoor": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   }
+  }
+ },
+ "created": "2026-09-30 13:08:34"
+}

@@ -205,7 +205,7 @@ def run_camera(args):
     from vision_bridge import (VisionBridge, VisualYawEstimator,
                                GroundHazardDetector)
 
-    print("Cargando módulo de visión (YOLOv8-seg de vision/TT-NavIA)...")
+    print("Cargando módulo de visión (YOLOv8-seg de paquete vision/)...")
     bridge = VisionBridge(model_path=args.model,
                           camera_profile=args.camera_profile,
                           cam_height_m=args.cam_height,
@@ -316,7 +316,7 @@ def run_camera(args):
 def run_sim(args):
     from sim_world import (SimulatedWorld, SimulatedMotion,
                            SimulatedUltrasonicArray, simulated_vision)
-    from demo_mapa_interactivo import KeyboardUser
+    from sim_world import KeyboardUser
 
     if not args.headless:
         try:

@@ -39,7 +39,7 @@ import numpy as np
 from ekf_slam import EKFSlam, wrap_angle
 from occupancy_grid import OccupancyGrid
 from interfaces import MotionEstimate
-from sim_world import (SimulatedWorld, SimulatedMotion,
+from sim_world import (SimulatedWorld, SimulatedMotion, KeyboardUser,
                        SimulatedUltrasonicArray, simulated_vision)
 from vision_bridge import fuse_observations, free_space_rays
 
@@ -48,39 +48,6 @@ STEP_ROT = math.radians(6)  # rad por pulsación de giro
 ODOM_SIGMA_TRANS = 0.006    # ruido de la "odometría" simulada
 ODOM_SIGMA_ROT = math.radians(0.5)
 SCALE = 3                   # px por celda en la ventana
-
-
-class KeyboardUser:
-    """El usuario controlado por teclado dentro del cuarto simulado.
-    Aplica el comando a la pose real (con chequeo de colisión) y reporta
-    el MotionEstimate ruidoso que en el sistema final dará la odometría."""
-
-    def __init__(self, world, start=(0.7, 0.7, 0.0)):
-        self.world = world
-        self.true_pose = list(start)
-
-    def command(self, forward=0.0, rot=0.0, dt=1 / 20.0):
-        x, y, theta = self.true_pose
-
-        # Colisión: no atravesar paredes/obstáculos (margen de 15 cm)
-        if forward > 0:
-            free = self.world.ray_distance(x, y, theta, max_range=2.0)
-            if free < forward + 0.15:
-                forward = 0.0
-        elif forward < 0:
-            free = self.world.ray_distance(x, y, theta + math.pi, max_range=2.0)
-            if free < -forward + 0.15:
-                forward = 0.0
-
-        mid = theta + rot / 2.0
-        self.true_pose[0] = x + forward * math.cos(mid)
-        self.true_pose[1] = y + forward * math.sin(mid)
-        self.true_pose[2] = wrap_angle(theta + rot)
-
-        noise_t = random.gauss(0.0, ODOM_SIGMA_TRANS) if forward else 0.0
-        noise_r = random.gauss(0.0, ODOM_SIGMA_ROT) if (forward or rot) else 0.0
-        return MotionEstimate(delta_trans=forward + noise_t,
-                              delta_rot=rot + noise_r, dt=dt)
 
 
 def draw_view(grid, slam, output, true_pose, autopilot):

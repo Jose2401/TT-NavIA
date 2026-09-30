@@ -28,7 +28,7 @@ class MotionEstimate:
 @dataclass
 class VisionDetection:
     """Detección de obstáculo obtenida por el módulo de visión real
-    (vision/TT-NavIA, YOLOv8-seg) a través de vision_bridge.py.
+    (paquete vision/, YOLOv8-seg) a través de vision_bridge.py.
 
     bearing: ángulo relativo al usuario (rad). 0 = al frente,
              + = hacia la izquierda (convención matemática estándar).

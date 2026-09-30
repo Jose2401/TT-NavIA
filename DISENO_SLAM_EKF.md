@@ -102,9 +102,16 @@ Módulos del paquete:
 | `metrics.py`           | ATE, error de orientación, incertidumbre, exactitud del mapa |
 | `main_lap.py`          | MAIN de prueba en LAPTOP (GUI): cámara + chunks + peligros + panel de navegación; también `--sim` sin cámara |
 | `main_pi.py`           | MAIN de la Raspberry Pi (headless): mismo pipeline, ganchos TODO para MB1232/odometría y salida de voz |
-| `demo_realtime.py`     | Interfaz en tiempo real (cámara real + YOLO, o `--sim`), croquis al presionar `q` |
-| `demo_mapa_camara.py`  | Mapeo en tiempo real SOLO CON LA CÁMARA (sin ultrasonido/IMU): YOLO real + distancias monoculares + giro estimado por flujo óptico (`VisualYawEstimator`); mapa y croquis en vivo |
+| `navigation/nav_env.py` | Entorno Gymnasium de ENTRENAMIENTO del agente DRL: mundos procedurales (cuarto, dos cuartos con puerta, exterior con coladeras), obstáculos móviles, ray casting vectorizado; recompensa y acciones del TT §7.3.1 |
+| `navigation/train.py`  | CREA el modelo de navegación: PPO (SB3), evaluación estratificada por tipo de mundo, `--compare` (obs doc vs extendida), exporta `.zip` + `_policy.npz` (numpy puro para la Pi) |
+| `navigation/navigator.py` | USA el modelo: Algoritmos 4 (inferencia), 5 (frases de dirección exactas) y 11 (estados de sesión) del TT; formatos de entrada (NavCommand / texto) y salida (NavMessage con prioridades 0/1/2) |
+| `main_nav_lap.py`      | Navegación COMPLETA en laptop (GUI): comandos por terminal, en `--sim` el usuario obedece las indicaciones (validación de lazo cerrado) |
+| `main_nav_pi.py`       | Navegación COMPLETA en Raspberry (headless): backend numpy del modelo, comandos por stdin (luego voz/PLN), salida por prioridades |
+| `test_navigation.py`   | Pruebas del entorno, comandos, frases, backends y lazo cerrado guiado |
 | `demo_mapa_interactivo.py` | Mapeo en tiempo real sin ningún hardware: controlas al usuario con WASD (o piloto automático) en el cuarto simulado y ves el mapa, la pose estimada y la elipse de incertidumbre construirse en vivo |
+
+(Los demos previos `demo_realtime.py` y `demo_mapa_camara.py` fueron
+retirados: `main_lap.py` los sustituye por completo.)
 
 Notas sobre la robustez añadida al EKF (implementadas en `ekf_slam.py`):
 
@@ -341,6 +348,57 @@ intransitable. Por eso vive en una **capa separada** del log-odds:
   peligro con >= 2 hits (un parpadeo de segmentación no inventa hoyos).
 - `cast_distance` y el costmap tratan la celda de peligro como
   bloqueada: la navegación la esquiva igual que una pared.
+
+### 12.2.1 Módulo de navegación (DRL) — implementado
+
+El agente local de navegación ya existe (paquete `navigation/`),
+siguiendo §6.4.3/§7.3.1 del TT: PPO actor-crítico (Stable-Baselines3 +
+PyTorch) entrenado en Gymnasium y usado SOLO en inferencia en el
+dispositivo.
+
+- **Entrenamiento** (`python -m navigation.train`): mundos generados
+  proceduralmente (cuarto simple 40 %, dos cuartos con puerta 35 %,
+  exterior con coladeras 25 %), obstáculos dinámicos que rebotan,
+  ruido de sensores (randomización de dominio). Acciones: avanzar
+  0.30 m / girar ±20° / detenerse. Recompensa del documento con
+  escalas ajustadas (+100 llegar, −100 colisión O caída en hoyo,
+  progreso ×4, −0.1 por paso, penalización por riesgo frontal, y la
+  acción "detenerse" premiada solo cuando hay un móvil encima —así
+  aprende su función real—).
+- **Metodologías comparadas** (300k pasos, misma semilla): la
+  observación mínima del documento (8 valores) logra 44 % de éxito y
+  falla en los mundos con puertas (10 %); la observación EXTENDIDA
+  (11 rayos + distancia a peligros por sector + goal en sin/cos +
+  acción previa, 24 valores) logra 86 % con 0 % de caídas. El modelo
+  final usa la extendida; ambas caben en el mismo espacio de acciones
+  y el vector del documento sigue disponible (`--obs doc`). El modelo
+  entregado (4M pasos): **99.2 % de éxito, 0.8 % colisión, 0 % caídas,
+  0 % timeouts** (360 episodios estratificados).
+- **Brecha de dominio mapa-vs-geometría, cerrada por triple vía**: los
+  rayos medidos sobre el mapa pintado pueden "colarse" entre celdas de
+  eco dispersas y reportar libre un frente bloqueado. Solución: (1) en
+  despliegue cada rayo es el mínimo de un abanico de 3 sub-rayos ±6°;
+  (2) en entrenamiento se sueltan aleatoriamente 8 % de los rayos
+  bloqueados (la política aprende a no fiarse de huecos de un rayo);
+  (3) CAPA DE SEGURIDAD determinística en el Navigator (RNF-09,
+  independiente del RL): si el modelo dice avanzar con el frente a
+  <0.6 m según el mapa O la visión, se fuerza el giro hacia el lado
+  más libre.
+- **Doble formato del modelo**: `.zip` (SB3, laptop/entrenamiento) y
+  `_policy.npz` (solo pesos; la inferencia en la Raspberry es un MLP
+  tanh en numpy puro, sin SB3). Un test verifica que ambos backends
+  deciden idéntico.
+- **Runtime** (`navigation/navigator.py`): estados de sesión
+  en_espera/activo/pausado con los mensajes literales del Alg. 11;
+  comandos = intenciones del Alg. 9 (destino/pausa/reanudar/detener/
+  ruta_alternativa) como `NavCommand` o texto en español
+  (`parse_command`); indicaciones con las frases exactas del Alg. 5
+  ("Avance N metros", "Gire ligeramente a la izquierda" si ≤45°,
+  "Deténgase", prefijo "Está cerca de su destino." si <5 m); salida
+  como `NavMessage` con prioridades 0/1/2 (0 interrumpe el TTS). Los
+  destinos se resuelven contra los landmarks etiquetados del SLAM
+  ("salida"→door) o como punto explícito; la lista de waypoints
+  globales (módulo MAPS futuro) entra por `set_route()`.
 
 ### 12.3 Lo que recibe el módulo de navegación (DRL)
 

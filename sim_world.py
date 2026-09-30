@@ -147,7 +147,7 @@ def simulated_vision(world: SimulatedWorld, true_pose,
     """Detecciones tipo cámara de los obstáculos del cuarto: bearing con
     ruido pequeño (la cámara es buena midiendo dirección) y distancia
     monocular con ruido grande (la cámara es mala midiendo distancia),
-    imitando el comportamiento del módulo real vision/TT-NavIA."""
+    imitando el comportamiento del módulo real paquete vision/."""
     x, y, theta = true_pose
     detections = []
     for (cx, cy, r, label) in world.obstacles:
@@ -176,6 +176,46 @@ def simulated_vision(world: SimulatedWorld, true_pose,
             moving=False,
         ))
     return detections
+
+
+class KeyboardUser:
+    """El usuario controlado por comandos discretos dentro del cuarto
+    simulado (lo usan los mains en modo --sim, con teclado o con el
+    navegador DRL dictando los pasos). Aplica el comando a la pose real
+    (con chequeo de colisión) y reporta el MotionEstimate ruidoso que en
+    el sistema final dará la odometría."""
+
+    ODOM_SIGMA_TRANS = 0.006
+    ODOM_SIGMA_ROT = math.radians(0.5)
+
+    def __init__(self, world, start=(0.7, 0.7, 0.0)):
+        self.world = world
+        self.true_pose = list(start)
+
+    def command(self, forward=0.0, rot=0.0, dt=1 / 20.0):
+        x, y, theta = self.true_pose
+
+        # Colisión: no atravesar paredes/obstáculos (margen de 15 cm)
+        if forward > 0:
+            free = self.world.ray_distance(x, y, theta, max_range=2.0)
+            if free < forward + 0.15:
+                forward = 0.0
+        elif forward < 0:
+            free = self.world.ray_distance(x, y, theta + math.pi,
+                                           max_range=2.0)
+            if free < -forward + 0.15:
+                forward = 0.0
+
+        mid = theta + rot / 2.0
+        self.true_pose[0] = x + forward * math.cos(mid)
+        self.true_pose[1] = y + forward * math.sin(mid)
+        self.true_pose[2] = wrap_angle(theta + rot)
+
+        noise_t = random.gauss(0.0, self.ODOM_SIGMA_TRANS) if forward else 0.0
+        noise_r = random.gauss(0.0, self.ODOM_SIGMA_ROT) \
+            if (forward or rot) else 0.0
+        return MotionEstimate(delta_trans=forward + noise_t,
+                              delta_rot=rot + noise_r, dt=dt)
 
 
 class SimulatedMotion:

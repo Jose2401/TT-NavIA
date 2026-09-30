@@ -5,3 +5,4 @@ croquis*
 /docs
 maps/
 *.pyc
+models/*_cmp*
