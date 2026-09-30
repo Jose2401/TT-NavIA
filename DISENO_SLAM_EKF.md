@@ -88,15 +88,20 @@ Módulos del paquete:
 
 | Archivo               | Responsabilidad                                              |
 |------------------------|--------------------------------------------------------------|
-| `interfaces.py`        | Estructuras de datos compartidas (contratos entre módulos)   |
-| `ekf_slam.py`          | El SLAM en sí (predicción, corrección, covarianza, salida)   |
-| `occupancy_grid.py`    | Mapa de ocupación + Ray Casting (implementación mínima)      |
-| `vision/TT-NavIA/`     | Módulo de visión REAL del equipo (YOLOv8-seg, sin modificar) |
-| `vision_bridge.py`     | Conecta la visión real al SLAM: bbox → bearing + distancia monocular, filtro de objetos móviles, y fusión con ultrasonido |
+| `interfaces.py`        | Estructuras de datos compartidas (contratos entre módulos), incluido `NavigationFrame`: la entrada del futuro módulo de navegación (DRL) |
+| `ekf_slam.py`          | El SLAM en sí (predicción, corrección, covarianza, salida) + persistencia del mapa ligero (`export_landmarks`/`import_landmarks` para re-localización entre sesiones) |
+| `occupancy_grid.py`    | Mapa de ocupación de un solo bloque + núcleo de Ray Casting (Bresenham, log-odds, capa de peligros de piso, `cast_distance`, `local_costmap`) |
+| `map_manager.py`       | MAPA GLOBAL POR CHUNKS: divide el plano en bloques fijos anclados al mundo, con persistencia por chunk en disco, eventos de "entré a chunk/cuarto nuevo o conocido", heurística de cruce de puertas y misma interfaz de consulta que `OccupancyGrid` |
+| `navigation_feed.py`   | Arma el `NavigationFrame` por ciclo (costmap egocéntrico, `d_*`/`r_*` por sector según §7.3.1 del TT) y la capa de alertas determinística (<0.80 m crítico, <1.50 m precaución) |
+| `vision/TT-NavIA/`     | Módulo de visión REAL del equipo (YOLOv8-seg + SegFormer ADE20K; `scene_segmentation.py` extendido con clases transitables/agua/escaleras) |
+| `vision_bridge.py`     | Conecta la visión real al SLAM: bbox → bearing + distancia monocular (refinada por plano de piso), filtro de objetos móviles, fusión con ultrasonido, `GroundHazardDetector` (hoyos/coladeras/agua/escaleras) y `detection_risk` |
 | `sim_world.py`         | Cuarto simulado (paredes + obstáculos): ultrasonido por ray casting, visión sintética y movimiento por waypoints |
 | `simulation.py`        | Simulación end-to-end sin hardware (valida el comportamiento requerido, reporta métricas) |
 | `test_ekf_slam.py`     | Pruebas unitarias/funcionales del EKF, la fusión y la simulación |
+| `test_map_manager.py`  | Pruebas del mapa por chunks, persistencia, peligros, costmap y alertas |
 | `metrics.py`           | ATE, error de orientación, incertidumbre, exactitud del mapa |
+| `main_lap.py`          | MAIN de prueba en LAPTOP (GUI): cámara + chunks + peligros + panel de navegación; también `--sim` sin cámara |
+| `main_pi.py`           | MAIN de la Raspberry Pi (headless): mismo pipeline, ganchos TODO para MB1232/odometría y salida de voz |
 | `demo_realtime.py`     | Interfaz en tiempo real (cámara real + YOLO, o `--sim`), croquis al presionar `q` |
 | `demo_mapa_camara.py`  | Mapeo en tiempo real SOLO CON LA CÁMARA (sin ultrasonido/IMU): YOLO real + distancias monoculares + giro estimado por flujo óptico (`VisualYawEstimator`); mapa y croquis en vivo |
 | `demo_mapa_interactivo.py` | Mapeo en tiempo real sin ningún hardware: controlas al usuario con WASD (o piloto automático) en el cuarto simulado y ves el mapa, la pose estimada y la elipse de incertidumbre construirse en vivo |
@@ -129,11 +134,18 @@ Notas sobre la robustez añadida al EKF (implementadas en `ekf_slam.py`):
   re-observaciones) se suma a S en cada corrección; el filtro no trata a
   un landmark recién visto como verdad absoluta.
 - **Ecos de pared**: un eco ultrasónico sin detección visual asociada
-  puede corregir y crear landmarks, pero exige más avistamientos para
-  confirmarse (`min_confirm_hits=3`), porque el punto de reflexión de una
-  pared se desliza al caminar. Las detecciones monoculares sin respaldo
-  ultrasónico exigen 4 (un falso positivo de YOLO de 1-2 frames no debe
-  aparecer como obstáculo "inventado").
+  NO participa en la corrección del EKF ni crea landmarks
+  (`Observation.can_correct=False`): su punto de reflexión se DESLIZA a
+  lo largo de la pared al caminar, no es un punto fijo del mundo, y
+  tratarlo como landmark puntual corrompe la pose. (La política
+  anterior — "los ecos sí crean landmarks" — se había validado con un
+  bug de geometría en el simulador que hacía los ecos escasos e
+  irreales; con la geometría corregida, excluirlos del EKF bajó el ATE
+  de 0.53 m a 0.27 m sobre 6 semillas.) El eco SÍ va siempre al mapa de
+  ocupación: su endpoint cae sobre la superficie real que lo produjo.
+  Las detecciones monoculares sin respaldo ultrasónico exigen 4
+  avistamientos para confirmar landmark (un falso positivo de YOLO de
+  1-2 frames no debe aparecer como obstáculo "inventado").
 - **Sin landmarks duplicados**: la fusión de candidatos usa la ELIPSE de
   incertidumbre de la observación (estrecha en dirección, larga en
   profundidad) en lugar de un radio fijo: la misma silla vista a 2.1 m y
@@ -144,8 +156,14 @@ Notas sobre la robustez añadida al EKF (implementadas en `ekf_slam.py`):
   deriva haya separado.
 - **Mapa sin manchas** (`observations_for_map()`): al mapa de ocupación
   van las observaciones ANCLADAS a la posición consolidada del landmark
-  asociado, no el rango crudo: un objeto = una marca firme en la misma
-  celda, en vez de una mancha dispersa por el ruido monocular.
+  asociado (solo landmarks con etiqueta real de visión, nunca genéricos),
+  no el rango crudo: un objeto = una marca firme en la misma celda, en
+  vez de una mancha dispersa por el ruido monocular. Complementariamente,
+  el Ray Casting solo pinta celda ocupada con rangos PRECISOS
+  (ultrasonido u observación anclada); un rango monocular crudo (~30 %
+  de error) nunca pinta ocupado directamente, y ningún rayo despeja
+  "libre" a través de una pared ya sólida (log-odds > 2), para no
+  perforarla ni pintar marcas fantasma detrás.
 
 ## 4. Entradas y salidas
 
@@ -280,6 +298,62 @@ sistema (navegación) sepa que la pose es menos fiable en ese momento.
   landmarks para la asociación — la interfaz ya lo permite, sin mezclar
   responsabilidades.
 
+### 12.1 Mapa global por chunks (cuartos) y persistencia
+
+`map_manager.ChunkedMapManager` sustituye al grid único cuando el
+sistema opera de verdad (interiores + exteriores, `main_lap.py` /
+`main_pi.py`):
+
+- El plano del mundo se divide en **chunks cuadrados fijos** (8 x 8 m
+  por defecto) anclados al marco global del SLAM; índices enteros
+  (negativos incluidos), así que el mapa crece solo hacia donde camina
+  el usuario y la RAM queda acotada (LRU: los chunks lejanos se guardan
+  a disco y se descargan).
+- **Persistencia**: cada chunk es un `.npz` (`log_odds` en float16 +
+  capa de peligros + metadatos) en la carpeta del mapa, junto con
+  `meta.json` (geometría, cuartos) y `landmarks.json` (mapa ligero del
+  EKF, `export_landmarks`). Al iniciar en un lugar ya mapeado, los
+  chunks y landmarks se restauran y el EKF puede corregir contra ellos
+  desde el primer ciclo (re-localización).
+- **Transiciones**: `update_position()` emite eventos por ciclo:
+  `chunk_change` (con `known=True/False`: chunk ya mapeado o zona
+  nueva), `door_crossed` (heurística: pasar pegado a un landmark
+  'door' confirmado) y `room_recognized` (el chunk destino recuerda su
+  etiqueta de cuarto). En la Raspberry estos eventos se anuncian por
+  voz; los cuartos pueden etiquetarse (`set_room_label`).
+- El Ray Casting es el MISMO núcleo de `occupancy_grid.py`; los rayos
+  cruzan fronteras de chunk sin recortes.
+
+### 12.2 Capa de peligros de piso (hoyos, coladeras, agua, escaleras)
+
+Un peligro a nivel de piso no produce eco ultrasónico ni bloquea el
+rayo (el "espacio" continúa por encima), pero su celda es
+intransitable. Por eso vive en una **capa separada** del log-odds:
+
+- `vision_bridge.GroundHazardDetector` los detecta con la segmentación
+  ADE20K (SegFormer) que ya usaba el módulo de visión: agua y
+  escaleras son clases directas; un **hoyo/coladera es una región
+  no-transitable rodeada de superficie transitable** en la mitad baja
+  de la imagen. La distancia se mide por proyección al plano del piso
+  (`ground_distance_from_row`), porque el pinhole por altura de bbox no
+  aplica a objetos planos.
+- Cada avistamiento suma un hit a la celda; la celda se considera
+  peligro con >= 2 hits (un parpadeo de segmentación no inventa hoyos).
+- `cast_distance` y el costmap tratan la celda de peligro como
+  bloqueada: la navegación la esquiva igual que una pared.
+
+### 12.3 Lo que recibe el módulo de navegación (DRL)
+
+`navigation_feed.build_navigation_frame()` arma por ciclo el
+`NavigationFrame` (interfaces.py), alineado con el vector de estado del
+documento del proyecto (§7.3.1): pose + covarianza + confianza,
+costmap egocéntrico (2 canales: ocupación y peligros), `d_front/left/
+right` por ray casting de consulta, `r_front/left/right` (riesgo 0-3
+por sector, tabla 7.1), detecciones del ciclo, landmarks etiquetados y
+chunk/cuarto actual. `phi_goal`/`d_goal` los añadirá el módulo de rutas.
+`safety_alerts()` implementa la capa determinística de seguridad
+(<0.80 m crítico / <1.50 m precaución) independiente del RL.
+
 ## 13. Funcionamiento en tiempo real
 
 - Estado de 3 variables, covarianza 3×3: coste por ciclo ~O(1) en el EKF
@@ -389,10 +463,15 @@ Todo lo simulado está aislado en `sim_world.py` y marcado con `TODO`:
   odometría/IMU, produciendo `MotionEstimate`. Mientras tanto, el modo
   cámara asume usuario cuasi-estático (`MotionEstimate(0, 0)`).
 - `sim_world.SimulatedUltrasonicArray` → reemplazar por lectura real de
-  los sensores (HC-SR04), produciendo `UltrasonicReading`. En cuanto
-  existan, basta pasarlas a `fuse_observations(detecciones, lecturas)` en
-  `demo_realtime.py`; sin ellas, el rango proviene de la estimación
-  monocular de visión (con incertidumbre mayor, que el EKF ya pondera).
+  los sensores. OJO: el diseño electrónico final (TT_2026_B045 §7.6)
+  especifica **2x MB1232 I2CXL-MaxSonar por I2C, montados a IZQUIERDA y
+  DERECHA** (no HC-SR04 frontales): el esqueleto ya está en
+  `main_pi.Mb1232Array` (TODO smbus2). En cuanto existan, basta que
+  `read()` devuelva `UltrasonicReading` y pasarlas a
+  `fuse_observations(detecciones, lecturas)`; sin ellas, el rango
+  proviene de la estimación monocular de visión (con incertidumbre
+  mayor, que el EKF ya pondera). La cámara final es la Raspberry Pi
+  Camera Module 3 Wide (perfil `picam3wide` en `vision_bridge`).
 - `OccupancyGrid` puede sustituirse por el módulo real de mapa de
   ocupación/Ray Casting del equipo, siempre que exponga
   `update_from_scan`, `get_nearby_obstacles` y `render_croquis` (o una
@@ -404,10 +483,19 @@ Con el cuarto simulado de 6 x 4 m (`sim_world.default_room`), 250 ciclos,
 odometría con ruido, 3 sensores ultrasónicos y visión sintética con 25 %
 de error de rango (promedio sobre 6 semillas):
 
-- ATE: ~0.20 m (máx 0.24 m)
+- ATE: ~0.27 m (máx ~0.44 m)
 - Error medio de orientación: ~3°
+- Mapa vs cuarto real: precisión ~0.50, recall ~0.41
 - Con 60 % de detecciones visuales perdidas (oclusión), el sistema se
-  mantiene por debajo de 0.45 m de ATE gracias al dead-reckoning + eco
-  ultrasónico, y la confianza reportada baja como se espera.
+  mantiene por debajo de 0.45 m de ATE, y la confianza reportada baja
+  como se espera.
 
-Reproducir con: `python simulation.py` y `python -m unittest test_ekf_slam`.
+NOTA: estos números NO son comparables con los de versiones previas
+(~0.20 m): el simulador tenía un bug de geometría (los rayos rebotaban
+en la extensión infinita de los muros, no en el segmento real) que
+producía ecos escasos e irreales; el banco actual es físicamente
+correcto y más exigente. El mapa, en cambio, mejoró drásticamente
+(recall 0.09 -> 0.41) con la política de pintado precisa.
+
+Reproducir con: `python simulation.py`, `python -m unittest
+test_ekf_slam test_map_manager`.

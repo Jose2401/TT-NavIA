@@ -66,7 +66,13 @@ class SimulatedWorld:
             if abs(denom) < 1e-12:
                 continue
             t = ((ax - x) * ey - (ay - y) * ex) / denom      # a lo largo del rayo
-            u = ((ax - x) * s - (ay - y) * c) / -denom       # a lo largo del muro
+            # Posición del impacto a lo largo del muro (0..1 dentro del
+            # segmento). OJO con el signo: u = cross(p-a, d)/cross(e, d);
+            # con el signo invertido el rayo "rebotaba" en la EXTENSIÓN
+            # infinita de los muros (fuera del segmento real) y el
+            # ultrasonido simulado devolvía ecos imposibles que creaban
+            # landmarks fantasma fuera del cuarto.
+            u = ((x - ax) * s - (y - ay) * c) / -denom       # a lo largo del muro
             if t > 0.0 and 0.0 <= u <= 1.0:
                 best = min(best, t)
 

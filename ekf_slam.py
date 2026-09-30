@@ -259,6 +259,14 @@ class EKFSlam:
             if not self._valid_observation(obs):
                 continue
 
+            if not obs.can_correct:
+                # Observación solo-mapa (eco de pared sin respaldo
+                # visual): no corrige ni crea landmarks, pero se
+                # conserva para que observations_for_map() la entregue
+                # tal cual al Ray Casting.
+                self.last_associations.append((obs, None))
+                continue
+
             match = self._associate(obs)
             if match is None:
                 lm = self._feed_candidate(obs) if obs.can_init_landmark else None
@@ -430,16 +438,25 @@ class EKFSlam:
 
     def observations_for_map(self):
         """Observaciones "ancladas" para el mapa de ocupación: las que se
-        asociaron a un landmark se reemplazan por el rango/bearing EXACTO
-        hacia la posición consolidada de ese landmark. Así el Ray Casting
-        pinta el mismo objeto siempre en la misma celda (una silla = una
-        marca), en vez de una mancha dispersa por el ruido del rango
-        monocular. Las no asociadas se entregan tal cual (con su peso
-        bajo, ver OccupancyGrid.update_from_scan)."""
+        asociaron a un landmark ETIQUETADO (objeto real de visión) se
+        reemplazan por el rango/bearing EXACTO hacia la posición
+        consolidada de ese landmark. Así el Ray Casting pinta el mismo
+        objeto siempre en la misma celda (una silla = una marca), en vez
+        de una mancha dispersa por el ruido del rango monocular.
+
+        Los ecos GENÉRICOS (eco_us) NO se anclan: el punto de reflexión
+        de una pared se desliza al caminar y su landmark asociado deriva
+        (puede terminar lejos de cualquier pared); anclar el rayo a esa
+        posición pintaba marcas fantasma y borraba la pared real. El eco
+        crudo, en cambio, siempre termina SOBRE la superficie que lo
+        produjo: es lo correcto para el mapa. Las no asociadas se
+        entregan tal cual (con su peso bajo, ver
+        OccupancyGrid.update_from_scan)."""
         x, y, theta = self.mu
         out = []
         for obs, lm in self.last_associations:
-            if lm is not None and lm.confirmed:
+            if (lm is not None and lm.confirmed
+                    and lm.label not in GENERIC_LABELS):
                 dx, dy = lm.x - x, lm.y - y
                 out.append(Observation(
                     range_m=math.hypot(dx, dy),
@@ -501,3 +518,34 @@ class EKFSlam:
             for lm in self.landmarks
             if lm.confirmed or not only_confirmed
         ]
+
+    # ------------------------------------------------------------------
+    # 5) PERSISTENCIA DEL MAPA LIGERO (para mapas por chunks / cuartos)
+    # ------------------------------------------------------------------
+    def export_landmarks(self):
+        """Serializa los landmarks CONFIRMADOS con la fidelidad necesaria
+        para restaurarlos en otra sesión (map_manager.save_landmarks).
+        Los candidatos no confirmados no se guardan: son evidencia
+        transitoria, no mapa."""
+        return [
+            {"x": float(lm.x), "y": float(lm.y), "label": lm.label,
+             "seen_count": int(lm.seen_count),
+             "required_hits": int(lm.required_hits)}
+            for lm in self.landmarks if lm.confirmed
+        ]
+
+    def import_landmarks(self, data):
+        """Restaura landmarks guardados de una sesión previa (mapa
+        conocido): entran ya confirmados, así que el EKF puede corregir la
+        pose contra ellos desde el primer ciclo (re-localización). Los que
+        ya existan cerca (mismo objeto) no se duplican — _dedup_confirmed
+        fusionará cualquier solapamiento en el siguiente ciclo."""
+        for d in data:
+            lm = Landmark(float(d["x"]), float(d["y"]),
+                          step=self.step_count,
+                          label=d.get("label", "obstaculo"),
+                          required_hits=int(d.get("required_hits", 2)))
+            lm.seen_count = max(1, int(d.get("seen_count", 1)))
+            lm.confirmed = True
+            self.landmarks.append(lm)
+        self._dedup_confirmed()

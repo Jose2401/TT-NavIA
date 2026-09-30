@@ -44,6 +44,10 @@ class VisionDetection:
     range_est: Optional[float] = None
     moving: bool = False
     confidence: float = 1.0
+    # True si es un peligro A NIVEL DE PISO (hoyo, coladera, agua, escalón
+    # descendente): no sobresale del suelo, así que el ultrasonido no lo ve
+    # y el mapa debe marcarlo como celda peligrosa aunque el rayo "pase".
+    hazard: bool = False
 
 
 @dataclass
@@ -87,6 +91,17 @@ class Observation:
     # observación (None = el valor por defecto del EKF). Los ecos de pared
     # piden más evidencia porque su punto de reflexión se desliza.
     min_confirm_hits: Optional[int] = None
+    # True si la celda final del rayo debe marcarse en la CAPA DE PELIGROS
+    # del mapa (hoyo/coladera/agua): no bloquea el rayo como una pared,
+    # pero la navegación debe tratarla como intransitable.
+    is_hazard: bool = False
+    # Si False, la observación NO participa en la corrección del EKF (ni
+    # crea landmarks): solo llega al mapa de ocupación. Es el caso de los
+    # ecos de pared sin respaldo visual: su punto de reflexión se DESLIZA
+    # a lo largo de la pared al caminar (no es un punto fijo del mundo) y
+    # tratarlo como landmark puntual corrompe la pose. Medido en
+    # simulación con geometría correcta: ATE 0.53 -> 0.27 al excluirlos.
+    can_correct: bool = True
 
 
 @dataclass
@@ -114,3 +129,51 @@ class SlamOutput:
             "timestamp": self.timestamp,
             "confianza": self.confidence,
         }
+
+
+@dataclass
+class NavigationFrame:
+    """Paquete de entrada para el módulo de NAVEGACIÓN (aprendizaje por
+    refuerzo profundo, aún no implementado). Es el contrato de salida
+    conjunto de SLAM + mapeo + visión: todo lo que la política necesita
+    por ciclo, ya en el mismo sistema de coordenadas.
+
+    costmap: arreglo (2, H, W) float32 centrado en el usuario, ejes
+        alineados al mundo (theta de la pose indica hacia dónde mira
+        dentro del parche):
+          canal 0 = probabilidad de ocupación [0,1] (0.5 = desconocido)
+          canal 1 = máscara de peligros de piso [0,1] (hoyos, coladeras)
+    costmap_resolution / costmap_size_m: geometría del parche.
+    detections: lista de VisionDetection del ciclo (obstáculos con
+        dirección, distancia estimada, si se mueven, si son hazard).
+    landmarks: mapa ligero etiquetado (dicts de EKFSlam.get_landmarks()),
+        útil para metas semánticas ("ir a la puerta").
+    chunk / room: dónde está el usuario dentro del mapa por chunks.
+    ultrasonic: lecturas del ciclo (lista vacía hasta que exista el
+        hardware; la interfaz ya queda fija).
+
+    d_front / d_left / d_right y risk_front / risk_left / risk_right son
+    el vector de estado que la documentación (TT_2026_B045, §7.3.1)
+    define para el agente DRL:
+        s_t = [d_front, d_left, d_right, phi_goal, d_goal,
+               r_front, r_left, r_right]
+    Las distancias (m) salen de ray casting sobre el mapa de ocupación
+    desde la pose actual; los riesgos son el máximo por sector
+    (0 libre, 1 bajo, 2 medio, 3 alto). phi_goal/d_goal los aportará el
+    módulo de rutas (no existen aún).
+    """
+    slam: SlamOutput
+    costmap: object                  # np.ndarray (2, H, W) float32
+    costmap_resolution: float
+    costmap_size_m: float
+    detections: List[VisionDetection]
+    landmarks: List[dict]
+    d_front: float = float("inf")
+    d_left: float = float("inf")
+    d_right: float = float("inf")
+    risk_front: int = 0
+    risk_left: int = 0
+    risk_right: int = 0
+    chunk: Optional[tuple] = None    # (i, j) del chunk actual
+    room: Optional[str] = None       # etiqueta del cuarto actual, si se conoce
+    ultrasonic: Optional[List[UltrasonicReading]] = None
