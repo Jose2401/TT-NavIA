@@ -2,3 +2,4 @@ pln
 .venv
 __pycache__
 croquis*
+/docs
