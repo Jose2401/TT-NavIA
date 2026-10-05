@@ -10,9 +10,13 @@ que aún no existe claramente marcados:
     - Ultrasonido: 2x MB1232 I2CXL-MaxSonar por I2C (0x70 re-direccionados
       a 0x20/0x21 según el diseño), montados a IZQUIERDA y DERECHA.
       TODO en Mb1232Array.read().
-    - Odometría/IMU: no definida en el diseño; mientras tanto el giro
-      sale del flujo óptico (VisualYawEstimator) y la traslación se asume
-      0, igual que en la laptop. TODO en read_motion().
+    - Odometría: IMU BNO055 por I2C (odometry.py): giro fusionado +
+      avance por conteo de pasos; además entrega el PITCH real de la
+      cámara para la distancia por plano de piso. Si la IMU no está
+      conectada (o --no-imu), cae automáticamente al giro por flujo
+      óptico con avance 0 (el comportamiento previo). Al estrenar el
+      hardware: verificar signos y longitud de paso (ver TODO en
+      odometry.py).
     - Voz (TTS): las alertas y eventos se imprimen; conectar aquí el
       módulo de voz del equipo (pyttsx3, cola priorizada). TODO en say().
 
@@ -31,7 +35,6 @@ import time
 
 from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
-from interfaces import MotionEstimate
 from vision_bridge import fuse_observations
 from navigation_feed import build_navigation_frame, safety_alerts
 
@@ -60,15 +63,6 @@ class Mb1232Array:
     def read(self):
         """-> list[UltrasonicReading]. TODO hardware."""
         return []
-
-
-def read_motion(yaw_estimator, frame, dt):
-    """Estimación de movimiento del ciclo. TODO: sustituir/fusionar con
-    la odometría real cuando el equipo defina su fuente física (el
-    diseño no especifica IMU). Por ahora: giro por flujo óptico,
-    traslación 0 — el EKF corrige (x, y) con los rangos a landmarks."""
-    delta_rot, ok = yaw_estimator.update(frame)
-    return MotionEstimate(delta_trans=0.0, delta_rot=delta_rot, dt=dt), ok
 
 
 class VoiceOutput:
@@ -106,11 +100,19 @@ def main():
     p.add_argument("--max-frames", type=int, default=None)
     p.add_argument("--save-every", type=float, default=30.0,
                    help="autoguardado del mapa cada N segundos")
+    p.add_argument("--no-imu", action="store_true",
+                   help="no usar la IMU BNO055 (solo flujo óptico)")
+    p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28,
+                   help="dirección I2C del BNO055 (0x28 o 0x29)")
+    p.add_argument("--imu-bus", type=int, default=1)
+    p.add_argument("--step-length", type=float, default=0.68,
+                   help="longitud de paso (m) para el avance por pasos; "
+                        "calibrar caminando una distancia conocida")
     args = p.parse_args()
 
     import cv2
-    from vision_bridge import (VisionBridge, VisualYawEstimator,
-                               GroundHazardDetector)
+    from vision_bridge import VisionBridge, GroundHazardDetector
+    from odometry import make_motion_estimator
 
     voice = VoiceOutput()
     voice.say("Iniciando sistema de navegacion", priority=2)
@@ -119,10 +121,15 @@ def main():
                           camera_profile="picam3wide",
                           cam_height_m=args.cam_height,
                           cam_pitch_deg=args.cam_pitch)
-    yaw_est = VisualYawEstimator(hfov_deg=math.degrees(bridge.hfov))
     hazard_det = GroundHazardDetector(
         camera_profile="picam3wide", cam_height_m=args.cam_height,
         cam_pitch_deg=args.cam_pitch) if args.hazards else None
+    # Odometría: IMU BNO055 con fallback automático a flujo óptico
+    motion_est = make_motion_estimator(
+        use_imu=not args.no_imu, imu_bus=args.imu_bus,
+        imu_addr=args.imu_addr, step_length_m=args.step_length,
+        hfov_deg=math.degrees(bridge.hfov),
+        say=lambda m: voice.say(m, priority=2))
     ultrasonic = Mb1232Array()
 
     mgr = ChunkedMapManager(map_dir=args.map_dir,
@@ -154,7 +161,14 @@ def main():
             dt = max(1e-3, now - last_t)
             last_t = now
 
-            motion, _ = read_motion(yaw_est, frame, dt)
+            motion, odo = motion_est.update(frame, dt)
+            # La IMU reporta el PITCH real de la cámara: la geometría de
+            # plano de piso (hoyos/coladeras y rangos monoculares) usa
+            # el ángulo verdadero en vez del fijo de calibración.
+            if odo["pitch_deg"] is not None:
+                bridge.cam_pitch_deg = odo["pitch_deg"]
+                if hazard_det is not None:
+                    hazard_det.cam_pitch_deg = odo["pitch_deg"]
             detections = bridge.process(frame)
             if hazard_det is not None and frames % args.hazard_every == 0:
                 last_hazards = hazard_det.process(frame, detections)

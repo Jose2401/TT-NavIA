@@ -31,8 +31,6 @@ import time
 
 import numpy as np
 
-from ekf_slam import EKFSlam
-from map_manager import ChunkedMapManager
 from interfaces import MotionEstimate
 from vision_bridge import fuse_observations, free_space_rays
 from navigation_feed import build_navigation_frame, safety_alerts
@@ -55,13 +53,13 @@ def start_command_thread(q):
     return t
 
 
-def draw_nav_overlay(view, navigator, mgr, to_px_scale=None):
-    """Marca el destino y el waypoint actual sobre el panel del mapa."""
+def draw_nav_overlay(view, navigator, mgr):
+    """Marca el destino sobre el panel del mapa."""
     import cv2
     st = navigator.status
     if st.goal is None:
         return view
-    lo, hz, (ox, oy) = mgr.stitched(include_disk=False)
+    lo, _hz, (ox, oy) = mgr.stitched(include_disk=False)
     h, w = lo.shape
     vh, vw = view.shape[:2]
     scale = min(vh / h, vw / w) if h and w else 1.0
@@ -223,12 +221,16 @@ def run_sim(args):
 # ----------------------------------------------------------------------
 def run_camera(args):
     import cv2
-    from vision_bridge import VisionBridge, VisualYawEstimator
+    from vision_bridge import VisionBridge
+    from odometry import make_motion_estimator
 
     print("Cargando módulo de visión (YOLOv8-seg)...")
     bridge = VisionBridge(model_path=args.model,
                           camera_profile=args.camera_profile)
-    yaw_est = VisualYawEstimator(hfov_deg=math.degrees(bridge.hfov))
+    motion_est = make_motion_estimator(
+        use_imu=args.imu, imu_bus=args.imu_bus, imu_addr=args.imu_addr,
+        step_length_m=args.step_length,
+        hfov_deg=math.degrees(bridge.hfov))
     slam, mgr = _setup_slam_and_map(args)
     navigator = Navigator(args.model_nav)
 
@@ -264,8 +266,10 @@ def run_camera(args):
             except queue.Empty:
                 pass
 
-            delta_rot, yaw_ok = yaw_est.update(frame)
-            motion = MotionEstimate(0.0, delta_rot, dt)
+            motion, odo = motion_est.update(frame, dt)
+            yaw_ok = odo["source"] != "ninguno"
+            if odo["pitch_deg"] is not None:
+                bridge.cam_pitch_deg = odo["pitch_deg"]
             detections = bridge.process(frame)
             observations = fuse_observations(detections, [])
             output = slam.step(motion, observations)
@@ -320,6 +324,11 @@ def build_parser():
     p.add_argument("--max-range", type=float, default=4.0)
     p.add_argument("--max-frames", type=int, default=None)
     p.add_argument("--headless", action="store_true")
+    p.add_argument("--imu", action="store_true",
+                   help="usar IMU BNO055 como odometria")
+    p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
+    p.add_argument("--imu-bus", type=int, default=1)
+    p.add_argument("--step-length", type=float, default=0.68)
     return p
 
 

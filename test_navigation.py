@@ -243,6 +243,87 @@ class TestNavigatorSession(unittest.TestCase):
             self.assertAlmostEqual(d, math.hypot(2, 1), places=5)
 
 
+class TestRealMapWorlds(unittest.TestCase):
+    """Mapas reales guardados (chunks) como mundos de entrenamiento."""
+
+    def _make_map(self, tmpdir):
+        """Construye un mapa guardado pintando un cuarto de 4x3 m con
+        ecos precisos (como lo haría un recorrido real)."""
+        import math as m
+        from map_manager import ChunkedMapManager
+        from interfaces import Observation
+        mgr = ChunkedMapManager(map_dir=tmpdir, chunk_size_m=4.0)
+        poses = [(x, y, th) for x in (1.0, 2.0, 3.0)
+                 for y in (0.8, 1.5, 2.2)
+                 for th in (0.0, m.pi / 2, m.pi, -m.pi / 2)]
+        for pose in poses:
+            x, y, th = pose
+            obs = []
+            for b in [k * 0.2 - 1.2 for k in range(13)]:
+                ang = th + b
+                # distancia a las "paredes" del cuarto [0,4]x[0,3]
+                best = 4.0
+                for (wx0, wy0, wx1, wy1) in ((0, 0, 4, 0), (4, 0, 4, 3),
+                                             (4, 3, 0, 3), (0, 3, 0, 0)):
+                    ex, ey = wx1 - wx0, wy1 - wy0
+                    den = m.cos(ang) * ey - m.sin(ang) * ex
+                    if abs(den) < 1e-9:
+                        continue
+                    t = ((wx0 - x) * ey - (wy0 - y) * ex) / den
+                    u = ((x - wx0) * m.sin(ang)
+                         - (y - wy0) * m.cos(ang)) / -den
+                    if t > 0 and 0 <= u <= 1:
+                        best = min(best, t)
+                obs.append(Observation(range_m=best, bearing=b,
+                                       sigma_r=0.05))
+            for _ in range(2):
+                mgr.update_from_scan(pose, obs)
+        mgr.save_all()
+        return mgr
+
+    def test_factory_and_episode(self):
+        import tempfile, shutil
+        from navigation import real_maps
+        tmpdir = tempfile.mkdtemp(prefix="realmap_test_")
+        try:
+            self._make_map(tmpdir)
+            real_maps._CACHE.clear()
+            f = real_maps.RealMapWorldFactory(tmpdir)
+            self.assertGreater(len(f.statics), 20)      # paredes pintadas
+            self.assertGreater(f.free_area_m2(), 1.0)
+            rng = np.random.default_rng(0)
+            world, start, goal = f.sample_episode(rng, movers=False)
+            # inicio con espacio libre y rayos que chocan con las paredes
+            self.assertGreater(world.clearance_at(start[0], start[1]),
+                               0.2)
+            d = world.ray_distances(start[0], start[1],
+                                    np.linspace(-math.pi, math.pi, 12),
+                                    max_range=8.0)
+            self.assertLess(d.min(), 4.0)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_env_uses_real_map(self):
+        import tempfile, shutil
+        from navigation import real_maps
+        tmpdir = tempfile.mkdtemp(prefix="realmap_env_")
+        try:
+            self._make_map(tmpdir)
+            real_maps._CACHE.clear()
+            env = NavEnv(obs_mode="extended", seed=0,
+                         real_map_dirs=[tmpdir], real_map_prob=1.0)
+            obs, _ = env.reset()
+            self.assertEqual(obs.shape, (24,))
+            for _ in range(10):
+                obs, _r, term, trunc, _i = env.step(
+                    env.action_space.sample())
+                if term or trunc:
+                    break
+            self.assertTrue(np.all(obs >= -1.0) and np.all(obs <= 1.0))
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 @unittest.skipUnless(_pick_model(), "aún no hay modelo entrenado")
 class TestClosedLoopIntegration(unittest.TestCase):
     """El sistema COMPLETO: SLAM + mapa por chunks + navegador. El

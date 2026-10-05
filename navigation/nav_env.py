@@ -354,12 +354,19 @@ class NavEnv(gym.Env):
     ACTIONS = ("avanzar", "girar_izquierda", "girar_derecha", "detenerse")
 
     def __init__(self, obs_mode="extended", seed=None, sensor_noise=0.05,
-                 max_steps=EPISODE_STEPS):
+                 max_steps=EPISODE_STEPS, real_map_dirs=None,
+                 real_map_prob=0.5):
+        """real_map_dirs: carpetas de mapas reales guardados (chunks de
+        ChunkedMapManager). Si se dan, una fracción real_map_prob de los
+        episodios se juega sobre esos mapas (navigation/real_maps.py) y
+        el resto sobre mundos procedurales."""
         super().__init__()
         assert obs_mode in ("doc", "extended")
         self.obs_mode = obs_mode
         self.sensor_noise = sensor_noise
         self.max_steps = max_steps
+        self.real_map_dirs = list(real_map_dirs) if real_map_dirs else []
+        self.real_map_prob = real_map_prob
         self.rng = np.random.default_rng(seed)
 
         self.action_space = spaces.Discrete(4)
@@ -377,8 +384,13 @@ class NavEnv(gym.Env):
     def reset(self, *, seed=None, options=None):
         if seed is not None:
             self.rng = np.random.default_rng(seed)
-        gen = self.rng.choice(len(WORLD_GENERATORS), p=WORLD_WEIGHTS)
-        self.world, start, goal = WORLD_GENERATORS[gen](self.rng)
+        if self.real_map_dirs and self.rng.random() < self.real_map_prob:
+            from navigation.real_maps import sample_real_episode
+            self.world, start, goal = sample_real_episode(
+                self.real_map_dirs, self.rng)
+        else:
+            gen = self.rng.choice(len(WORLD_GENERATORS), p=WORLD_WEIGHTS)
+            self.world, start, goal = WORLD_GENERATORS[gen](self.rng)
         self.pose = list(start)
         self.goal = goal
         self.prev_d_goal = self._d_goal()

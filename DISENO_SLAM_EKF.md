@@ -517,9 +517,19 @@ Todo lo simulado está aislado en `sim_world.py` y marcado con `TODO`:
 - **Visión: YA ES REAL.** `vision_bridge.VisionBridge` ejecuta el módulo
   del equipo (`vision/TT-NavIA`: YOLOv8-seg + clasificador + tracker de
   movimiento) y `demo_realtime.py` (modo cámara) lo usa por defecto.
-- `sim_world.SimulatedMotion` → reemplazar por el módulo real de
-  odometría/IMU, produciendo `MotionEstimate`. Mientras tanto, el modo
-  cámara asume usuario cuasi-estático (`MotionEstimate(0, 0)`).
+- **Odometría: módulo listo (`odometry.py`), falta solo el chip.** La
+  fuente real es una IMU **BNO055** por I2C (mismo bus que los MB1232,
+  dirección 0x28/0x29): giro = heading fusionado a bordo; avance =
+  dead reckoning peatonal (conteo de pasos por picos de aceleración
+  lineal × longitud de paso, ~0.68 m calibrable con `--step-length`);
+  además entrega el PITCH real de la cámara, que los mains inyectan a
+  la geometría de plano de piso (hoyos/rangos monoculares). Integrada
+  en `main_pi.py`/`main_nav_pi.py` (por defecto) y en
+  `main_lap.py`/`main_nav_lap.py` (bandera `--imu`); si la IMU no
+  responde, TODOS caen automáticamente al giro por flujo óptico con
+  avance 0 (el comportamiento previo). Al conectar el chip: verificar
+  signos de montaje y longitud de paso (TODO en `odometry.py`); NO se
+  integra aceleración dos veces (deriva) — por eso pasos.
 - `sim_world.SimulatedUltrasonicArray` → reemplazar por lectura real de
   los sensores. OJO: el diseño electrónico final (TT_2026_B045 §7.6)
   especifica **2x MB1232 I2CXL-MaxSonar por I2C, montados a IZQUIERDA y

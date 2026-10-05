@@ -17,5 +17,5 @@ stable-baselines3>=2.3    # PPO (solo para ENTRENAR / laptop; en la
                           # models/*_policy.npz)
 
 # Hardware Raspberry Pi (descomentar cuando exista el hardware)
-# smbus2                  # ultrasonido MB1232 por I2C
+# smbus2                  # I2C: ultrasonido MB1232 + IMU BNO055 (odometry.py)
 # pyttsx3                 # salida de voz

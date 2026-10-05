@@ -134,6 +134,8 @@ class ChunkedMapManager:
         if map_dir:
             os.makedirs(map_dir, exist_ok=True)
             self._load_meta()
+            # (para abrir un mapa existente SIN conocer su geometría,
+            # usar ChunkedMapManager.open_existing(map_dir))
             for fname in os.listdir(map_dir):
                 if fname.startswith("chunk_") and fname.endswith(".npz"):
                     try:
@@ -143,6 +145,20 @@ class ChunkedMapManager:
                         continue
 
         self.events = []            # eventos del último update_position()
+
+    @classmethod
+    def open_existing(cls, map_dir, **kw):
+        """Abre un mapa guardado adoptando la geometría (resolution,
+        chunk_size_m) de su meta.json, sin que el llamador la conozca."""
+        meta_path = os.path.join(map_dir, "meta.json")
+        try:
+            with open(meta_path, "r", encoding="utf-8") as fh:
+                meta = json.load(fh)
+            kw.setdefault("resolution", meta.get("resolution", 0.05))
+            kw.setdefault("chunk_size_m", meta.get("chunk_size_m", 8.0))
+        except (OSError, ValueError):
+            pass
+        return cls(map_dir=map_dir, **kw)
 
     # ------------------------------------------------------------------
     # Coordenadas: mundo -> celda global -> (chunk, celda local)

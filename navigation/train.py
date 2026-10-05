@@ -39,9 +39,10 @@ from navigation.nav_env import NavEnv, make_env, WORLD_GENERATORS
 # Evaluación: métricas que importan para ESTE producto
 # ----------------------------------------------------------------------
 def evaluate(model_predict, obs_mode, episodes=120, seed=1000,
-             by_world=True):
+             by_world=True, real_map_dirs=None):
     """model_predict: función obs -> acción (int). Devuelve métricas
-    globales y por tipo de mundo (cuarto / dos cuartos / exterior)."""
+    globales y por tipo de mundo (cuarto / dos cuartos / exterior), y
+    si se dan mapas reales guardados, también sobre cada uno."""
     results = {}
     per_world = max(1, episodes // len(WORLD_GENERATORS))
     for w_idx, gen in enumerate(WORLD_GENERATORS):
@@ -72,6 +73,31 @@ def evaluate(model_predict, obs_mode, episodes=120, seed=1000,
             else:
                 stats["timeout"] += 1
         results[gen.__name__] = stats
+
+    # Evaluación sobre MAPAS REALES guardados (si se dieron)
+    for map_dir in (real_map_dirs or []):
+        stats = {"success": 0, "collision": 0, "fell": 0, "timeout": 0,
+                 "steps": [], "n": 0}
+        for ep in range(per_world):
+            env = NavEnv(obs_mode=obs_mode, seed=seed + 9000 + ep,
+                         real_map_dirs=[map_dir], real_map_prob=1.0)
+            obs, _ = env.reset()
+            done = False
+            info = {}
+            while not done:
+                obs, _r, term, trunc, info = env.step(model_predict(obs))
+                done = term or trunc
+            stats["n"] += 1
+            if info.get("success"):
+                stats["success"] += 1
+                stats["steps"].append(env.steps)
+            elif info.get("collision"):
+                stats["collision"] += 1
+            elif info.get("fell"):
+                stats["fell"] += 1
+            else:
+                stats["timeout"] += 1
+        results[f"real:{map_dir}"] = stats
 
     total = {k: sum(r[k] for r in results.values())
              for k in ("success", "collision", "fell", "timeout", "n")}
@@ -144,17 +170,30 @@ PPO_KWARGS = dict(
 )
 
 
-def train_one(obs_mode, timesteps, seed, n_envs, out_base, verbose=1):
+def train_one(obs_mode, timesteps, seed, n_envs, out_base, verbose=1,
+              real_map_dirs=None, real_map_prob=0.5):
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
     print(f"\n>>> Entrenando PPO  obs={obs_mode}  timesteps={timesteps:,}  "
           f"envs={n_envs}  seed={seed}")
+    if real_map_dirs:
+        # precalcular la conversión de cada mapa ANTES de bifurcar los
+        # workers (y validar que los mapas sirven)
+        from navigation.real_maps import get_factory
+        for d in real_map_dirs:
+            f = get_factory(d)
+            print(f"    mapa real {d}: {len(f.statics)} obstáculos, "
+                  f"{len(f.hazards)} peligros, "
+                  f"{f.free_area_m2():.1f} m2 libres")
+        print(f"    {real_map_prob:.0%} de los episodios serán sobre "
+              "mapas reales")
+    kw = dict(real_map_dirs=real_map_dirs, real_map_prob=real_map_prob)
     if n_envs > 1:
-        venv = SubprocVecEnv([make_env(obs_mode, seed=seed + i)
+        venv = SubprocVecEnv([make_env(obs_mode, seed=seed + i, **kw)
                               for i in range(n_envs)])
     else:
-        venv = DummyVecEnv([make_env(obs_mode, seed=seed)])
+        venv = DummyVecEnv([make_env(obs_mode, seed=seed, **kw)])
 
     model = PPO("MlpPolicy", venv, seed=seed, verbose=verbose, **PPO_KWARGS)
     t0 = time.time()
@@ -168,7 +207,7 @@ def train_one(obs_mode, timesteps, seed, n_envs, out_base, verbose=1):
         action, _ = model.predict(obs, deterministic=True)
         return int(action)
 
-    summary = evaluate(predict, obs_mode)
+    summary = evaluate(predict, obs_mode, real_map_dirs=real_map_dirs)
     print_eval(f"PPO obs={obs_mode}", summary)
 
     if out_base:
@@ -215,7 +254,7 @@ def compare_modes(timesteps, seed, n_envs):
     return best, results
 
 
-def eval_saved(path):
+def eval_saved(path, real_map_dirs=None):
     from stable_baselines3 import PPO
     meta_path = path.replace(".zip", "_meta.json")
     obs_mode = "extended"
@@ -228,7 +267,8 @@ def eval_saved(path):
         action, _ = model.predict(obs, deterministic=True)
         return int(action)
 
-    print_eval(path, evaluate(predict, obs_mode))
+    print_eval(path, evaluate(predict, obs_mode,
+                              real_map_dirs=real_map_dirs))
 
 
 def main():
@@ -245,14 +285,23 @@ def main():
                    help="entrena obs=doc y obs=extended y compara")
     p.add_argument("--eval", default=None, metavar="MODELO.zip",
                    help="solo evaluar un modelo guardado")
+    p.add_argument("--real-maps", nargs="*", default=None,
+                   metavar="CARPETA",
+                   help="mapas reales guardados (maps/casa ...) para "
+                        "entrenar/evaluar sobre tu entorno real "
+                        "(ver video_a_mapa.py)")
+    p.add_argument("--real-prob", type=float, default=0.5,
+                   help="fracción de episodios sobre mapas reales")
     args = p.parse_args()
 
     if args.eval:
-        eval_saved(args.eval)
+        eval_saved(args.eval, real_map_dirs=args.real_maps)
     elif args.compare:
         compare_modes(args.timesteps, args.seed, args.envs)
     else:
-        train_one(args.obs, args.timesteps, args.seed, args.envs, args.out)
+        train_one(args.obs, args.timesteps, args.seed, args.envs, args.out,
+                  real_map_dirs=args.real_maps,
+                  real_map_prob=args.real_prob)
 
 
 if __name__ == "__main__":

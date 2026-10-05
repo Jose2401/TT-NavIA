@@ -202,15 +202,21 @@ def describe_events(events, log):
 # ----------------------------------------------------------------------
 def run_camera(args):
     import cv2
-    from vision_bridge import (VisionBridge, VisualYawEstimator,
-                               GroundHazardDetector)
+    from vision_bridge import VisionBridge, GroundHazardDetector
+    from odometry import make_motion_estimator
 
     print("Cargando módulo de visión (YOLOv8-seg de paquete vision/)...")
     bridge = VisionBridge(model_path=args.model,
                           camera_profile=args.camera_profile,
                           cam_height_m=args.cam_height,
                           cam_pitch_deg=args.cam_pitch)
-    yaw_est = VisualYawEstimator(hfov_deg=math.degrees(bridge.hfov))
+    # Odometría: con --imu intenta la BNO055 (p. ej. la Pi con pantalla
+    # remota, o la laptop con un adaptador I2C); sin ella usa el giro
+    # por flujo óptico, como siempre.
+    motion_est = make_motion_estimator(
+        use_imu=args.imu, imu_bus=args.imu_bus, imu_addr=args.imu_addr,
+        step_length_m=args.step_length,
+        hfov_deg=math.degrees(bridge.hfov))
     hazard_det = None
     if args.hazards:
         print("Cargando segmentación de escena (SegFormer ADE20K) para "
@@ -249,9 +255,13 @@ def run_camera(args):
             last_t = now
             fps = 0.9 * fps + 0.1 * (1.0 / dt) if fps else 1.0 / dt
 
-            # 1) giro por flujo óptico; traslación 0 hasta tener odometría
-            delta_rot, yaw_ok = yaw_est.update(frame)
-            motion = MotionEstimate(0.0, delta_rot, dt)
+            # 1) odometría (IMU si --imu; si no, giro por flujo óptico)
+            motion, odo = motion_est.update(frame, dt)
+            yaw_ok = odo["source"] != "ninguno"
+            if odo["pitch_deg"] is not None:
+                bridge.cam_pitch_deg = odo["pitch_deg"]
+                if hazard_det is not None:
+                    hazard_det.cam_pitch_deg = odo["pitch_deg"]
 
             # 2) visión: objetos YOLO + peligros de piso cada N frames
             detections = bridge.process(frame)
@@ -511,6 +521,12 @@ def build_parser():
     p.add_argument("--max-frames", type=int, default=None)
     p.add_argument("--headless", action="store_true")
     p.add_argument("--croquis", default="croquis_chunks.png")
+    p.add_argument("--imu", action="store_true",
+                   help="usar IMU BNO055 por I2C como odometría "
+                        "(giro + pasos); sin ella, flujo óptico")
+    p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
+    p.add_argument("--imu-bus", type=int, default=1)
+    p.add_argument("--step-length", type=float, default=0.68)
     return p
 
 

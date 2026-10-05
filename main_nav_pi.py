@@ -31,7 +31,8 @@ from map_manager import ChunkedMapManager
 from vision_bridge import fuse_observations
 from navigation_feed import build_navigation_frame, safety_alerts
 from navigation.navigator import Navigator
-from main_pi import Mb1232Array, VoiceOutput, read_motion
+from main_pi import Mb1232Array, VoiceOutput
+from odometry import make_motion_estimator
 
 
 def start_command_thread(q):
@@ -57,19 +58,27 @@ def main():
     p.add_argument("--max-range", type=float, default=4.0)
     p.add_argument("--max-frames", type=int, default=None)
     p.add_argument("--save-every", type=float, default=30.0)
+    p.add_argument("--no-imu", action="store_true",
+                   help="no usar la IMU BNO055 (solo flujo óptico)")
+    p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
+    p.add_argument("--imu-bus", type=int, default=1)
+    p.add_argument("--step-length", type=float, default=0.68)
     args = p.parse_args()
 
     import cv2
-    from vision_bridge import (VisionBridge, VisualYawEstimator,
-                               GroundHazardDetector)
+    from vision_bridge import VisionBridge, GroundHazardDetector
 
     voice = VoiceOutput()
     voice.say("Sistema listo. Diga su destino.", priority=2)
 
     bridge = VisionBridge(model_path=args.model, camera_profile="picam3wide")
-    yaw_est = VisualYawEstimator(hfov_deg=math.degrees(bridge.hfov))
     hazard_det = GroundHazardDetector(camera_profile="picam3wide") \
         if args.hazards else None
+    motion_est = make_motion_estimator(
+        use_imu=not args.no_imu, imu_bus=args.imu_bus,
+        imu_addr=args.imu_addr, step_length_m=args.step_length,
+        hfov_deg=math.degrees(bridge.hfov),
+        say=lambda m: voice.say(m, priority=2))
     ultrasonic = Mb1232Array()
 
     mgr = ChunkedMapManager(map_dir=args.map_dir,
@@ -113,7 +122,11 @@ def main():
             except queue.Empty:
                 pass
 
-            motion, _ = read_motion(yaw_est, frame, dt)
+            motion, odo = motion_est.update(frame, dt)
+            if odo["pitch_deg"] is not None:
+                bridge.cam_pitch_deg = odo["pitch_deg"]
+                if hazard_det is not None:
+                    hazard_det.cam_pitch_deg = odo["pitch_deg"]
             detections = bridge.process(frame)
             if hazard_det is not None and frames % args.hazard_every == 0:
                 last_hazards = hazard_det.process(frame, detections)
