@@ -1,43 +1,35 @@
 """
-navigation_feed.py
-Punto ÚNICO de armado de la entrada del módulo de navegación.
-
-El módulo de navegación (agente DRL con PPO, por implementar en TT2)
-recibirá por ciclo un NavigationFrame (interfaces.py) construido aquí a
-partir de las salidas de los tres módulos ya integrados:
-
-    SLAM (EKFSlam)          -> pose + covarianza + confianza + landmarks
-    Mapeo/Ray Casting       -> costmap egocéntrico + d_front/d_left/d_right
-    Visión (vision_bridge)  -> detecciones + riesgos r_front/r_left/r_right
-    (Ultrasonido            -> se integrará aquí mismo cuando exista)
-
-El vector de estado documentado (TT_2026_B045 §7.3.1) es
-    s_t = [d_front, d_left, d_right, phi_goal, d_goal,
-           r_front, r_left, r_right]
-phi_goal y d_goal dependen del módulo de rutas (waypoints), que no
-existe aún; todo lo demás sale de aquí.
-
-También implementa la capa de ALERTAS determinística (independiente del
-RL, según el diseño): umbral crítico < 0.80 m -> "deténgase", umbral de
-precaución < 1.50 m -> "precaución". En la Raspberry estas alertas irán
-a la salida de voz; en la laptop se muestran en la interfaz.
+navigation_feed.py — arma el NavigationFrame que consume el navegador
+(slam + mapa + vision + ultrasonido en un solo paquete por ciclo).
+tambien trae la capa de alertas deterministica: usa la MISMA distancia
+frontal y umbral que el Navigator, pa que alerta e instruccion nunca
+se contradigan.
 """
 import math
 
 from interfaces import NavigationFrame
 from vision_bridge import detection_risk
 
-# Umbrales de alerta del proyecto (alg. 7 del documento; configurables)
+# umbrales del proyecto: frente < 0.80 m critico, < 1.50 m precaucion
 CRITICAL_DISTANCE_M = 0.80
 CAUTION_DISTANCE_M = 1.50
+# laterales mas permisivos: caminar a 60 cm de una pared es un pasillo
+# normal, no una emergencia; critico solo si ya casi roza
+LATERAL_CRITICAL_M = 0.45
+LATERAL_CAUTION_M = CRITICAL_DISTANCE_M
 
-# Sectores angulares (rad) respecto a la orientación del usuario
-FRONT_HALF_ANGLE = math.radians(30)   # frente = +-30 grados
-SIDE_MAX_ANGLE = math.radians(90)     # izquierda/derecha hasta +-90
+# sectores angulares respecto a la orientacion del usuario
+FRONT_HALF_ANGLE = math.radians(30)
+SIDE_MAX_ANGLE = math.radians(90)
+
+# ojo: nav_env entrena el riesgo con distancias a todo (paredes incluidas)
+# y aqui r_* sale solo de detecciones. se probo alinear y el modelo
+# entregado empeoro (llegadas 10/10 -> 9/10, vueltas 55 -> 193); hasta
+# reentrenar se queda asi, las paredes las cubren d_* y las alertas.
 
 
 def _sector_of(bearing):
-    """'front' / 'left' / 'right' / None (fuera de los sectores)."""
+    """'front' / 'left' / 'right' / None (fuera de sectores)."""
     if abs(bearing) <= FRONT_HALF_ANGLE:
         return "front"
     if FRONT_HALF_ANGLE < bearing <= SIDE_MAX_ANGLE:
@@ -48,10 +40,8 @@ def _sector_of(bearing):
 
 
 def direction_distances(grid, pose, max_range=4.0, rays_per_sector=5):
-    """d_front, d_left, d_right por ray casting de consulta sobre el mapa
-    (OccupancyGrid o ChunkedMapManager: misma interfaz cast_distance).
-    Cada sector lanza varios rayos y se queda con el MÍNIMO (el obstáculo
-    más cercano del sector es el que importa para la seguridad)."""
+    """d_front/left/right por ray casting; cada sector se queda con el
+    minimo (el obstaculo mas cercano es el que importa)."""
     x, y, theta = pose
 
     def sweep(a0, a1):
@@ -68,8 +58,7 @@ def direction_distances(grid, pose, max_range=4.0, rays_per_sector=5):
 
 
 def sector_risks(detections, max_distance=3.0):
-    """r_front, r_left, r_right: máximo riesgo (0-3) de las detecciones
-    del ciclo por sector, ignorando lo que está lejos (> max_distance)."""
+    """max riesgo (0-3) por sector, ignorando lo lejano."""
     risks = {"front": 0, "left": 0, "right": 0}
     for det in detections:
         if det.range_est is not None and det.range_est > max_distance:
@@ -83,8 +72,8 @@ def sector_risks(detections, max_distance=3.0):
 def build_navigation_frame(slam, grid, detections, costmap_size_m=4.0,
                            max_range=4.0, chunk=None, room=None,
                            ultrasonic=None):
-    """Arma el NavigationFrame del ciclo. `grid` puede ser OccupancyGrid
-    o ChunkedMapManager (misma interfaz de consulta)."""
+    """arma el NavigationFrame del ciclo (`grid` puede ser OccupancyGrid
+    o ChunkedMapManager, misma interfaz)."""
     output = slam.get_output()
     pose = (output.x, output.y, output.theta)
     costmap = grid.local_costmap(pose, size_m=costmap_size_m)
@@ -105,38 +94,61 @@ def build_navigation_frame(slam, grid, detections, costmap_size_m=4.0,
     )
 
 
+def effective_front_distance(frame: NavigationFrame):
+    """lo libre al frente: el menor entre el mapa y la deteccion visual
+    mas cercana (vision ve el objeto antes de que el mapa confirme).
+    el Navigator usa ESTE mismo valor pa anular un 'avanzar'."""
+    det_d = min((d.range_est for d in frame.detections
+                 if _sector_of(d.bearing) == "front"
+                 and d.range_est is not None), default=float("inf"))
+    return min(frame.d_front, det_d)
+
+
 def safety_alerts(frame: NavigationFrame):
-    """Capa de seguridad determinística (independiente del RL): mensajes
-    de alerta según los umbrales del proyecto. Devuelve lista de
-    (prioridad, mensaje); prioridad 0 = crítica (interrumpe el audio en
-    curso), 1 = precaución."""
+    """alertas deterministicas (independientes del RL). devuelve lista de
+    (prioridad, mensaje); 0 = critica, 1 = precaucion. frente: 80/150 cm;
+    laterales: 45/80 cm, salvo riesgo alto (persona, hoyo) que usa los
+    umbrales frontales."""
     alerts = []
 
-    def nearest_label(sector):
+    def nearest_det(sector):
         best = None
         for det in frame.detections:
             if _sector_of(det.bearing) != sector or det.range_est is None:
                 continue
             if best is None or det.range_est < best.range_est:
                 best = det
-        return best.label if best is not None else "obstaculo"
+        return best
 
     sectores = (("front", frame.d_front, "al frente"),
                 ("left", frame.d_left, "a la izquierda"),
                 ("right", frame.d_right, "a la derecha"))
     for sector, dist, donde in sectores:
-        # La distancia efectiva es la menor entre el mapa y la detección
-        # visual más próxima del sector (visión ve antes de que el mapa
-        # confirme la celda).
-        det_d = min((d.range_est for d in frame.detections
-                     if _sector_of(d.bearing) == sector
-                     and d.range_est is not None), default=float("inf"))
+        det = nearest_det(sector)
+        det_d = det.range_est if det is not None else float("inf")
         eff = min(dist, det_d)
-        if eff < CRITICAL_DISTANCE_M:
-            alerts.append((0, f"Atencion: {nearest_label(sector)} a "
-                              f"{int(eff * 100)} centimetros {donde}. "
-                              "Detengase."))
-        elif eff < CAUTION_DISTANCE_M:
-            alerts.append((1, f"Precaucion: {nearest_label(sector)} "
-                              f"cerca {donde}."))
+        # solo se nombra la clase si la deteccion ES lo mas cercano; si
+        # gana el mapa se dice "obstaculo" (antes salia "planta a 33 cm"
+        # por una pared)
+        det_is_nearest = det is not None and det_d <= dist
+        label = det.label if det_is_nearest else "obstaculo"
+        high_risk_det = det_is_nearest and detection_risk(det) >= 3
+
+        if sector == "front" or high_risk_det:
+            crit, caut = CRITICAL_DISTANCE_M, CAUTION_DISTANCE_M
+        else:
+            crit, caut = LATERAL_CRITICAL_M, LATERAL_CAUTION_M
+
+        if eff < crit:
+            # redondeo a 10 cm pa que la voz no repita a cada frame
+            cm = int(round(eff * 10.0)) * 10
+            alerts.append((0, f"Atencion: {label} a {cm} centimetros "
+                              f"{donde}. Detengase."))
+        elif eff < caut:
+            alerts.append((1, f"Precaucion: {label} cerca {donde}."))
     return alerts
+
+
+def needs_replan(alerts):
+    """True si hay alerta critica: el Navigator recalcula de inmediato."""
+    return any(prio == 0 for prio, _msg in alerts)

@@ -96,9 +96,9 @@ Módulos del paquete:
 | `vision/TT-NavIA/`     | Módulo de visión REAL del equipo (YOLOv8-seg + SegFormer ADE20K; `scene_segmentation.py` extendido con clases transitables/agua/escaleras) |
 | `vision_bridge.py`     | Conecta la visión real al SLAM: bbox → bearing + distancia monocular (refinada por plano de piso), filtro de objetos móviles, fusión con ultrasonido, `GroundHazardDetector` (hoyos/coladeras/agua/escaleras) y `detection_risk` |
 | `sim_world.py`         | Cuarto simulado (paredes + obstáculos): ultrasonido por ray casting, visión sintética y movimiento por waypoints |
-| `simulation.py`        | Simulación end-to-end sin hardware (valida el comportamiento requerido, reporta métricas) |
-| `test_ekf_slam.py`     | Pruebas unitarias/funcionales del EKF, la fusión y la simulación |
-| `test_map_manager.py`  | Pruebas del mapa por chunks, persistencia, peligros, costmap y alertas |
+| `tests/simulation.py`  | Simulación end-to-end sin hardware (valida el comportamiento requerido, reporta métricas) |
+| `tests/test_ekf_slam.py` | Pruebas unitarias/funcionales del EKF, la fusión y la simulación |
+| `tests/test_map_manager.py` | Pruebas del mapa por chunks, persistencia, peligros, costmap y alertas |
 | `metrics.py`           | ATE, error de orientación, incertidumbre, exactitud del mapa |
 | `main_lap.py`          | MAIN de prueba en LAPTOP (GUI): cámara + chunks + peligros + panel de navegación; también `--sim` sin cámara |
 | `main_pi.py`           | MAIN de la Raspberry Pi (headless): mismo pipeline, ganchos TODO para MB1232/odometría y salida de voz |
@@ -107,11 +107,12 @@ Módulos del paquete:
 | `navigation/navigator.py` | USA el modelo: Algoritmos 4 (inferencia), 5 (frases de dirección exactas) y 11 (estados de sesión) del TT; formatos de entrada (NavCommand / texto) y salida (NavMessage con prioridades 0/1/2) |
 | `main_nav_lap.py`      | Navegación COMPLETA en laptop (GUI): comandos por terminal, en `--sim` el usuario obedece las indicaciones (validación de lazo cerrado) |
 | `main_nav_pi.py`       | Navegación COMPLETA en Raspberry (headless): backend numpy del modelo, comandos por stdin (luego voz/PLN), salida por prioridades |
-| `test_navigation.py`   | Pruebas del entorno, comandos, frases, backends y lazo cerrado guiado |
-| `demo_mapa_interactivo.py` | Mapeo en tiempo real sin ningún hardware: controlas al usuario con WASD (o piloto automático) en el cuarto simulado y ves el mapa, la pose estimada y la elipse de incertidumbre construirse en vivo |
+| `tests/test_navigation.py` | Pruebas del entorno, comandos, frases, backends y lazo cerrado guiado |
+| `video_a_mapa.py`      | Convierte videos POV reales en mapas guardados (con detector de caminata por flujo óptico y huella libre del recorrido) listos para entrenar la navegación |
 
-(Los demos previos `demo_realtime.py` y `demo_mapa_camara.py` fueron
-retirados: `main_lap.py` los sustituye por completo.)
+(Los demos previos fueron retirados: `main_lap.py --sim` cubre el modo
+interactivo sin hardware. Los tests y el banco de simulación viven en
+`tests/`.)
 
 Notas sobre la robustez añadida al EKF (implementadas en `ekf_slam.py`):
 
@@ -184,6 +185,12 @@ Notas sobre la robustez añadida al EKF (implementadas en `ekf_slam.py`):
   detectado por la cámara (de `vision_bridge.py` sobre el módulo real
   YOLOv8-seg): dirección precisa, distancia monocular gruesa, y si el
   objeto se está moviendo (los objetos móviles no se usan como landmarks).
+  El rastreador de movimiento compara centroides en píxeles entre
+  frames; `VisionBridge.process(frame, ego_yaw=Δθ)` recibe el giro de la
+  odometría del ciclo y desplaza el historial del rastreador lo que la
+  escena estática se movió por ese giro (`shift_tracker_for_yaw`): sin
+  esto, al girar la cabeza TODO el cuarto quedaba marcado como "móvil"
+  (riesgo 3 en todos los sectores y cero landmarks justo en el giro).
 - `UltrasonicReading(range_m, sensor_bearing, valid)` — distancia medida
   por un sensor ultrasónico. *Interfaz simulada por ahora
   (`sim_world.SimulatedUltrasonicArray`, por ray casting contra el cuarto
@@ -382,8 +389,32 @@ dispositivo.
   bloqueados (la política aprende a no fiarse de huecos de un rayo);
   (3) CAPA DE SEGURIDAD determinística en el Navigator (RNF-09,
   independiente del RL): si el modelo dice avanzar con el frente a
-  <0.6 m según el mapa O la visión, se fuerza el giro hacia el lado
-  más libre.
+  < 0.80 m según el mapa O la visión (`effective_front_distance`), se
+  fuerza un giro. El umbral y la distancia son LOS MISMOS que usa la
+  capa de alertas (alg. 7), de modo que "Deténgase" y "Avance" nunca
+  salen en el mismo ciclo (medido en lazo cerrado: 10 ciclos
+  incoherentes en 10 corridas antes, 0 después; llegadas 10/10 en
+  ambos casos). El sentido del giro forzado es hacia el destino si ese
+  lado tiene espacio, si no hacia el más libre, con histéresis acotada
+  (~160°) para no dictar izquierda/derecha/izquierda en una esquina.
+- **Alerta => recálculo inmediato** (alg. 7 `recalcular_ruta`, alg. 11):
+  `navigation_feed.needs_replan(alerts)` es True con cualquier alerta
+  crítica y `Navigator.update(frame, grid, alerts)` decide en ese mismo
+  ciclo sin esperar su cadencia. Umbrales por sector: frente 0.80/1.50 m
+  (documento); laterales 0.45 m crítico / 0.80 m precaución (caminar a
+  60 cm de una pared es un pasillo normal, no una emergencia), salvo
+  detecciones de riesgo alto (persona en movimiento, hoyo), que son
+  críticas a 0.80 m en cualquier sector. El texto redondea a 10 cm para
+  que la salida de voz pueda deduplicarlo.
+- **Brecha de dominio en r_* (pendiente, medida)**: `nav_env._risks()`
+  añade en entrenamiento riesgo 2/1 por distancia a CUALQUIER obstáculo
+  (paredes incluidas); en producción r_* sale de las detecciones de
+  visión. Se probó alinear producción con la regla de entrenamiento y
+  el modelo entregado empeoró (10 semillas: llegadas 10/10 -> 9/10,
+  cambios de sentido 55 -> 193), así que se mantiene r_* por
+  detecciones. La corrección correcta es del lado del entrenamiento
+  (que `nav_env` calcule el riesgo exactamente como `sector_risks`) y
+  reentrenar.
 - **Doble formato del modelo**: `.zip` (SB3, laptop/entrenamiento) y
   `_policy.npz` (solo pesos; la inferencia en la Raspberry es un MLP
   tanh en numpy puro, sin SB3). Un test verifica que ambos backends
@@ -496,11 +527,11 @@ necesitar en ningún momento una posición GPS ni ubicación externa.
 
 ## 16. Pruebas y métricas
 
-- `test_ekf_slam.py`: valida predicción (avance/rotación), crecimiento de
+- `tests/test_ekf_slam.py`: valida predicción (avance/rotación), crecimiento de
   incertidumbre en la predicción, reducción de incertidumbre al corregir,
   registro de nuevos landmarks, comportamiento de dead-reckoning sin
   observaciones, y la forma de la salida.
-- `simulation.py`: escenario simulado end-to-end (posición inicial
+- `tests/simulation.py`: escenario simulado end-to-end (posición inicial
   conocida → avanza → gira → encuentra landmarks → pose se actualiza →
   incertidumbre cambia), genera un croquis final y reporta:
   - **ATE** (error medio de trayectoria, m)
@@ -516,7 +547,7 @@ Todo lo simulado está aislado en `sim_world.py` y marcado con `TODO`:
 
 - **Visión: YA ES REAL.** `vision_bridge.VisionBridge` ejecuta el módulo
   del equipo (`vision/TT-NavIA`: YOLOv8-seg + clasificador + tracker de
-  movimiento) y `demo_realtime.py` (modo cámara) lo usa por defecto.
+  movimiento) y los mains en modo cámara lo usan por defecto.
 - **Odometría: módulo listo (`odometry.py`), falta solo el chip.** La
   fuente real es una IMU **BNO055** por I2C (mismo bus que los MB1232,
   dirección 0x28/0x29): giro = heading fusionado a bordo; avance =
@@ -565,5 +596,5 @@ producía ecos escasos e irreales; el banco actual es físicamente
 correcto y más exigente. El mapa, en cambio, mejoró drásticamente
 (recall 0.09 -> 0.41) con la política de pintado precisa.
 
-Reproducir con: `python simulation.py`, `python -m unittest
-test_ekf_slam test_map_manager`.
+Reproducir con: `python -m tests.simulation` y `python -m unittest
+tests.test_ekf_slam tests.test_map_manager`.

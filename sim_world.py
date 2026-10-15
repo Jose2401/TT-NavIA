@@ -1,25 +1,9 @@
 """
-sim_world.py
-Entorno simulado coherente para probar el SLAM sin hardware.
-
-Sustituye a los generadores aleatorios anteriores (que devolvían distancias
-sin relación con ningún cuarto real, y por lo tanto producían mapas basura):
-aquí existe un cuarto "de verdad" (paredes como segmentos + obstáculos como
-círculos con etiqueta) y todos los sensores simulados se derivan de él por
-geometría:
-
-- SimulatedUltrasonicArray: cada sensor lanza un rayo desde la pose real y
-  devuelve la distancia al primer choque (pared u obstáculo) + ruido.
-- simulated_vision(): detecciones tipo cámara (bearing + distancia
-  monocular gruesa + etiqueta) de los obstáculos dentro del campo de
-  visión y no ocluidos.
-- SimulatedMotion: el usuario recorre waypoints dentro del cuarto; entrega
-  la pose real (ground truth) y un MotionEstimate con ruido (lo que en el
-  sistema real entregará la odometría/IMU).
-
-TODO: todo este archivo desaparece cuando existan los módulos reales de
-odometría/IMU y de sensores ultrasónicos; las interfaces que produce
-(MotionEstimate, UltrasonicReading, VisionDetection) son las mismas.
+sim_world.py — cuarto simulado pa probar el slam sin hardware.
+hay un cuarto de verdad (paredes como segmentos, obstaculos como
+circulos) y todos los sensores fake se derivan de el por geometria.
+desaparece cuando esten los modulos reales; las interfaces son las
+mismas (MotionEstimate, UltrasonicReading, VisionDetection).
 """
 import math
 import random
@@ -29,7 +13,7 @@ from ekf_slam import wrap_angle
 
 
 class SimulatedWorld:
-    """Cuarto de referencia: paredes (segmentos) + obstáculos (círculos)."""
+    """paredes (segmentos) + obstaculos (circulos con etiqueta)."""
 
     def __init__(self, walls, obstacles):
         self.walls = walls          # [(x1, y1, x2, y2), ...]
@@ -37,7 +21,7 @@ class SimulatedWorld:
 
     @staticmethod
     def default_room():
-        """Cuarto de 6 x 4 m con muebles típicos."""
+        """cuarto de 6 x 4 m con muebles tipicos."""
         walls = [
             (0.0, 0.0, 6.0, 0.0),
             (6.0, 0.0, 6.0, 4.0),
@@ -53,10 +37,9 @@ class SimulatedWorld:
         ]
         return SimulatedWorld(walls, obstacles)
 
-    # ---------------- geometría de rayos ----------------
+    # ---------------- geometria de rayos ----------------
     def ray_distance(self, x, y, angle, max_range=4.0):
-        """Distancia desde (x, y) en la dirección `angle` hasta el primer
-        choque con una pared u obstáculo; inf si no hay nada en max_range."""
+        """distancia al primer choque con pared u obstaculo; inf si nada."""
         c, s = math.cos(angle), math.sin(angle)
         best = float("inf")
 
@@ -65,14 +48,10 @@ class SimulatedWorld:
             denom = c * ey - s * ex
             if abs(denom) < 1e-12:
                 continue
-            t = ((ax - x) * ey - (ay - y) * ex) / denom      # a lo largo del rayo
-            # Posición del impacto a lo largo del muro (0..1 dentro del
-            # segmento). OJO con el signo: u = cross(p-a, d)/cross(e, d);
-            # con el signo invertido el rayo "rebotaba" en la EXTENSIÓN
-            # infinita de los muros (fuera del segmento real) y el
-            # ultrasonido simulado devolvía ecos imposibles que creaban
-            # landmarks fantasma fuera del cuarto.
-            u = ((x - ax) * s - (y - ay) * c) / -denom       # a lo largo del muro
+            t = ((ax - x) * ey - (ay - y) * ex) / denom
+            # OJO con el signo de u: invertido hacia rebotar el rayo en la
+            # extension infinita de los muros y salian ecos imposibles
+            u = ((x - ax) * s - (y - ay) * c) / -denom
             if t > 0.0 and 0.0 <= u <= 1.0:
                 best = min(best, t)
 
@@ -89,8 +68,7 @@ class SimulatedWorld:
         return best if best <= max_range else float("inf")
 
     def occupied_cells(self, grid, samples_per_m=40):
-        """Celdas 'realmente' ocupadas del cuarto, en índices de la grilla
-        dada. Sirve como referencia para metrics.map_occupancy_accuracy."""
+        """celdas realmente ocupadas, referencia pa las metricas."""
         cells = set()
         for (ax, ay, bx, by) in self.walls:
             n = max(2, int(math.hypot(bx - ax, by - ay) * samples_per_m))
@@ -110,9 +88,7 @@ class SimulatedWorld:
 
 
 class SimulatedUltrasonicArray:
-    """Arreglo de sensores fijos (frente, izquierda, derecha) que miden por
-    ray casting contra el cuarto simulado.
-    TODO: sustituir por lectura real de hardware (HC-SR04 vía GPIO)."""
+    """sensores fijos (frente, izq, der) que miden por ray casting."""
 
     def __init__(self, world: SimulatedWorld,
                  bearings=(0.0, math.radians(40), math.radians(-40)),
@@ -128,8 +104,7 @@ class SimulatedUltrasonicArray:
         for b in self.bearings:
             d = self.world.ray_distance(x, y, theta + b, self.max_range)
             if math.isinf(d):
-                # Sin eco dentro del alcance: la lectura no sirve para el
-                # EKF, pero sí informa "espacio libre" al mapa.
+                # sin eco: no sirve pal ekf pero marca espacio libre
                 readings.append(UltrasonicReading(
                     range_m=self.max_range, sensor_bearing=b,
                     max_range=self.max_range, valid=False))
@@ -144,10 +119,8 @@ def simulated_vision(world: SimulatedWorld, true_pose,
                      fov=math.radians(70), max_range=4.5,
                      sigma_bearing=math.radians(2), sigma_range_pct=0.25,
                      drop_prob=0.0):
-    """Detecciones tipo cámara de los obstáculos del cuarto: bearing con
-    ruido pequeño (la cámara es buena midiendo dirección) y distancia
-    monocular con ruido grande (la cámara es mala midiendo distancia),
-    imitando el comportamiento del módulo real paquete vision/."""
+    """detecciones tipo camara: bearing con poco ruido, distancia con
+    mucho (como el modulo real)."""
     x, y, theta = true_pose
     detections = []
     for (cx, cy, r, label) in world.obstacles:
@@ -158,16 +131,14 @@ def simulated_vision(world: SimulatedWorld, true_pose,
         bearing = wrap_angle(math.atan2(dy, dx) - theta)
         if abs(bearing) > fov / 2.0:
             continue
-        # Oclusión: si una pared u otro objeto tapa el centro del obstáculo
+        # oclusion: algo tapa el centro del obstaculo
         hit = world.ray_distance(x, y, theta + bearing, max_range=dist + r)
         if hit < dist - r - 1e-6:
             continue
         if random.random() < drop_prob:
             continue
-        # Distancia a la SUPERFICIE visible (dist - r), no al centro: es lo
-        # que mide también el ultrasonido, y así ambas fuentes describen el
-        # mismo punto físico (si no, el landmark oscila hasta 2r entre
-        # fuentes y sesga la corrección).
+        # distancia a la superficie (dist - r), no al centro: es lo mismo
+        # que mide el us; si no, el landmark oscila hasta 2r entre fuentes
         surf = max(0.1, dist - r)
         detections.append(VisionDetection(
             bearing=bearing + random.gauss(0.0, sigma_bearing),
@@ -179,11 +150,9 @@ def simulated_vision(world: SimulatedWorld, true_pose,
 
 
 class KeyboardUser:
-    """El usuario controlado por comandos discretos dentro del cuarto
-    simulado (lo usan los mains en modo --sim, con teclado o con el
-    navegador DRL dictando los pasos). Aplica el comando a la pose real
-    (con chequeo de colisión) y reporta el MotionEstimate ruidoso que en
-    el sistema final dará la odometría."""
+    """usuario con comandos discretos (modo --sim). aplica el comando a
+    la pose real con chequeo de colision y regresa el MotionEstimate
+    ruidoso."""
 
     ODOM_SIGMA_TRANS = 0.006
     ODOM_SIGMA_ROT = math.radians(0.5)
@@ -195,7 +164,7 @@ class KeyboardUser:
     def command(self, forward=0.0, rot=0.0, dt=1 / 20.0):
         x, y, theta = self.true_pose
 
-        # Colisión: no atravesar paredes/obstáculos (margen de 15 cm)
+        # no atravesar paredes (margen de 15 cm)
         if forward > 0:
             free = self.world.ray_distance(x, y, theta, max_range=2.0)
             if free < forward + 0.15:
@@ -219,11 +188,8 @@ class KeyboardUser:
 
 
 class SimulatedMotion:
-    """El usuario camina siguiendo waypoints dentro del cuarto: primero
-    gira hacia el objetivo (giro limitado por ciclo) y luego avanza. Expone
-    la pose real y entrega el MotionEstimate ruidoso que en el sistema real
-    producirá el módulo de odometría/IMU.
-    TODO: sustituir por el módulo real de estimación de movimiento."""
+    """usuario que recorre waypoints: gira hacia el objetivo y avanza.
+    expone la pose real y regresa el MotionEstimate ruidoso."""
 
     def __init__(self, start=(0.7, 0.7, 0.0), waypoints=None,
                  step_dist=0.06, max_rot=math.radians(9),
@@ -244,8 +210,7 @@ class SimulatedMotion:
         self.finished = False
 
     def get(self):
-        """Avanza un ciclo: actualiza la pose real y devuelve el
-        MotionEstimate ruidoso correspondiente."""
+        """avanza un ciclo y devuelve el MotionEstimate ruidoso."""
         x, y, theta = self.true_pose
 
         if self.finished:
@@ -267,7 +232,7 @@ class SimulatedMotion:
         drot = max(-self.max_rot, min(self.max_rot, err))
         d = self.step_dist if abs(err) < math.radians(25) else 0.0
 
-        # Pose real (ground truth), con el mismo modelo de arco del EKF
+        # ground truth con el mismo modelo de arco del ekf
         mid = theta + drot / 2.0
         self.true_pose[0] = x + d * math.cos(mid)
         self.true_pose[1] = y + d * math.sin(mid)

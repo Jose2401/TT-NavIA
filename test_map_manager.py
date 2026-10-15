@@ -20,7 +20,8 @@ from interfaces import Observation, VisionDetection
 from map_manager import ChunkedMapManager, MapChunk
 from occupancy_grid import OccupancyGrid, HAZARD_MIN_HITS
 from navigation_feed import (build_navigation_frame, direction_distances,
-                             sector_risks, safety_alerts)
+                             sector_risks, safety_alerts, needs_replan,
+                             effective_front_distance)
 from vision_bridge import (fuse_observations, detection_risk,
                            ground_distance_from_row)
 
@@ -317,6 +318,64 @@ class TestNavigationFeed(unittest.TestCase):
         slam = EKFSlam(0.5, 0.5, 0.0)
         frame = build_navigation_frame(slam, mgr, [])
         self.assertEqual(safety_alerts(frame), [])
+
+    def test_lateral_wall_is_caution_not_critical(self):
+        """Pared a 60 cm del hombro = pasillo normal: precaución, no
+        'Deténgase'. La misma distancia AL FRENTE sí es crítica."""
+        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
+        # pared a la izquierda (bearing +90) a 0.6 m
+        paint_wall(mgr, (2.0, 2.0, 0.0), 0.6,
+                   [math.radians(90) + b * 0.1 for b in range(-5, 6)])
+        slam = EKFSlam(2.0, 2.0, 0.0)
+        frame = build_navigation_frame(slam, mgr, [])
+        self.assertLess(frame.d_left, 0.8)
+        alerts = safety_alerts(frame)
+        self.assertTrue(alerts)
+        self.assertTrue(all(p == 1 for p, _ in alerts))
+        self.assertFalse(needs_replan(alerts))
+        # mirando hacia la pared: crítico
+        slam_front = EKFSlam(2.0, 2.0, math.radians(90))
+        frame_f = build_navigation_frame(slam_front, mgr, [])
+        alerts_f = safety_alerts(frame_f)
+        self.assertTrue(any(p == 0 and "al frente" in m for p, m in alerts_f))
+        self.assertTrue(needs_replan(alerts_f))
+
+    def test_lateral_high_risk_detection_is_critical(self):
+        """Una persona en movimiento a 70 cm a un lado sí es crítica."""
+        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
+        slam = EKFSlam(0.5, 0.5, 0.0)
+        dets = [VisionDetection(bearing=math.radians(60), label="person",
+                                range_est=0.7, moving=True)]
+        alerts = safety_alerts(build_navigation_frame(slam, mgr, dets))
+        self.assertTrue(any(p == 0 and "person" in m and "izquierda" in m
+                            for p, m in alerts))
+
+    def test_alert_label_only_when_detection_is_nearest(self):
+        """Si lo más cercano lo aporta el mapa (pared), la alerta no debe
+        colgarle la etiqueta de un objeto lejano del mismo sector."""
+        mgr = self._mgr_with_wall()              # pared al frente a 1.2 m
+        slam = EKFSlam(0.5, 0.5, 0.0)
+        dets = [VisionDetection(bearing=0.0, label="potted plant",
+                                range_est=3.5)]
+        alerts = safety_alerts(build_navigation_frame(slam, mgr, dets))
+        self.assertTrue(alerts)
+        self.assertTrue(all("obstaculo" in m for _, m in alerts))
+        # y la distancia frontal efectiva es la del mapa (lo más cercano)
+        frame = build_navigation_frame(slam, mgr, dets)
+        self.assertAlmostEqual(effective_front_distance(frame),
+                               frame.d_front)
+
+    def test_alert_text_is_stable_to_range_noise(self):
+        """Distancias que difieren en pocos cm producen el MISMO texto
+        (redondeo a 10 cm), para que la voz pueda deduplicarlo."""
+        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
+        slam = EKFSlam(0.5, 0.5, 0.0)
+        a = safety_alerts(build_navigation_frame(
+            slam, mgr, [VisionDetection(0.0, "chair", range_est=0.57)]))
+        b = safety_alerts(build_navigation_frame(
+            slam, mgr, [VisionDetection(0.0, "chair", range_est=0.63)]))
+        self.assertEqual(a, b)
+        self.assertIn("60 centimetros", a[0][1])
 
 
 class TestGroundGeometryAndHazardFusion(unittest.TestCase):

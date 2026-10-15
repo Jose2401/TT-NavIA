@@ -1,32 +1,14 @@
 """
-main_pi.py
-MAIN PRINCIPAL — Raspberry Pi (sin interfaz gráfica).
+main_pi.py — main principal en la raspberry (sin pantalla, todo es audio).
 
-En el dispositivo final NO hay pantalla: toda la salida al usuario es
-auditiva. Este main corre el mismo pipeline que main_lap.py (validado
-antes en la laptop con GUI) y deja los puntos de conexión del hardware
-que aún no existe claramente marcados:
+mismo pipeline que main_lap.py pero headless. ojo: el hardware que falta
+queda marcado con TODO aquí mismo (ultrasonido MB1232 en Mb1232Array,
+voz real en VoiceOutput.say); la imu bno055 ya está en odometry.py con
+fallback a flujo óptico.
 
-    - Ultrasonido: 2x MB1232 I2CXL-MaxSonar por I2C (0x70 re-direccionados
-      a 0x20/0x21 según el diseño), montados a IZQUIERDA y DERECHA.
-      TODO en Mb1232Array.read().
-    - Odometría: IMU BNO055 por I2C (odometry.py): giro fusionado +
-      avance por conteo de pasos; además entrega el PITCH real de la
-      cámara para la distancia por plano de piso. Si la IMU no está
-      conectada (o --no-imu), cae automáticamente al giro por flujo
-      óptico con avance 0 (el comportamiento previo). Al estrenar el
-      hardware: verificar signos y longitud de paso (ver TODO en
-      odometry.py).
-    - Voz (TTS): las alertas y eventos se imprimen; conectar aquí el
-      módulo de voz del equipo (pyttsx3, cola priorizada). TODO en say().
-
-Salida por ciclo: un NavigationFrame (navigation_feed.py) — exactamente
-lo que consumirá el módulo de navegación DRL.
-
-Uso:
     python main_pi.py --map-dir maps/casa
-    python main_pi.py --hazards --hazard-every 10   # peligros de piso
-    Ctrl+C -> guarda mapa + landmarks y termina.
+    python main_pi.py --hazards --hazard-every 10
+    ctrl+c guarda mapa + landmarks y sale.
 """
 import argparse
 import math
@@ -39,17 +21,10 @@ from vision_bridge import fuse_observations
 from navigation_feed import build_navigation_frame, safety_alerts
 
 
-# ----------------------------------------------------------------------
-# Ganchos de hardware pendiente
-# ----------------------------------------------------------------------
 class Mb1232Array:
-    """Par de sensores MB1232 I2CXL-MaxSonar (izquierda / derecha).
-    TODO: implementar con smbus2 cuando el hardware exista:
-        - write 0x51 al registro de comando -> inicia medición
-        - esperar ~100 ms -> leer 2 bytes = rango en cm
-    Las direcciones y el montaje lateral vienen del diseño electrónico
-    (TT_2026_B045 §7.6). Mientras no exista, read() devuelve [] y el
-    sistema opera igual que en la laptop (solo cámara)."""
+    """par de MB1232 (izq/der). TODO hardware: smbus2, write 0x51 ->
+    esperar ~100ms -> leer 2 bytes (cm); direcciones y montaje según
+    TT_2026_B045 §7.6. mientras, read() da [] y jala solo con cámara."""
 
     LEFT_BEARING = math.radians(90)
     RIGHT_BEARING = math.radians(-90)
@@ -58,7 +33,7 @@ class Mb1232Array:
     def __init__(self, addr_left=0x20, addr_right=0x21, bus=1):
         self.addr_left = addr_left
         self.addr_right = addr_right
-        self.available = False   # TODO: detectar el bus I2C real
+        self.available = False   # TODO: detectar el bus i2c real
 
     def read(self):
         """-> list[UltrasonicReading]. TODO hardware."""
@@ -66,16 +41,14 @@ class Mb1232Array:
 
 
 class VoiceOutput:
-    """Salida auditiva. TODO: conectar el módulo de voz real del equipo
-    (pyttsx3 con cola priorizada: 0 = alerta interrumpe, 1 = navegación,
-    2 = confirmación). Mientras tanto imprime con prefijo [VOZ]."""
+    """TODO: conectar el tts real del equipo (pyttsx3 con cola
+    priorizada 0/1/2). por ahora imprime con prefijo [VOZ]."""
 
     def __init__(self):
         self._last = {}
 
     def say(self, msg, priority=2, repeat_after_s=4.0):
-        # No repetir la misma frase en ráfaga (el TTS real hará esto
-        # con su cola; aquí evita inundar la consola).
+        # no repetir la misma frase en ráfaga (el tts real lo hará solo)
         now = time.time()
         if now - self._last.get(msg, 0.0) < repeat_after_s:
             return
@@ -83,7 +56,6 @@ class VoiceOutput:
         print(f"[VOZ p{priority}] {msg}", flush=True)
 
 
-# ----------------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser(description="Main Raspberry Pi (headless)")
     p.add_argument("--camera", type=int, default=0)
@@ -124,7 +96,6 @@ def main():
     hazard_det = GroundHazardDetector(
         camera_profile="picam3wide", cam_height_m=args.cam_height,
         cam_pitch_deg=args.cam_pitch) if args.hazards else None
-    # Odometría: IMU BNO055 con fallback automático a flujo óptico
     motion_est = make_motion_estimator(
         use_imu=not args.no_imu, imu_bus=args.imu_bus,
         imu_addr=args.imu_addr, step_length_m=args.step_length,
@@ -162,24 +133,24 @@ def main():
             last_t = now
 
             motion, odo = motion_est.update(frame, dt)
-            # La IMU reporta el PITCH real de la cámara: la geometría de
-            # plano de piso (hoyos/coladeras y rangos monoculares) usa
-            # el ángulo verdadero en vez del fijo de calibración.
+            # pitch real de la imu -> bridge: la geometría de plano de piso
+            # usa el ángulo verdadero, no el fijo de calibración
             if odo["pitch_deg"] is not None:
                 bridge.cam_pitch_deg = odo["pitch_deg"]
                 if hazard_det is not None:
                     hazard_det.cam_pitch_deg = odo["pitch_deg"]
-            detections = bridge.process(frame)
+            detections = bridge.process(frame, ego_yaw=motion.delta_rot)
             if hazard_det is not None and frames % args.hazard_every == 0:
                 last_hazards = hazard_det.process(frame, detections)
             detections = detections + last_hazards
 
-            us_readings = ultrasonic.read()          # [] hasta tener HW
+            us_readings = ultrasonic.read()          # [] hasta tener hw
             observations = fuse_observations(detections, us_readings)
             output = slam.step(motion, observations)
             pose = (output.x, output.y, output.theta)
             mgr.update_from_scan(pose, slam.observations_for_map(),
                                  max_range=args.max_range)
+            mgr.clear_footprint(output.x, output.y)
             events = mgr.update_position(pose, slam.get_landmarks())
 
             for ev in events:
@@ -190,8 +161,7 @@ def main():
                 elif ev["type"] == "door_crossed":
                     voice.say("Cruzaste una puerta", priority=1)
 
-            # Este NavigationFrame es la entrada del módulo de navegación
-            # (DRL); cuando exista, se le entrega aquí.
+            # este NavigationFrame es la entrada del módulo drl
             nav = build_navigation_frame(
                 slam, mgr, detections, max_range=args.max_range,
                 chunk=mgr.current_chunk, room=mgr.current_room,

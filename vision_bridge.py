@@ -1,26 +1,8 @@
 """
-vision_bridge.py
-Puente entre el módulo de visión REAL del proyecto (paquete vision/,
-basado en YOLOv8-seg + SegFormer) y el SLAM.
-
-Responsabilidades:
-1. Ejecutar el detector real (ObjectDetector) y el rastreo de movimiento
-   por objeto (ObjectMotionTracker) sobre cada frame de cámara.
-2. Convertir cada detección (bbox + clase) en una VisionDetection para el
-   SLAM: bearing a partir de la columna central del bbox y el FOV de la
-   cámara, y una distancia monocular gruesa a partir de la altura del bbox
-   (modelo pinhole con alturas típicas por clase).
-3. Marcar/filtrar objetos dinámicos (personas, mascotas, vehículos, o
-   cualquier objeto que el tracker vea moviéndose): un objeto que se mueve
-   NO puede ser landmark, corrompería la localización.
-4. Fusionar las detecciones con las lecturas ultrasónicas
-   (fuse_observations): el ultrasonido aporta el rango preciso cuando
-   apunta hacia la detección; si no hay ultrasonido en esa dirección se
-   usa la distancia monocular con una incertidumbre mucho mayor
-   (sigma_r proporcional), y el EKF pondera cada fuente correctamente.
-
-La fusión (fuse_observations / free_space_rays) es puro cálculo y no
-depende de la cámara: sim_world.py la reutiliza con datos simulados.
+vision_bridge.py — puente entre el modulo de vision (yolo + segformer)
+y el slam. convierte cada bbox en (bearing, distancia monocular),
+marca lo que se mueve pa que no se vuelva landmark, y fusiona con el
+ultrasonido. la fusion es puro calculo, sim_world la reusa sin camara.
 """
 import math
 import os
@@ -29,21 +11,16 @@ import numpy as np
 
 from interfaces import VisionDetection, Observation
 
-# El paquete de visión (vision/): detector YOLOv8-seg, clasificador,
-# tracker de movimiento y segmentación de escena. Los pesos viven ahí.
 VISION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "vision")
 
-# Clases inherentemente dinámicas: aunque en un frame estén quietas, no son
-# parte estable del cuarto y no deben volverse landmarks.
+# cosas que se mueven solas: nunca landmarks, corromperian la pose
 DYNAMIC_LABELS = {
     "person", "dog", "cat", "bird", "horse", "sheep", "cow",
     "bicycle", "motorcycle", "car", "truck", "bus",
 }
 
-# Altura real típica (m) por clase, para la distancia monocular pinhole:
-# distancia = f_px * altura_real / altura_bbox_px. Para clases fuera de la
-# tabla se usa la heurística original del módulo de visión (2.5 * H / h).
+# alturas tipicas (m) para el pinhole: dist = f_px * H_real / h_bbox
 TYPICAL_HEIGHTS_M = {
     "person": 1.65, "chair": 0.90, "table": 0.75, "sofa": 0.85,
     "bed": 0.60, "monitor": 0.45, "potted plant": 0.60, "fridge": 1.70,
@@ -52,55 +29,41 @@ TYPICAL_HEIGHTS_M = {
     "dog": 0.50, "cat": 0.30, "door": 2.00,
 }
 
-# Incertidumbre por fuente de rango (desv. estándar):
-SIGMA_R_ULTRASONIC = 0.05          # m — el ultrasonido es preciso
-SIGMA_R_MONOCULAR_PCT = 0.30       # fracción del rango — monocular es grueso
-SIGMA_R_GROUND_PLANE_PCT = 0.20    # proyección al plano del piso (mejor que
-                                   # el pinhole por altura, peor que el US)
-SIGMA_PHI_VISION = math.radians(3)     # la cámara es buena en dirección
-SIGMA_PHI_ULTRASONIC = math.radians(10)  # cono ancho del sensor ultrasónico
+# sigmas por fuente: el ultrasonido mide rango bien chido (5 cm), el
+# monocular es grueso (~30%), el plano de piso queda en medio
+SIGMA_R_ULTRASONIC = 0.05
+SIGMA_R_MONOCULAR_PCT = 0.30
+SIGMA_R_GROUND_PLANE_PCT = 0.20
+SIGMA_PHI_VISION = math.radians(3)       # la camara apunta bien
+SIGMA_PHI_ULTRASONIC = math.radians(10)  # cono ancho del sensor
 
-# Perfiles de cámara (hfov, vfov en grados). El hardware final es la
-# Raspberry Pi Camera Module 3 Wide (IMX708, FOV diagonal 120°,
-# ~102° H x 67° V según la documentación del proyecto); en la laptop se
-# prueba con la webcam (~70° H típico).
+# hardware final: picam 3 wide (~102x67 grados); en la laptop, webcam
 CAMERA_PROFILES = {
     "laptop": {"hfov_deg": 70.0, "vfov_deg": 55.0},
     "picam3wide": {"hfov_deg": 102.0, "vfov_deg": 67.0},
 }
 
-# Geometría del montaje: la cámara va en los lentes del usuario.
-DEFAULT_CAM_HEIGHT_M = 1.55    # altura de los ojos de un adulto promedio
-DEFAULT_CAM_PITCH_DEG = 10.0   # inclinación hacia abajo al caminar mirando
-                               # al frente (ajustable por calibración)
+# la camara va montada en los lentes del usuario
+DEFAULT_CAM_HEIGHT_M = 1.55
+DEFAULT_CAM_PITCH_DEG = 10.0
 
 
 def ground_distance_from_row(row, img_h, vfov_rad,
                              cam_height_m=DEFAULT_CAM_HEIGHT_M,
                              cam_pitch_deg=DEFAULT_CAM_PITCH_DEG):
-    """Distancia horizontal (m) al punto del PISO que se proyecta en la
-    fila `row` de la imagen, asumiendo piso plano y cámara a
-    `cam_height_m` con inclinación `cam_pitch_deg` hacia abajo.
-
-    Es la única forma monocular de medir distancia a cosas PLANAS en el
-    suelo (hoyos, coladeras, charcos): el modelo pinhole por altura de
-    bbox no aplica porque su "altura" aparente no corresponde a una
-    altura física. También sirve como segunda estimación para objetos
-    apoyados en el piso (la base del bbox toca el suelo).
-
-    Devuelve None si la fila queda en o sobre el horizonte (no es piso).
-    """
+    """distancia al punto del piso que cae en la fila `row` (piso plano).
+    es la unica forma monocular de medir cosas PLANAS (hoyos, charcos):
+    el pinhole por altura de bbox no sirve pq no tienen altura real.
+    None si la fila queda en o sobre el horizonte."""
     f_px = 0.5 * img_h / math.tan(vfov_rad / 2.0)
-    # Ángulo bajo la horizontal del rayo que pasa por esa fila
     phi = math.radians(cam_pitch_deg) + math.atan((row - img_h / 2.0) / f_px)
-    if phi < math.radians(2.0):        # horizonte o por encima: sin piso
+    if phi < math.radians(2.0):
         return None
     return cam_height_m / math.tan(phi)
 
 
 class VisionBridge:
-    """Envuelve el detector real de paquete vision/ y produce
-    VisionDetection listas para el SLAM."""
+    """envuelve el detector real y saca VisionDetection para el slam."""
 
     def __init__(self, model_path=None, confidence=0.45,
                  hfov_deg=None, vfov_deg=None, infer_size=(640, 480),
@@ -108,24 +71,12 @@ class VisionBridge:
                  cam_height_m=DEFAULT_CAM_HEIGHT_M,
                  cam_pitch_deg=DEFAULT_CAM_PITCH_DEG,
                  use_ground_plane=True):
-        """
-        camera_profile: 'laptop' (webcam ~70°) o 'picam3wide' (Raspberry
-            Pi Camera Module 3 Wide, el hardware final). hfov_deg /
-            vfov_deg explícitos tienen prioridad sobre el perfil.
-        cam_height_m / cam_pitch_deg: montaje de la cámara (lentes del
-            usuario), para la distancia por proyección al plano del piso.
-        use_ground_plane: si True, la distancia monocular de los objetos
-            apoyados en el piso se refina con la fila donde su bbox toca
-            el suelo (suele ser más estable que el pinhole por altura,
-            cuya altura "típica" por clase es solo un promedio).
-        """
         profile = CAMERA_PROFILES.get(camera_profile,
                                       CAMERA_PROFILES["laptop"])
         hfov_deg = hfov_deg if hfov_deg is not None else profile["hfov_deg"]
         vfov_deg = vfov_deg if vfov_deg is not None else profile["vfov_deg"]
 
-        # Imports diferidos: ultralytics/torch tardan en cargar y solo se
-        # necesitan si realmente se usa la cámara.
+        # imports diferidos, torch tarda un buen en cargar
         from vision.detector import ObjectDetector
         from vision.obstacle_logic import ObstacleClassifier, LABEL_ALIASES
         from vision.motion import ObjectMotionTracker
@@ -145,17 +96,16 @@ class VisionBridge:
         self.cam_pitch_deg = cam_pitch_deg
         self.use_ground_plane = use_ground_plane
 
-    def process(self, frame_bgr):
-        """Ejecuta el detector sobre un frame BGR (como lo entrega OpenCV)
-        y devuelve la lista de VisionDetection (incluye los objetos en
-        movimiento, ya marcados con moving=True para que la fusión los
-        excluya de los landmarks)."""
+    def process(self, frame_bgr, ego_yaw=0.0):
+        """detecta sobre un frame bgr. ego_yaw compensa el giro de
+        cabeza: si no se resta, al girar TODO sale como 'movil'."""
         import cv2
         frame = cv2.resize(frame_bgr, self.infer_size, interpolation=cv2.INTER_AREA)
         h, w = frame.shape[:2]
-        f_px = 0.5 * h / math.tan(self.vfov / 2.0)   # focal en píxeles
+        f_px = 0.5 * h / math.tan(self.vfov / 2.0)
 
         raw = self.detector.detect(frame)
+        self._compensate_ego_motion(ego_yaw, w)
         moving_flags = self.tracker.update(raw)
 
         detections = []
@@ -165,20 +115,17 @@ class VisionBridge:
             cx = (x1 + x2) / 2.0
             bbox_h = max(1, y2 - y1)
 
-            # Columna 0 = borde izquierdo de la imagen -> bearing positivo
+            # columna 0 = borde izquierdo -> bearing positivo
             bearing = ((w / 2.0 - cx) / w) * self.hfov
 
             if label in TYPICAL_HEIGHTS_M:
                 range_est = f_px * TYPICAL_HEIGHTS_M[label] / bbox_h
             else:
-                range_est = 2.5 * (h / bbox_h)   # heurística de obstacle_logic
+                range_est = 2.5 * (h / bbox_h)
 
-            # Refinamiento por plano de piso: si la base del bbox está
-            # dentro del frame (el objeto no está cortado por el borde),
-            # la fila donde toca el suelo da otra estimación de
-            # distancia, independiente de la altura "típica" de la
-            # clase. Se limita a ±60% de la estimación por altura para
-            # que un pitch mal calibrado no la arrastre.
+            # si la base del bbox toca piso dentro del frame, el plano de
+            # piso da otra estimacion; se acota pa que un pitch chueco
+            # no la arrastre
             if self.use_ground_plane and y2 < h * 0.97:
                 gd = ground_distance_from_row(
                     y2, h, self.vfov, self.cam_height_m,
@@ -199,27 +146,32 @@ class VisionBridge:
             ))
         return detections
 
+    def _compensate_ego_motion(self, ego_yaw, img_w):
+        shift_tracker_for_yaw(self.tracker, ego_yaw, self.hfov, img_w)
+
+
+def shift_tracker_for_yaw(tracker, ego_yaw, hfov, img_w):
+    """corre el historial del tracker los pixeles que la escena estatica
+    se movio por el giro (girar a la izq lleva cx a cx + yaw*w/hfov)."""
+    if not ego_yaw or hfov <= 0:
+        return 0.0
+    dx = ego_yaw * img_w / hfov
+    if abs(dx) < 0.5:
+        return 0.0
+    tracker.prev_bboxes = [(x1 + dx, y1, x2 + dx, y2)
+                           for (x1, y1, x2, y2) in tracker.prev_bboxes]
+    for dq in tracker.history.values():
+        shifted = [(cx + dx, cy) for (cx, cy) in dq]
+        dq.clear()
+        dq.extend(shifted)
+    return dx
+
 
 class VisualYawEstimator:
-    """Estima el GIRO (delta de yaw/theta) entre frames consecutivos por
-    flujo óptico, para que el SLAM sepa "hacia dónde voltea" el usuario
-    usando SOLO la cámara (sin IMU ni odometría).
-
-    Método: rastrear esquinas (Shi-Tomasi + Lucas-Kanade piramidal) entre
-    el frame anterior y el actual; la MEDIANA del desplazamiento
-    horizontal de los puntos rastreados se convierte a ángulo con la
-    focal en píxeles: delta_yaw = atan(dx_mediana / f). La mediana lo hace
-    robusto a objetos en movimiento (una persona cruzando arrastra solo a
-    una minoría de los puntos).
-
-    Convención de signos: girar a la IZQUIERDA (+theta) hace que la escena
-    se desplace a la DERECHA en la imagen (+dx) -> delta positivo,
-    consistente con el bearing (+ = izquierda) del resto del sistema.
-
-    Limitación (deliberada): NO estima traslación — la escala monocular es
-    ambigua sin más sensores. La posición (x, y) la corrige el EKF con las
-    distancias monoculares a los objetos detectados, y mejorará cuando
-    exista el módulo real de odometría/IMU."""
+    """delta de yaw entre frames por flujo optico (shi-tomasi + LK,
+    mediana del dx pa aguantar gente cruzando). girar a la IZQ (+theta)
+    mueve la escena a la DERECHA (+dx). no estima traslacion: la escala
+    monocular es ambigua, de eso se encarga el ekf."""
 
     def __init__(self, hfov_deg=70.0, work_width=640,
                  max_features=200, min_features=12):
@@ -230,9 +182,7 @@ class VisualYawEstimator:
         self.prev_gray = None
 
     def update(self, frame_bgr):
-        """Devuelve (delta_rot_rad, tracking_ok). Si no hay suficiente
-        textura para rastrear, devuelve (0.0, False): el SLAM continúa en
-        dead-reckoning y su confianza lo reflejará."""
+        """-> (delta_rot_rad, tracking_ok). sin textura da (0.0, False)."""
         import cv2
         h, w = frame_bgr.shape[:2]
         scale = self.work_width / float(w)
@@ -260,35 +210,17 @@ class VisualYawEstimator:
 
 
 class GroundHazardDetector:
-    """Detecta peligros A NIVEL DE PISO que YOLO no puede ver porque no
-    son "objetos" COCO: hoyos, coladeras/alcantarillas, charcos/agua y
-    escaleras/escalones. Es la respuesta a la limitación declarada en la
-    documentación del proyecto ("no detecta obstáculos a nivel de suelo").
+    """peligros a nivel de piso que yolo no ve (hoyos, coladeras, agua,
+    escaleras). agua/escaleras son clases directas de ade20k; un hoyo es
+    un parche NO transitable rodeado de piso transitable. la distancia
+    sale por plano de piso pq el pinhole no aplica a cosas planas.
+    segformer es caro: en la pi correrlo cada N frames esta bien, el ekf
+    pide varios avistamientos antes de confirmar."""
 
-    Método: la segmentación de escena ADE20K (SegFormer, ya presente en
-    paquete vision/) clasifica cada pixel. Sobre ella:
-      1. AGUA y ESCALERAS son clases directas de ADE20K -> peligro.
-      2. HOYOS/COLADERAS: una región que NO es superficie transitable
-         pero está RODEADA de superficie transitable en la mitad baja de
-         la imagen es un agujero/anomalía del piso. (Una coladera abierta
-         es exactamente eso: un parche no-piso dentro del piso.)
-    La distancia se mide por proyección al plano del piso
-    (ground_distance_from_row): el pinhole por altura de bbox no aplica a
-    cosas planas.
-
-    Coste: SegFormer-B0 es el paso más caro después de YOLO; en la
-    Raspberry conviene ejecutarlo cada N frames (parámetro del main).
-    Los peligros van al mapa con is_hazard=True y el EKF les exige
-    varios avistamientos (min_confirm_hits) antes de confirmar, así que
-    la baja frecuencia no inventa peligros falsos.
-    """
-
-    # Área mínima/máxima del componente como fracción del frame (filtra
-    # ruido de segmentación y evita marcar media imagen como "hoyo").
+    # area min/max del componente (filtra ruido y media-imagen-hoyo xd)
     MIN_AREA_FRAC = 0.0015
     MAX_AREA_FRAC = 0.20
-    # Fracción mínima del borde del componente que debe ser piso
-    # transitable para considerarlo "agujero EN el piso".
+    # fraccion del anillo que debe ser piso pa contar como hoyo
     MIN_SURROUND = 0.55
 
     def __init__(self, hfov_deg=None, vfov_deg=None,
@@ -314,10 +246,8 @@ class GroundHazardDetector:
             self._segmenter = SceneSegmenter()
 
     def process(self, frame_bgr, yolo_detections=None):
-        """Devuelve una lista de VisionDetection con hazard=True.
-        yolo_detections (opcional): detecciones del mismo frame; un
-        "agujero" que se solapa con un objeto YOLO no es un hoyo, es la
-        base del objeto, y se descarta."""
+        """lista de VisionDetection con hazard=True. un 'hoyo' que se
+        solapa con un objeto yolo es la base del objeto, se tira."""
         import cv2
         self._ensure_model()
 
@@ -339,11 +269,8 @@ class GroundHazardDetector:
 
     # ----------------- internos -----------------
     def _component_detection(self, comp_mask, label, w, h):
-        """Convierte un componente conexo de la máscara en una
-        VisionDetection hazard, con bearing por centroide y distancia por
-        plano de piso en la fila MÁS CERCANA al usuario (la fila inferior
-        del componente: el borde del hoyo más próximo es el que importa
-        para alertar)."""
+        """componente conexo -> VisionDetection; la distancia se mide en
+        la fila de abajo del componente (el borde cercano del hoyo)."""
         ys, xs = np.nonzero(comp_mask)
         if len(xs) == 0:
             return None
@@ -361,11 +288,10 @@ class GroundHazardDetector:
             confidence=0.6, hazard=True)
 
     def _mask_hazards(self, mask, label, w, h):
-        """Componentes conexos de una máscara de clase directa (agua,
-        escalera) en la mitad baja de la imagen."""
+        """componentes de una clase directa (agua, escalera) abajo."""
         import cv2
         mask = mask.copy()
-        mask[: int(h * 0.45), :] = 0        # lejos del horizonte no es piso
+        mask[: int(h * 0.45), :] = 0        # cerca del horizonte no es piso
         n, labels_img = cv2.connectedComponents(mask.astype(np.uint8))
         out = []
         area = w * h
@@ -380,13 +306,10 @@ class GroundHazardDetector:
         return out
 
     def _hole_hazards(self, walkable, water, stairs, w, h):
-        """Agujeros: componentes NO transitables rodeados de piso
-        transitable en la zona baja de la imagen. El agua y las
-        escaleras ya se reportaron con su propia etiqueta y se excluyen
-        (si no, cada charco saldría duplicado como 'hoyo')."""
+        """hoyos: no-transitable rodeado de piso. agua/escaleras ya
+        salieron con su etiqueta, se excluyen pa no duplicar."""
         import cv2
         area = w * h
-        # Solo interesa la franja donde el piso es visible
         band = np.zeros_like(walkable)
         band[int(h * 0.45):, :] = 1
         not_walk = ((walkable == 0) & (water == 0) & (stairs == 0)
@@ -401,13 +324,10 @@ class GroundHazardDetector:
             if frac < self.MIN_AREA_FRAC or frac > self.MAX_AREA_FRAC:
                 continue
             ys, xs = np.nonzero(comp)
-            # Un componente pegado a los bordes laterales/inferior del
-            # RECORTE suele ser continuación de algo grande (mueble,
-            # pared, el propio cuerpo), no un agujero aislado.
+            # pegado al borde = continuacion de algo grande, no un hoyo
             if xs.min() == 0 or xs.max() == w - 1 or ys.max() == h - 1:
                 continue
-            # ¿Rodeado de piso? El anillo alrededor del componente debe
-            # ser mayoritariamente transitable.
+            # el anillo alrededor debe ser mayormente piso
             comp_u8 = comp.astype(np.uint8)
             ring = cv2.dilate(comp_u8, kernel) - comp_u8
             ring_px = ring.sum()
@@ -423,8 +343,7 @@ class GroundHazardDetector:
 
     def _overlaps_detection(self, hazard, detections,
                             tol=math.radians(6)):
-        """True si el peligro apunta en la misma dirección que un objeto
-        YOLO a distancia similar (entonces es la base del objeto)."""
+        """True si apunta igual que un objeto yolo a distancia similar."""
         for det in detections:
             if det.hazard:
                 continue
@@ -436,18 +355,12 @@ class GroundHazardDetector:
         return False
 
 
-# ----------------------------------------------------------------------
-# Nivel de riesgo por detección (tabla de riesgo del proyecto, §7.1):
-# 0 libre, 1 bajo, 2 medio, 3 alto. Es el r_* del vector de estado del
-# módulo de navegación (DRL).
-# ----------------------------------------------------------------------
+# riesgo 0-3 por deteccion (tabla del proyecto)
 HIGH_RISK_LABELS = {"escalera", "hoyo", "agua", "stairs"}
 
 
 def detection_risk(det: VisionDetection):
-    """Riesgo 0-3 de una detección según la tabla del proyecto:
-    persona/objeto EN MOVIMIENTO = alto; escalera/desnivel/hoyo = alto;
-    obstáculo estático = medio; pared/superficie = bajo."""
+    """riesgo 0-3: movil o peligro de piso = 3, estatico = 2, pared = 1."""
     if det.hazard or det.label in HIGH_RISK_LABELS:
         return 3
     if det.moving:
@@ -458,28 +371,19 @@ def detection_risk(det: VisionDetection):
 
 
 # ----------------------------------------------------------------------
-# Fusión visión + ultrasonido (independiente de la cámara)
+# fusion vision + ultrasonido (no depende de la camara)
 # ----------------------------------------------------------------------
 def fuse_observations(vision_dets, ultrasonic_readings,
                       bearing_tol=math.radians(20)):
-    """Construye las observaciones (rango, bearing) que entran al EKF:
-
-    - Detección visual + eco ultrasónico en la misma dirección Y con rango
-      compatible con la estimación monocular -> rango del ultrasonido
-      (preciso) con el bearing de visión (preciso). La mejor observación
-      posible. La verificación de compatibilidad evita fusionar el bearing
-      de un objeto con el eco de OTRO objeto/pared que casualmente cae en
-      el cono del sensor (eso crearía landmarks fantasma).
-    - Detección visual sin ultrasonido compatible -> rango monocular con
-      sigma_r grande (30% del rango): sigue corrigiendo, pero pesa menos.
-    - Eco ultrasónico sin detección visual asociada (pared lisa, objeto sin
-      clase YOLO) -> observación con el bearing del sensor y sigma_phi
-      ancho (cono del sensor). Puede corregir contra landmarks ya
-      conocidos, pero NO crea landmarks (can_init_landmark=False): el
-      punto de eco de una pared se desliza al caminar y no es un punto
-      fijo del mundo. Para el mapa de ocupación sí se usa siempre.
-    - Los objetos en movimiento se descartan: no son landmarks.
-    """
+    """arma las observaciones del ekf:
+    - vision + eco compatible: rango del us (preciso) + bearing de vision.
+      el check de compatibilidad evita casar el bearing de un objeto con
+      el eco de OTRA cosa (landmarks fantasma).
+    - vision sola: rango monocular con sigma gorda (30%), pesa menos.
+    - eco sin respaldo visual: solo mapa de ocupacion (can_correct=False),
+      el punto de eco se desliza por la pared al caminar y usarlo de
+      landmark corrompia la pose (ATE 0.53 -> 0.27 al quitarlo).
+    - lo que se mueve se tira."""
     observations = []
     valid_us = [u for u in ultrasonic_readings if u.valid]
     used_us = set()
@@ -488,12 +392,9 @@ def fuse_observations(vision_dets, ultrasonic_readings,
         if det.moving:
             continue
         if det.hazard:
-            # Peligro de piso: el ultrasonido NO lo ve (no sobresale),
-            # así que nunca se empareja con un eco. Va al EKF como
-            # observación normal (una coladera es un punto fijo útil
-            # para corregir) y al mapa con is_hazard=True para la capa
-            # de peligros. min_confirm_hits alto: un parpadeo de la
-            # segmentación no debe pintar un hoyo inexistente.
+            # el ultrasonido no ve hoyos, no lo emparejes con esto.
+            # min_confirm_hits alto: un parpadeo de la segmentacion no
+            # debe pintar un hoyo inexistente
             if det.range_est is not None:
                 observations.append(Observation(
                     range_m=det.range_est, bearing=det.bearing,
@@ -518,19 +419,13 @@ def fuse_observations(vision_dets, ultrasonic_readings,
                 range_m=det.range_est, bearing=det.bearing, label=det.label,
                 sigma_r=SIGMA_R_MONOCULAR_PCT * det.range_est,
                 sigma_phi=SIGMA_PHI_VISION,
-                # Sin respaldo ultrasónico se exige más evidencia antes de
-                # confirmar el landmark: a framerate de cámara un falso
-                # positivo de YOLO dura 1-2 frames y no debe aparecer en
-                # el mapa como obstáculo "inventado".
+                # sin us se pide mas evidencia: un falso positivo de yolo
+                # dura 1-2 frames y no debe entrar al mapa
                 min_confirm_hits=4))
 
     for i, u in enumerate(valid_us):
         if i not in used_us:
-            # Eco sin respaldo visual: SOLO alimenta al mapa de
-            # ocupación (can_correct=False). Su punto de reflexión se
-            # desliza por la pared al caminar; usarlo como landmark
-            # puntual corrompía la pose (ATE 0.53 -> 0.27 al excluirlo,
-            # 6 semillas, geometría del simulador ya corregida).
+            # eco solo: alimenta el mapa pero no corrige ni crea landmarks
             observations.append(Observation(
                 range_m=u.range_m, bearing=u.sensor_bearing, label="eco_us",
                 sigma_r=SIGMA_R_ULTRASONIC, sigma_phi=SIGMA_PHI_ULTRASONIC,
@@ -540,22 +435,16 @@ def fuse_observations(vision_dets, ultrasonic_readings,
 
 
 def _range_compatible(us_range, mono_range):
-    """True si el rango ultrasónico es plausible para una detección cuya
-    distancia monocular estimada es mono_range. La estimación monocular es
-    gruesa (~30%), así que la tolerancia es generosa; su función es solo
-    descartar emparejamientos absurdos (eco de la pared del fondo asignado
-    a una silla cercana, o viceversa)."""
+    """tolerancia generosa (el monocular es grueso); solo descarta
+    emparejamientos absurdos tipo eco del fondo con silla cercana."""
     if mono_range is None:
         return True
     return abs(us_range - mono_range) <= max(0.6, 0.5 * mono_range)
 
 
 def free_space_rays(ultrasonic_readings):
-    """Rayos "sin eco" (el sensor no midió nada dentro de su alcance): no
-    sirven para corregir la pose, pero sí informan al mapa de ocupación que
-    ese corredor está libre. Se entregan SOLO a OccupancyGrid, nunca al
-    EKF (range_m > max_range hace que el Ray Casting no marque celda
-    ocupada al final del rayo)."""
+    """rayos sin eco: no corrigen pose pero marcan corredor libre en el
+    mapa de ocupacion. van SOLO a OccupancyGrid, nunca al ekf."""
     return [
         Observation(range_m=u.max_range + 0.01, bearing=u.sensor_bearing,
                     label="libre")

@@ -1,26 +1,17 @@
 """
-main_nav_lap.py
-NAVEGACIÓN COMPLETA en LAPTOP (GUI) — el sistema entero trabajando junto:
-
-    SLAM + mapeo por chunks + visión  ->  NavigationFrame
-    NavigationFrame + comandos        ->  Navigator (modelo DRL)
-    Navigator                         ->  indicaciones una a una
-
-Como en la laptop no hay voz, los comandos se escriben en la TERMINAL
-(hilo aparte) y las indicaciones se muestran en pantalla y consola.
+main_nav_lap.py — navegación completa en laptop (gui): slam + chunks +
+visión -> Navigator (drl) -> indicaciones una a una. como no hay voz,
+los comandos se escriben en la terminal y enter.
 
     python main_nav_lap.py --sim                  # cuarto simulado
     python main_nav_lap.py                        # cámara real
     python main_nav_lap.py --model-nav models/nav_ppo
 
-Comandos de ejemplo (escribir en la terminal y Enter):
-    ve a la silla        |  llevame a la salida  |  punto 3.5 2.0
-    pausa  |  reanuda  |  detener  |  ruta alternativa  |  estado
+comandos: ve a la silla | punto 3.5 2.0 | pausa | reanuda | detener |
+ruta alternativa | estado
 
-En modo --sim el usuario se mueve SOLO siguiendo las indicaciones del
-navegador (autopiloto de obediencia): es la validación de que las
-indicaciones, una a una, llevan al usuario al destino esquivando
-obstáculos. Con 'o' se alterna a control manual (wasd).
+en --sim el usuario "obedece" las indicaciones (así validamos que, una
+a una, sí te llevan al destino sin chocar xd); 'o' cambia a wasd manual.
 """
 import argparse
 import math
@@ -54,7 +45,7 @@ def start_command_thread(q):
 
 
 def draw_nav_overlay(view, navigator, mgr):
-    """Marca el destino sobre el panel del mapa."""
+    """pinta el destino sobre el panel del mapa."""
     import cv2
     st = navigator.status
     if st.goal is None:
@@ -82,9 +73,6 @@ def print_msgs(msgs):
         print(f"[NAV p{m.priority}] {m.text}", flush=True)
 
 
-# ----------------------------------------------------------------------
-# Modo simulado: el usuario OBEDECE las indicaciones del navegador
-# ----------------------------------------------------------------------
 def run_sim(args):
     if not args.headless:
         import cv2
@@ -98,8 +86,8 @@ def run_sim(args):
     user = KeyboardUser(world, start=(0.7, 0.7, 0.0))
     us_array = SimulatedUltrasonicArray(world)
     slam, mgr = _setup_slam_and_map(args, x0=0.7, y0=0.7)
-    # La cadencia decisión/paso reproduce el entrenamiento: una decisión
-    # por ~2 frames de simulación, avanzando FORWARD_STEP/2 por frame.
+    # cadencia igualita al entrenamiento: 1 decisión ~cada 2 frames,
+    # avanzando FORWARD_STEP/2 por frame
     navigator = Navigator(args.model_nav, decide_every_s=0.0,
                           repeat_s=2.5)
 
@@ -109,7 +97,7 @@ def run_sim(args):
     print("[NAV p2] Sistema listo. Diga su destino. "
           "(ej: 've a la silla', 'punto 5 3')")
 
-    obey = True          # obedecer indicaciones del navegador
+    obey = True
     events_log = []
     trajectory = []
     output = slam.get_output()
@@ -119,7 +107,6 @@ def run_sim(args):
     while args.max_frames is None or step < args.max_frames:
         step += 1
 
-        # ---- comandos desde la terminal ----
         try:
             while True:
                 line = cmd_q.get_nowait()
@@ -127,11 +114,10 @@ def run_sim(args):
         except queue.Empty:
             pass
 
-        # ---- movimiento: obedecer la última acción del navegador ----
         forward = rot = 0.0
         if args.headless:
             key = 255
-            time.sleep(0.0)          # headless: sin cadencia de teclado
+            time.sleep(0.0)
         else:
             import cv2
             key = cv2.waitKey(40) & 0xFF
@@ -153,14 +139,13 @@ def run_sim(args):
                 and navigator.status.last_action is not None:
             act = navigator.status.last_action
             if act == 0:
-                forward = FORWARD_STEP / 2      # medio paso por frame
+                forward = FORWARD_STEP / 2
             elif act == 1:
                 rot = TURN_STEP / 2
             elif act == 2:
                 rot = -TURN_STEP / 2
         motion = user.command(forward, rot)
 
-        # ---- pipeline SLAM + mapa (idéntico a main_lap) ----
         true_pose = tuple(user.true_pose)
         us_readings = us_array.read(true_pose)
         detections = simulated_vision(world, true_pose)
@@ -179,13 +164,13 @@ def run_sim(args):
             chunk=mgr.current_chunk, room=mgr.current_room,
             ultrasonic=us_readings)
 
-        # ---- navegación: decisión + indicaciones + alertas ----
-        print_msgs(navigator.update(nav_frame, mgr))
-        for prio, msg in safety_alerts(nav_frame):
+        # seguridad primero (alg. 7), luego navegación (alg. 11)
+        alerts = safety_alerts(nav_frame)
+        for prio, msg in alerts:
             if prio == 0:
                 print(f"[ALERTA p0] {msg}")
+        print_msgs(navigator.update(nav_frame, mgr, alerts))
 
-        # ---- GUI ----
         if not args.headless:
             import cv2
             view = draw_chunk_map_panel(mgr, slam, output, events_log,
@@ -203,8 +188,7 @@ def run_sim(args):
             cv2.putText(view, _hud_line(output, mgr, slam),
                         (8, view.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
                         0.45, (255, 60, 60), 1, cv2.LINE_AA)
-            bar = draw_nav_bar(nav_frame, safety_alerts(nav_frame),
-                               view.shape[1])
+            bar = draw_nav_bar(nav_frame, alerts, view.shape[1])
             cv2.imshow("NavIA - navegacion DRL (sim)",
                        np.vstack([view, bar]))
 
@@ -216,9 +200,6 @@ def run_sim(args):
         mgr.save_landmarks(slam.export_landmarks())
 
 
-# ----------------------------------------------------------------------
-# Modo cámara (laptop real, sin ultrasonido/odometría)
-# ----------------------------------------------------------------------
 def run_camera(args):
     import cv2
     from vision_bridge import VisionBridge
@@ -270,19 +251,24 @@ def run_camera(args):
             yaw_ok = odo["source"] != "ninguno"
             if odo["pitch_deg"] is not None:
                 bridge.cam_pitch_deg = odo["pitch_deg"]
-            detections = bridge.process(frame)
+            detections = bridge.process(frame, ego_yaw=motion.delta_rot)
             observations = fuse_observations(detections, [])
             output = slam.step(motion, observations)
             pose = (output.x, output.y, output.theta)
             mgr.update_from_scan(pose, slam.observations_for_map(),
                                  max_range=args.max_range)
+            mgr.clear_footprint(output.x, output.y)
             describe_events(mgr.update_position(pose, slam.get_landmarks()),
                             events_log)
 
             nav_frame = build_navigation_frame(
                 slam, mgr, detections, max_range=args.max_range,
                 chunk=mgr.current_chunk, room=mgr.current_room)
-            print_msgs(navigator.update(nav_frame, mgr))
+            alerts = safety_alerts(nav_frame)
+            for prio, msg in alerts:
+                if prio == 0:
+                    print(f"[ALERTA p0] {msg}")
+            print_msgs(navigator.update(nav_frame, mgr, alerts))
 
             if not args.headless:
                 cam_v = annotate_camera(frame.copy(), detections,
@@ -291,8 +277,7 @@ def run_camera(args):
                                              size=cam_v.shape[0])
                 map_v = draw_nav_overlay(map_v, navigator, mgr)
                 top = _hstack_pad(cam_v, map_v)
-                bar = draw_nav_bar(nav_frame, safety_alerts(nav_frame),
-                                   top.shape[1])
+                bar = draw_nav_bar(nav_frame, alerts, top.shape[1])
                 cv2.imshow("NavIA - navegacion DRL (camara)",
                            np.vstack([top, bar]))
                 if (cv2.waitKey(1) & 0xFF) == ord('q'):

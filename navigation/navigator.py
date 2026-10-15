@@ -1,30 +1,12 @@
 """
-navigator.py — USA el modelo de navegación (runtime de inferencia).
+navigator.py — el runtime que USA el modelo entrenado.
 
-Implementa, siguiendo los pseudocódigos del TT_2026_B045:
-- Algoritmo 4 (inferencia): construye el vector de estado desde el
-  NavigationFrame + mapa, evalúa la política y devuelve la acción.
-- Algoritmo 5 (submódulo de dirección): traduce la acción a texto con
-  las frases y umbrales EXACTOS del documento ("Avance N metros",
-  "Gire ligeramente a la izquierda" si <=45°, "Deténgase", prefijo
-  "Está cerca de su destino. " si faltan <5 m).
-- Algoritmo 11 (estados de sesión): en_espera / activo / pausado, con
-  los mensajes literales ("Ruta calculada. Iniciando navegación.",
-  "Navegación pausada.", "Ha llegado a su destino.", etc.).
-- Intenciones del PLN (Alg. 9): destino, pausa, reanudar, detener,
-  ruta_alternativa, desconocido — aquí como FORMATO DE ENTRADA:
-  el módulo de voz/PLN futuro solo tiene que producir un NavCommand
-  (o pasar el texto a parse_command, que ya entiende español simple).
-
-FORMATO DE SALIDA: lista de NavMessage por ciclo, cada uno con
-prioridad según el diseño (0 = alerta, interrumpe el TTS; 1 =
-navegación; 2 = confirmación/estado). El módulo de salida (voz) los
-reproduce tal cual, uno a uno, en tiempo real.
-
-Backends del modelo:
-- SB3 (.zip) si stable_baselines3 está instalado (laptop), o
-- NumpyPolicy (_policy.npz): MLP con tanh en numpy puro — la Raspberry
-  no necesita SB3 ni torch para navegar.
+construye el estado desde el NavigationFrame + mapa, corre la política
+y suelta indicaciones una por una pa el módulo de voz. ojo: las frases
+de instrucciones y de sesión son las LITERALES del documento del TT
+(hay tests que las comparan tal cual), no moverles ni una letra.
+puede cargar el .zip de SB3 (laptop) o el _policy.npz con numpy puro
+(la raspberry no necesita SB3 ni torch).
 """
 import json
 import math
@@ -39,22 +21,23 @@ import numpy as np
 from navigation.nav_env import (MAX_RANGE, RISK_RANGE, EXT_RAY_ANGLES,
                                 DOC_RAY_ANGLES, FRONT_HALF, SIDE_MAX,
                                 FORWARD_STEP, TURN_STEP)
+from navigation_feed import (CRITICAL_DISTANCE_M, effective_front_distance,
+                             needs_replan)
 
-ARRIVAL_RADIUS = 0.6          # umbral_llegada (m)
-WAYPOINT_RADIUS = 1.0         # avanzar al siguiente waypoint de la ruta
+ARRIVAL_RADIUS = 0.6
+WAYPOINT_RADIUS = 1.0
 ACTION_NAMES = ("avanzar", "girar_izquierda", "girar_derecha", "detenerse")
+# con pose poco fiable el "Avance N metros" se acota a 1 m
+LOW_CONFIDENCE = 0.35
+# giros forzados seguidos en el mismo sentido (~160°) antes de re-evaluar
+MAX_FORCED_STREAK = 8
 
 
-# ----------------------------------------------------------------------
-# FORMATO DE ENTRADA: comandos hacia navegación
-# ----------------------------------------------------------------------
 @dataclass
 class NavCommand:
-    """Lo que el módulo de voz/PLN (futuro) entrega a navegación.
+    """lo que el módulo de voz/PLN (futuro) le entrega a navegación.
     tipo: navegar | pausar | reanudar | detener | ruta_alternativa |
-          estado | desconocido
-    destino: etiqueta ('salida', 'door', 'chair', ...) o None
-    punto: (x, y) explícito o None
+    estado | desconocido; destino es etiqueta o None, punto es (x, y).
     """
     tipo: str
     destino: Optional[str] = None
@@ -66,9 +49,8 @@ _DEST_WORDS = r"(?:ve|ir|vamos|llevame|llévame|navega|navegar|guiame|guíame) (
 
 
 def parse_command(text: str) -> NavCommand:
-    """Parser de español simple → NavCommand. Es un sustituto ligero
-    del clasificador de intenciones del módulo de PLN (Alg. 9); cuando
-    ese módulo exista, puede construir el NavCommand directamente."""
+    """español simple -> NavCommand. es el sustituto ligero del
+    clasificador de intenciones del PLN mientras ese módulo no existe."""
     t = text.strip().lower()
     if not t:
         return NavCommand("desconocido", texto_original=text)
@@ -95,7 +77,6 @@ def parse_command(text: str) -> NavCommand:
     if m:
         return NavCommand("navegar", destino=m.group(1).strip(),
                           texto_original=text)
-    # "destino cocina" / una sola palabra tras 'a'
     m = re.search(r"\bdestino\s+([a-záéíóúñ_ ]+)$", t)
     if m:
         return NavCommand("navegar", destino=m.group(1).strip(),
@@ -103,7 +84,7 @@ def parse_command(text: str) -> NavCommand:
     return NavCommand("desconocido", texto_original=text)
 
 
-# Sinónimos español -> etiquetas de landmarks del SLAM (COCO/las nuestras)
+# sinónimos español -> etiquetas de landmarks del SLAM
 DEST_ALIASES = {
     "salida": "door", "puerta": "door", "entrada": "door",
     "silla": "chair", "mesa": "table", "sofa": "sofa", "sillon": "sofa",
@@ -114,17 +95,10 @@ DEST_ALIASES = {
 }
 
 
-# ----------------------------------------------------------------------
-# FORMATO DE SALIDA: mensajes hacia el módulo de voz
-# ----------------------------------------------------------------------
 @dataclass
 class NavMessage:
-    """Un mensaje listo para el módulo de salida (TTS).
-    priority: 0 = alerta (interrumpe la reproducción en curso),
-              1 = instrucción de navegación, 2 = confirmación/estado.
-    kind: alerta | instruccion | evento | respuesta
-    action: índice 0-3 si el mensaje proviene de una decisión del modelo.
-    """
+    """mensaje listo pal TTS. priority: 0 alerta (interrumpe),
+    1 instrucción, 2 confirmación/estado."""
     text: str
     priority: int = 1
     kind: str = "instruccion"
@@ -133,7 +107,7 @@ class NavMessage:
 
 @dataclass
 class NavStatus:
-    """Estado consultable de la sesión (para GUI / depuración)."""
+    """estado consultable de la sesión (GUI / debug)."""
     session: str = "en_espera"     # en_espera | activo | pausado
     goal: Optional[tuple] = None
     goal_label: Optional[str] = None
@@ -143,12 +117,9 @@ class NavStatus:
     waypoints: List[tuple] = field(default_factory=list)
 
 
-# ----------------------------------------------------------------------
-# Backends de la política
-# ----------------------------------------------------------------------
 class NumpyPolicy:
-    """Inferencia del actor PPO con numpy puro (MLP + tanh + argmax).
-    Es el backend para la Raspberry: solo requiere el _policy.npz."""
+    """actor PPO con numpy puro (MLP + tanh + argmax): el backend de la
+    raspberry, solo necesita el _policy.npz."""
 
     def __init__(self, npz_path):
         data = np.load(npz_path)
@@ -177,9 +148,7 @@ class SB3Policy:
 
 
 def load_policy(model_base):
-    """model_base: prefijo (models/nav_ppo) o ruta a .zip/.npz.
-    Devuelve (política, obs_mode). Prefiere SB3 si está disponible y
-    existe el .zip; si no, cae al .npz con numpy (Raspberry)."""
+    """prefiere el .zip de SB3 si se puede; si no, cae al .npz."""
     base = re.sub(r"(\.zip|_policy\.npz)$", "", model_base)
     meta_path = base + "_meta.json"
     obs_mode = "extended"
@@ -200,13 +169,9 @@ def load_policy(model_base):
         "Créalo con: python -m navigation.train")
 
 
-# ----------------------------------------------------------------------
-# Construcción del vector de estado desde el sistema real
-# ----------------------------------------------------------------------
 def _hazard_sector_from_costmap(frame):
-    """Distancia al peligro de piso más cercano por sector, medida sobre
-    el canal 1 del costmap egocéntrico (los hoyos no aparecen en los
-    rayos: no bloquean nada, igual que en el entrenamiento)."""
+    """dist al peligro de piso por sector, leída del costmap: los hoyos
+    no aparecen en los rayos pq no bloquean nada, igual que en el sim."""
     cm = frame.costmap
     res = frame.costmap_resolution
     half = cm.shape[1] // 2
@@ -240,9 +205,8 @@ def _sector_index(bearing):
 
 
 def build_observation(frame, grid, goal, obs_mode, prev_action):
-    """El MISMO vector que vio el modelo en entrenamiento (nav_env),
-    construido desde el NavigationFrame real + el mapa (OccupancyGrid o
-    ChunkedMapManager: ambos exponen cast_distance)."""
+    """el MISMO vector que vio el modelo en el sim, pero armado desde
+    el NavigationFrame real + el mapa."""
     pose = (frame.slam.x, frame.slam.y, frame.slam.theta)
     phi = _wrap(math.atan2(goal[1] - pose[1], goal[0] - pose[0]) - pose[2])
     d_goal = math.hypot(goal[0] - pose[0], goal[1] - pose[1])
@@ -257,11 +221,9 @@ def build_observation(frame, grid, goal, obs_mode, prev_action):
             risks[0] / 3.0, risks[1] / 3.0, risks[2] / 3.0,
         ], dtype=np.float32)
     else:
-        # Cada rayo se mide como el MÍNIMO de un abanico de 3 sub-rayos
-        # (±6°): el mapa pinta los obstáculos como celdas dispersas
-        # (puntos de eco) y un rayo fino puede colarse entre dos celdas
-        # y reportar libre un frente bloqueado; el abanico cierra esos
-        # huecos, igual que la randomización usada en el entrenamiento.
+        # cada rayo es el mínimo de un abanico de 3 sub-rayos (±6°): el
+        # mapa pinta obstáculos como celdas de eco dispersas y un rayo
+        # fino se cuela entre dos celdas; el abanico cierra esos huecos
         fan = math.radians(6)
         rays = np.array([
             min(grid.cast_distance(pose[0], pose[1], pose[2] + a + da,
@@ -281,16 +243,11 @@ def build_observation(frame, grid, goal, obs_mode, prev_action):
     return np.clip(obs, -1.0, 1.0), phi, d_goal
 
 
-# ----------------------------------------------------------------------
-# Submódulo de dirección (Algoritmo 5) — frases EXACTAS del documento
-# ----------------------------------------------------------------------
 def direction_text(action, d_goal, phi_goal, d_free=None,
                    near_prefix=True):
-    """Alg. 5 del documento. d_free (opcional): espacio libre medido al
-    frente; "Avance N metros" nunca promete más de lo que el mapa ve
-    libre. near_prefix: el prefijo "Está cerca de su destino." se dice
-    solo cuando el llamador lo decide (la primera vez por destino, para
-    no repetirlo en cada frase)."""
+    """acción -> frase, con las frases exactas del documento. d_free
+    acota el "Avance N metros" a lo que el mapa ve libre; near_prefix
+    lo decide el llamador (una vez por destino)."""
     angulo = round(abs(math.degrees(phi_goal)))
     if action == 0:
         dist = min(d_goal, MAX_RANGE)
@@ -311,37 +268,34 @@ def direction_text(action, d_goal, phi_goal, d_free=None,
     return instr
 
 
-# ----------------------------------------------------------------------
-# El navegador (estados de sesión + inferencia + salida en tiempo real)
-# ----------------------------------------------------------------------
 class Navigator:
-    """Une todo: comandos -> estados de sesión -> inferencia del modelo
-    -> indicaciones una a una.
+    """une todo: comandos -> estados de sesión -> inferencia ->
+    indicaciones una a una.
 
-    Uso por ciclo (en el main):
+    por ciclo en el main:
         msgs = navigator.handle_command(texto)     # si hubo comando
-        msgs += navigator.update(nav_frame, grid)  # cada ciclo
-        para cada m en msgs: voz.reproducir(m.text, m.priority)
+        msgs += navigator.update(nav_frame, grid, alerts)
     """
 
     def __init__(self, model_base="models/nav_ppo", repeat_s=2.5,
                  decide_every_s=1.0):
         self.policy, self.obs_mode = load_policy(model_base)
         self.status = NavStatus()
-        self.repeat_s = repeat_s          # no repetir la misma frase antes
+        self.repeat_s = repeat_s
         self.decide_every_s = decide_every_s
         self._prev_action = 3
         self._last_instr = None
         self._last_instr_t = 0.0
+        self._last_action_said = None
         self._last_decide_t = 0.0
-        self._progress_ref = None         # (t, d_goal) para detectar bloqueo
-        self._route = []                  # waypoints pendientes (futuro MAPS)
-        self._near_announced = False      # "Está cerca..." una vez por destino
+        self._forced_streak = 0
+        self._progress_ref = None
+        self._route = []
+        self._near_announced = False
 
-    # ---------------- comandos (formato de entrada) ----------------
     def handle_command(self, command, frame=None) -> List[NavMessage]:
-        """command: NavCommand o texto en español. frame (opcional): el
-        último NavigationFrame, para resolver destinos por landmark."""
+        """command: NavCommand o texto; frame opcional pa resolver
+        destinos por landmark."""
         if isinstance(command, str):
             command = parse_command(command)
         st = self.status
@@ -378,8 +332,8 @@ class Navigator:
             return [NavMessage("Navegación detenida.", priority=2,
                                kind="respuesta")]
         if command.tipo == "ruta_alternativa":
-            # Sin módulo de rutas globales aún: el agente local ya
-            # replanifica solo. Se informa según RF-23.
+            # sin módulo de rutas globales aún; el agente local ya
+            # replanifica solo
             if st.session in ("activo", "pausado") and st.goal:
                 self._progress_ref = None
                 return [NavMessage("Calculando ruta alternativa.",
@@ -394,8 +348,8 @@ class Navigator:
                            kind="respuesta")]
 
     def set_route(self, waypoints, destino_label=None):
-        """Para el futuro módulo de rutas globales (MAPS): lista de
-        waypoints (x, y); el último es el destino final."""
+        """pal futuro módulo de rutas globales: waypoints (x, y), el
+        último es el destino final."""
         self._route = list(waypoints)
         if waypoints:
             self.status.waypoints = list(waypoints)
@@ -403,10 +357,10 @@ class Navigator:
             self.status.goal_label = destino_label
             self.status.session = "activo"
 
-    # ---------------- ciclo (formato de salida) ----------------
-    def update(self, frame, grid) -> List[NavMessage]:
-        """Llamar cada ciclo con el NavigationFrame y el mapa. Devuelve
-        los mensajes NUEVOS de este ciclo (puede ser lista vacía)."""
+    def update(self, frame, grid, alerts=None) -> List[NavMessage]:
+        """llamar cada ciclo con el frame, el mapa y las alertas de
+        seguridad; devuelve solo los mensajes nuevos. una alerta
+        crítica hace que el modelo decida de inmediato."""
         st = self.status
         msgs = []
 
@@ -415,7 +369,6 @@ class Navigator:
             return msgs
 
         pose = (frame.slam.x, frame.slam.y)
-        # waypoint actual: el siguiente de la ruta, o el goal directo
         target = st.waypoints[0] if st.waypoints else st.goal
         if st.waypoints and math.hypot(target[0] - pose[0],
                                        target[1] - pose[1]) < WAYPOINT_RADIUS:
@@ -432,50 +385,55 @@ class Navigator:
                                kind="evento")]
 
         now = time.time()
-        if now - self._last_decide_t < self.decide_every_s:
+        replan = needs_replan(alerts or [])
+        if not replan and now - self._last_decide_t < self.decide_every_s:
             return msgs
         self._last_decide_t = now
 
-        # Algoritmo 4: estado -> política -> acción
         obs, phi, d_goal = build_observation(frame, grid, target,
                                              self.obs_mode,
                                              self._prev_action)
         action = self.policy.predict(obs)
 
-        # CAPA DE SEGURIDAD determinística (RNF-09, §6.4.3: opera por
-        # encima del RL): si el modelo dice AVANZAR pero el frente está
-        # bloqueado —según el mapa O la detección visual más próxima—,
-        # se anula la acción y se gira hacia el lado con más espacio.
-        # También rompe el estancamiento cuando el mapa aún tiene
-        # huecos y el modelo insiste en avanzar contra un mueble.
-        det_front = min((d.range_est for d in frame.detections
-                         if d.range_est is not None
-                         and abs(d.bearing) <= FRONT_HALF),
-                        default=float("inf"))
-        eff_front = min(frame.d_front, det_front)
-        if action == 0 and eff_front < 0.6 and d_final > ARRIVAL_RADIUS:
-            action = 1 if frame.d_left >= frame.d_right else 2
+        # capa de seguridad determinística por encima del RL: si el
+        # modelo dice avanzar pero el frente está bloqueado (mismo
+        # umbral y distancia efectiva que las alertas), se anula y se
+        # gira — con histéresis en el sentido, pq si no en una esquina
+        # oirías izquierda/derecha/izquierda sin salir nunca
+        eff_front = effective_front_distance(frame)
+        if action == 0 and eff_front < CRITICAL_DISTANCE_M \
+                and d_final > ARRIVAL_RADIUS:
+            action = self._forced_turn(frame, phi)
+        else:
+            self._forced_streak = 0
 
         self._prev_action = action
         st.last_action = action
         st.d_goal, st.phi_goal = d_final, phi
 
-        # Algoritmo 5: acción -> instrucción, con control de repetición.
-        # El prefijo "Está cerca de su destino." se anuncia UNA vez por
-        # destino; "Avance N metros" se acota por el espacio libre real.
+        # el prefijo "Está cerca..." solo una vez por destino; con pose
+        # poco fiable el avance prometido se acota a 1 m
         announce_near = d_final < 5.0 and not self._near_announced
         if announce_near:
             self._near_announced = True
-        instr = direction_text(action, d_final, phi,
-                               d_free=frame.d_front,
+        d_free = eff_front
+        if frame.slam.confidence < LOW_CONFIDENCE:
+            d_free = min(d_free, 1.0)
+        instr = direction_text(action, d_final, phi, d_free=d_free,
                                near_prefix=announce_near)
-        if instr != self._last_instr or now - self._last_instr_t > self.repeat_s:
+        # "Avance N" tras "Avance M" en menos de repeat_s cuenta como la
+        # misma indicación (N fluctúa con el ray casting)
+        same_forward = (action == 0 and self._last_action_said == 0
+                        and now - self._last_instr_t <= self.repeat_s)
+        if (instr != self._last_instr and not same_forward) \
+                or now - self._last_instr_t > self.repeat_s:
             msgs.append(NavMessage(instr, priority=1, kind="instruccion",
                                    action=action))
             self._last_instr = instr
             self._last_instr_t = now
+            self._last_action_said = action
 
-        # Detección de bloqueo: sin acercarse en 20 s de sesión activa
+        # bloqueo: sin acercarse en 20 s de sesión activa
         if self._progress_ref is None or d_final < self._progress_ref[1] - 0.3:
             self._progress_ref = (now, d_final)
         elif now - self._progress_ref[0] > 20.0:
@@ -486,10 +444,25 @@ class Navigator:
                 priority=1, kind="evento"))
         return msgs
 
-    # ---------------- internos ----------------
+    def _forced_turn(self, frame, phi_goal):
+        """sentido del giro forzado: seguir el giro en curso (hasta
+        MAX_FORCED_STREAK, pa no dar la vuelta entera); si no, hacia el
+        destino si ese lado tiene espacio, si no el más libre."""
+        self._forced_streak += 1
+        if self._prev_action in (1, 2) \
+                and self._forced_streak <= MAX_FORCED_STREAK:
+            return self._prev_action
+        self._forced_streak = 1
+        prefer = 1 if phi_goal >= 0 else 2
+        d_pref = frame.d_left if prefer == 1 else frame.d_right
+        d_other = frame.d_right if prefer == 1 else frame.d_left
+        if d_pref >= CRITICAL_DISTANCE_M or d_pref >= d_other:
+            return prefer
+        return 3 - prefer
+
     def _resolve_destination(self, command, frame):
-        """destino (texto) o punto -> (x, y). Usa los landmarks
-        etiquetados del SLAM que vienen en el NavigationFrame."""
+        """destino (texto) o punto -> (x, y), usando los landmarks
+        etiquetados del SLAM."""
         if command.punto is not None:
             return tuple(command.punto), "punto", None
         if not command.destino:

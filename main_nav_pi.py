@@ -1,23 +1,14 @@
 """
-main_nav_pi.py
-NAVEGACIÓN COMPLETA en la RASPBERRY PI (headless, salida auditiva).
+main_nav_pi.py — navegación completa en la raspberry (headless, audio).
 
-Mismo pipeline que main_nav_lap.py pero sin GUI. El modelo de
-navegación corre con el backend de NUMPY PURO (models/nav_ppo_policy.npz):
-la Raspberry NO necesita stable-baselines3 (torch sí, por YOLO).
-
-Entrada de comandos: por ahora stdin (una línea = un comando); cuando
-exista el módulo de voz/PLN, este solo tiene que llamar
-`navigator.handle_command(NavCommand(...))` con la intención detectada
-(destino/pausa/reanudar/detener/ruta_alternativa) — el formato ya está
-definido en navigation/navigator.py.
-
-Salida: NavMessage con prioridad (0 alerta interrumpe, 1 navegación,
-2 confirmación), impresos como [VOZ pN]; el módulo de voz real (pyttsx3
-con cola priorizada) los reproducirá tal cual.
+igual que main_nav_lap.py pero sin gui. ojo: el modelo drl corre con el
+backend de numpy puro (models/nav_ppo_policy.npz), la pi no ocupa
+stable-baselines3 (torch sí, por yolo). comandos por stdin mientras no
+exista el módulo de voz/pln (TODO: ese módulo solo debe llamar
+navigator.handle_command con la intención detectada).
 
     python main_nav_pi.py --map-dir maps/casa --model-nav models/nav_ppo
-    Ctrl+C -> guarda mapa y termina.
+    ctrl+c guarda mapa y sale.
 """
 import argparse
 import math
@@ -113,7 +104,7 @@ def main():
             dt = max(1e-3, now - last_t)
             last_t = now
 
-            # comandos (stdin hoy; módulo de voz/PLN mañana)
+            # comandos: stdin hoy, módulo de voz/pln mañana
             try:
                 while True:
                     for m in navigator.handle_command(cmd_q.get_nowait(),
@@ -123,11 +114,12 @@ def main():
                 pass
 
             motion, odo = motion_est.update(frame, dt)
+            # pitch real de la imu -> geometría de plano de piso
             if odo["pitch_deg"] is not None:
                 bridge.cam_pitch_deg = odo["pitch_deg"]
                 if hazard_det is not None:
                     hazard_det.cam_pitch_deg = odo["pitch_deg"]
-            detections = bridge.process(frame)
+            detections = bridge.process(frame, ego_yaw=motion.delta_rot)
             if hazard_det is not None and frames % args.hazard_every == 0:
                 last_hazards = hazard_det.process(frame, detections)
             detections = detections + last_hazards
@@ -138,6 +130,7 @@ def main():
             pose = (output.x, output.y, output.theta)
             mgr.update_from_scan(pose, slam.observations_for_map(),
                                  max_range=args.max_range)
+            mgr.clear_footprint(output.x, output.y)
             events = mgr.update_position(pose, slam.get_landmarks())
             for ev in events:
                 if ev["type"] == "chunk_change" and not ev["known"]:
@@ -150,11 +143,13 @@ def main():
                 chunk=mgr.current_chunk, room=mgr.current_room,
                 ultrasonic=us_readings)
 
-            # seguridad primero (prioridad 0 interrumpe), luego navegación
-            for prio, msg in safety_alerts(nav_frame):
+            # seguridad primero (p0 interrumpe); una alerta crítica fuerza
+            # recalcular de inmediato
+            alerts = safety_alerts(nav_frame)
+            for prio, msg in alerts:
                 voice.say(msg, priority=prio,
                           repeat_after_s=2.0 if prio == 0 else 5.0)
-            for m in navigator.update(nav_frame, mgr):
+            for m in navigator.update(nav_frame, mgr, alerts):
                 voice.say(m.text, priority=m.priority)
 
             if now - last_save > args.save_every:

@@ -6,3 +6,5 @@ croquis*
 maps/
 *.pyc
 models/*_cmp*
+videosxd/
+.DS_Store

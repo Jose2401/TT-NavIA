@@ -1,28 +1,12 @@
 """
-real_maps.py
-Convierte MAPAS REALES guardados (chunks de ChunkedMapManager, creados
-al caminar con main_lap.py / video_a_mapa.py) en mundos de entrenamiento
-y evaluación para el agente DRL.
+real_maps.py — convierte mapas reales guardados (chunks del
+ChunkedMapManager) en mundos de entrenamiento/evaluación pal agente.
 
-Flujo completo:
-    1. Grabas un recorrido (celular POV o el hardware) o caminas con la
-       laptop:  python video_a_mapa.py recorrido.mp4 --map-dir maps/casa
-    2. Entrenas/afinas mezclando tus mapas reales con los procedurales:
-       python -m navigation.train --real-maps maps/casa maps/escuela
-    3. O solo evalúas el modelo en tu entorno real:
-       python -m navigation.train --eval models/nav_ppo.zip --real-maps maps/casa
-
-Cómo se convierte un mapa en mundo:
-- celdas OCUPADAS (log-odds > umbral) -> círculos pequeños (paredes y
-  muebles quedan como hileras de discos; mismo ray casting de NavWorld);
-- capa de PELIGROS -> círculos hazard (hoyos/coladeras reales);
-- inicio y destino se muestrean en el MISMO componente conexo de espacio
-  LIBRE conocido (visto y despejado por los rayos), con separación
-  mínima — así el episodio siempre es resoluble;
-- se agregan 0-2 obstáculos móviles aleatorios (personas) en el espacio
-  libre, porque el mapa guardado solo contiene lo estático.
-
-La conversión es cara (una vez) y se cachea por carpeta de mapa.
+las celdas ocupadas quedan como hileras de discos, la capa de peligros
+como círculos hazard, y el inicio/destino se muestrean en el MISMO
+componente conexo de espacio libre (así el episodio siempre tiene
+solución). se agregan 0-2 móviles pq el mapa guardado solo trae lo
+estático. la conversión es cara, ps se cachea por carpeta.
 """
 import math
 import os
@@ -31,8 +15,7 @@ import numpy as np
 
 from navigation.nav_env import NavWorld, _scatter_circles
 
-# umbrales en log-odds (ver occupancy_grid.py): ocupado > 1.0;
-# libre con certeza < -0.6 (prob < ~0.35)
+# umbrales en log-odds (ver occupancy_grid.py)
 _L_OCC = 1.0
 _L_FREE = -0.6
 _MIN_CLEARANCE_M = 0.30      # margen al muestrear inicio/destino
@@ -42,8 +25,7 @@ _CACHE = {}
 
 
 class RealMapWorldFactory:
-    """Carga un mapa por chunks y fabrica episodios (NavWorld + inicio +
-    destino) sobre él."""
+    """carga un mapa por chunks y fabrica episodios sobre él."""
 
     def __init__(self, map_dir, cell_stride=2):
         from map_manager import ChunkedMapManager
@@ -63,7 +45,7 @@ class RealMapWorldFactory:
         self.resolution = res
 
         h, w = lo.shape
-        # ---- obstáculos: celdas ocupadas submuestreadas a bloques ----
+        # celdas ocupadas submuestreadas a bloques -> círculos
         s = cell_stride
         hh, ww = (h // s) * s, (w // s) * s
         occ = (lo[:hh, :ww] > _L_OCC).reshape(hh // s, s, ww // s, s)
@@ -86,7 +68,8 @@ class RealMapWorldFactory:
             [hx, hy, np.full(hx.shape, r_obs)], axis=1) if len(xs) \
             else np.zeros((0, 3))
 
-        # ---- espacio libre navegable: erosionado + componente conexo ----
+        # espacio libre navegable: erosionado + componente conexo más
+        # grande (inicio y meta siempre caen en el mismo)
         free = (lo < _L_FREE).astype(np.uint8)
         k = max(1, int(round(_MIN_CLEARANCE_M / res)))
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
@@ -97,7 +80,6 @@ class RealMapWorldFactory:
             raise ValueError(
                 f"El mapa {map_dir} no tiene espacio libre suficiente "
                 f"(despeja al menos un pasillo de {2*_MIN_CLEARANCE_M:.1f} m).")
-        # componente libre más grande
         sizes = np.bincount(labels.ravel())
         sizes[0] = 0
         comp = int(np.argmax(sizes))
@@ -112,10 +94,9 @@ class RealMapWorldFactory:
         return len(self.free_x) * self.resolution ** 2
 
     def sample_episode(self, rng, movers=True):
-        """-> (NavWorld, start, goal) para un episodio. La separación
-        objetivo se adapta al tamaño del área libre del mapa (en un
-        mapa chico no hay pares a 2 m); si no se logra, se usa el par
-        MÁS LEJANO encontrado — nunca metas triviales."""
+        """-> (NavWorld, start, goal). la separación se adapta al
+        tamaño del área libre; si no se logra, se usa el par más
+        lejano encontrado — nunca metas triviales."""
         n = len(self.free_x)
         span = math.hypot(self.free_x.max() - self.free_x.min(),
                           self.free_y.max() - self.free_y.min())
@@ -153,7 +134,7 @@ class RealMapWorldFactory:
 
 
 def get_factory(map_dir):
-    """Fábrica cacheada por carpeta (la conversión es cara)."""
+    """fábrica cacheada por carpeta (la conversión es cara)."""
     key = os.path.abspath(map_dir)
     if key not in _CACHE:
         _CACHE[key] = RealMapWorldFactory(map_dir)
@@ -161,6 +142,6 @@ def get_factory(map_dir):
 
 
 def sample_real_episode(map_dirs, rng):
-    """Elige una de las carpetas de mapas reales y muestrea un episodio."""
+    """elige una carpeta de mapas reales y muestrea un episodio."""
     map_dir = map_dirs[int(rng.integers(0, len(map_dirs)))]
     return get_factory(map_dir).sample_episode(rng)

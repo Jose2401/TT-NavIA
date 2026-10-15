@@ -1,57 +1,35 @@
 """
 occupancy_grid.py
-Mapa de ocupación local + Ray Casting.
-
-Responsabilidades de Ray Casting (y SOLO de Ray Casting, sin mezclarse con
-el SLAM):
-- proyectar rayos desde la pose estimada;
-- determinar qué celdas son libres a lo largo del rayo;
-- marcar como ocupada la celda donde el rayo encuentra un obstáculo;
-- actualizar el mapa de ocupación (log-odds);
-- mantener una CAPA DE PELIGROS de piso separada (hoyos, coladeras, agua):
-  un hoyo no bloquea el rayo como una pared (visual o ultrasónicamente el
-  "espacio" continúa), pero la navegación debe tratar su celda como
-  intransitable. Por eso vive en una capa aparte y no en el log-odds.
-
-El SLAM nunca modifica el mapa directamente: solo le entrega la pose
-estimada y las observaciones, y opcionalmente consulta landmarks/celdas
-ocupadas cercanas para la asociación de datos.
-
-Este mismo núcleo de Ray Casting lo reutiliza map_manager.ChunkedMapManager
-(mapa global por chunks con persistencia); OccupancyGrid queda como el mapa
-"de un solo bloque" para simulaciones, pruebas y demos.
+mapa de ocupacion local (log-odds) + ray casting, mas una capa aparte
+de peligros de piso (hoyos, coladeras: no bloquean el rayo pero no se
+pueden pisar). el slam nunca escribe el mapa directo, solo manda pose
+y observaciones. map_manager reutiliza este mismo nucleo pa chunks.
 """
 import math
 import numpy as np
 
-# Parámetros log-odds compartidos por OccupancyGrid y por los chunks del
-# ChunkedMapManager (mismo significado de celda en ambos).
-# Un solo eco claro basta para marcar la celda como ocupada (sesgo
-# conservador: para el usuario es más seguro sobre-detectar obstáculos
-# que sub-detectarlos). Decisión validada en simulación: no bajar l_occ
-# sin re-medir con simulation.py sobre varias semillas.
+# params log-odds compartidos con los chunks del ChunkedMapManager.
+# ojo: L_OCC=1.2 es a proposito, un solo eco claro marca ocupado (mas
+# seguro sobre-detectar que sub-detectar). validado en simulacion,
+# no bajar sin re-medir con simulation.py en varias semillas
 L_OCC = 1.2
 L_FREE = -0.4
 L_CLAMP = 5.0
-# Umbral log-odds para considerar una celda "ocupada" al navegar/consultar.
+# umbral pa considerar una celda "ocupada" al consultar
 OCC_THRESHOLD = 1.0
-# Umbral de "pared sólida" (≥2 ecos de evidencia): un rayo NO despeja
-# celdas más allá de una celda así de ocupada, y si el rayo quedó
-# bloqueado tampoco marca su endpoint. Sin esta guarda, los rangos
-# monoculares sobreestimados (o un eco emparejado con el objeto
-# equivocado) perforan túneles de "libre" a través de paredes ya bien
-# mapeadas, las borran y pintan marcas fantasma detrás.
+# pared solida (>=2 ecos): un rayo NO despeja celdas mas alla de una celda
+# asi, ni marca su endpoint si quedo bloqueado. sin esto los rangos
+# monoculares sobreestimados perforan tuneles en paredes ya mapeadas
+# y pintan fantasmas detras. no mover sin re-medir
 L_BLOCK = 2.0
-# Avistamientos necesarios para que una celda de la capa de peligros se
-# considere activa (un falso positivo de segmentación de 1 frame no debe
-# volverse un "hoyo" permanente).
+# hits pa activar una celda de peligro (un falso positivo de 1 frame
+# no debe volverse un "hoyo" permanente)
 HAZARD_MIN_HITS = 2
 HAZARD_MAX_HITS = 10
 
 
 def bresenham(x0, y0, x1, y1):
-    """Celdas enteras atravesadas por el segmento (x0,y0)->(x1,y1).
-    Solo aritmética entera: es el paso interno del Ray Casting."""
+    """celdas que cruza el segmento, pura aritmetica entera."""
     points = []
     dx, dy = abs(x1 - x0), abs(y1 - y0)
     sx = 1 if x0 < x1 else -1
@@ -78,15 +56,13 @@ class OccupancyGrid:
         self.n = int(size_m / resolution)
         # log-odds: 0 = desconocido, + = ocupado, - = libre
         self.log_odds = np.zeros((self.n, self.n), dtype=np.float32)
-        # capa de peligros de piso: contador de avistamientos por celda
         self.hazard_hits = np.zeros((self.n, self.n), dtype=np.uint8)
-        # origen del mundo dentro de la grilla (para permitir coordenadas negativas)
+        # origen del mundo en la grilla (pa coordenadas negativas)
         self.origin = origin if origin is not None else (size_m / 2.0, size_m / 2.0)
         self.l_occ = L_OCC
         self.l_free = L_FREE
         self.l_clamp = L_CLAMP
 
-    # Utilidades de coordenadas
     def world_to_grid(self, x, y):
         gx = int(math.floor((x + self.origin[0]) / self.resolution))
         gy = int(math.floor((y + self.origin[1]) / self.resolution))
@@ -100,13 +76,11 @@ class OccupancyGrid:
     def in_bounds(self, gx, gy):
         return 0 <= gx < self.n and 0 <= gy < self.n
 
-    # ---------------- Ray Casting ----------------
-    # Compatibilidad con código previo que usaba el método estático.
+    # ---------------- ray casting ----------------
+    # compat con codigo viejo que usaba el metodo estatico
     _bresenham = staticmethod(bresenham)
 
     def _cells(self):
-        """Interfaz de celdas que comparte el núcleo de Ray Casting con
-        ChunkedMapManager: (leer, escribir log-odds, marcar hazard)."""
         return self.log_odds, self.hazard_hits
 
     def _add_log_odds(self, gx, gy, delta):
@@ -120,23 +94,12 @@ class OccupancyGrid:
                                            int(self.hazard_hits[gy, gx]) + 1)
 
     def update_from_scan(self, pose, observations, max_range=4.0):
-        """Ray Casting: para cada observación (rango, bearing) relativa al
-        usuario, marca las celdas libres a lo largo del rayo y la celda
-        ocupada en el punto final (si el rango indica un eco real).
-
-        - Si el punto final cae fuera del mapa, el rayo se RECORTA en el
-          borde y las celdas libres dentro del mapa sí se registran (antes
-          se descartaba el rayo completo y se perdía esa información).
-        - La incertidumbre de rango de la observación (sigma_r, si viene)
-          modula la actualización: un rango impreciso (p. ej. monocular,
-          ~30% de error) solo despeja "libre" hasta donde es casi seguro
-          que no hay nada (r - 2*sigma_r) y marca la celda final con menos
-          peso. Sin esto, los rayos monoculares largos atraviesan y borran
-          paredes que el ultrasonido ya había mapeado bien.
-        - Una observación con is_hazard=True marca su celda final en la
-          capa de peligros (no en el log-odds): el rayo sigue despejando
-          "libre" hasta ahí porque el suelo alrededor del hoyo es
-          transitable, pero la celda del hoyo queda señalada."""
+        """ray casting: marca libre a lo largo del rayo y ocupado al final.
+        si el final cae fuera, el rayo se recorta en el borde (lo de adentro
+        si cuenta). un rango impreciso (sigma_r alto, monocular ~30%) solo
+        despeja hasta r - 2*sigma y no pinta ocupado, pq si no borra paredes
+        que el ultrasonido ya mapeo bien. is_hazard marca la capa de
+        peligros en vez del log-odds."""
         x, y, theta = pose
         gx0, gy0 = self.world_to_grid(x, y)
         if not self.in_bounds(gx0, gy0):
@@ -153,8 +116,7 @@ class OccupancyGrid:
             gx1, gy1 = self.world_to_grid(ex, ey)
             ray = bresenham(gx0, gy0, gx1, gy1)
 
-            # Recorte en el borde del mapa: se conservan las celdas
-            # internas y se recuerda si el final quedó dentro.
+            # recorte en el borde del mapa
             clipped = []
             for cell in ray:
                 if not self.in_bounds(*cell):
@@ -170,27 +132,21 @@ class OccupancyGrid:
             blocked = False
             for (cx, cy) in free_cells:
                 if self.log_odds[cy, cx] > L_BLOCK:
-                    blocked = True     # pared sólida: no perforar
+                    blocked = True     # pared solida: no perforar
                     break
                 self._add_log_odds(cx, cy, self.l_free)
 
             if end_inside and not blocked and obs.range_m <= max_range:
                 if is_hazard:
-                    # La capa de peligros tiene su propia confirmación
-                    # por avistamientos (HAZARD_MIN_HITS), así que la
-                    # imprecisión del rango no la contamina.
+                    # la capa de peligros se confirma sola con HAZARD_MIN_HITS
                     self._add_hazard(gx1, gy1)
                 elif not imprecise:
-                    # Solo los rangos PRECISOS (ultrasonido, u
-                    # observaciones ancladas al landmark consolidado)
-                    # pintan celda ocupada. Un rango monocular crudo
-                    # (~30% de error) salpicaría marcas a lo largo del
-                    # eje de profundidad (incluso tras las paredes); su
-                    # objeto lo pinta el landmark consolidado vía
-                    # observations_for_map(), no el rayo crudo.
+                    # solo rangos precisos pintan ocupado; el monocular crudo
+                    # salpicaria por todo el eje de profundidad, su objeto lo
+                    # pinta el landmark consolidado via observations_for_map()
                     self._add_log_odds(gx1, gy1, self.l_occ)
 
-    # ---------------- Consultas para SLAM / navegación ----------------
+    # ---------------- consultas ----------------
     def is_occupied(self, gx, gy, threshold=OCC_THRESHOLD):
         return self.in_bounds(gx, gy) and self.log_odds[gy, gx] > threshold
 
@@ -199,15 +155,12 @@ class OccupancyGrid:
                 and self.hazard_hits[gy, gx] >= HAZARD_MIN_HITS)
 
     def is_blocked(self, gx, gy):
-        """Celda intransitable para la navegación: ocupada O peligro de
-        piso activo."""
         return self.is_occupied(gx, gy) or self.is_hazard(gx, gy)
 
     def cast_distance(self, x, y, angle, max_range=4.0):
-        """Ray casting de CONSULTA (no escribe el mapa): distancia desde
-        (x, y) en la dirección `angle` hasta la primera celda bloqueada
-        (ocupada o peligro). Devuelve max_range si el camino está libre.
-        Es la fuente de d_front/d_left/d_right del estado de navegación."""
+        """ray casting de consulta (no escribe): distancia a la primera
+        celda bloqueada, max_range si esta libre. de aqui salen
+        d_front/d_left/d_right de navegacion."""
         gx0, gy0 = self.world_to_grid(x, y)
         ex = x + max_range * math.cos(angle)
         ey = y + max_range * math.sin(angle)
@@ -224,17 +177,12 @@ class OccupancyGrid:
         return max_range
 
     def occupancy_probability(self):
-        """Probabilidad de ocupación [0,1] de todo el mapa (0.5 =
-        desconocido)."""
         return 1.0 / (1.0 + np.exp(-self.log_odds))
 
     def local_costmap(self, pose, size_m=4.0):
-        """Parche egocéntrico (2, H, W) float32 centrado en la pose, ejes
-        alineados al mundo (la orientación va aparte, en la pose):
-            canal 0 = probabilidad de ocupación [0,1] (0.5 = desconocido)
-            canal 1 = máscara de peligros de piso {0,1}
-        Es la entrada de mapa que consumirá el módulo de navegación (DRL).
-        Las celdas fuera del mapa se rellenan como desconocido (0.5)."""
+        """parche egocentrico (2, H, W) float32, ejes del mundo.
+        canal 0 = prob ocupacion (0.5 = desconocido), canal 1 = peligros.
+        lo que cae fuera del mapa se rellena como desconocido."""
         x, y = pose[0], pose[1]
         half = int(round((size_m / 2.0) / self.resolution))
         side = 2 * half + 1
@@ -256,11 +204,8 @@ class OccupancyGrid:
             dst_x0:dst_x0 + (sx1 - sx0)] = haz.astype(np.float32)
         return out
 
-    #Asociación de datos del SLAM
     def get_nearby_obstacles(self, x, y, radius=1.5, threshold=OCC_THRESHOLD):
-        """Devuelve celdas ocupadas (en coordenadas del mundo) cercanas a
-        (x,y). Útil si se quiere alimentar al EKF con landmarks derivados
-        directamente del mapa en lugar de las observaciones crudas."""
+        """celdas ocupadas (en mundo) cerca de (x,y)."""
         gx, gy = self.world_to_grid(x, y)
         rcells = int(radius / self.resolution)
         obstacles = []
@@ -273,11 +218,10 @@ class OccupancyGrid:
             obstacles.append((wx, wy))
         return obstacles
 
-    # ---------------- visualización / "croquis" ----------------
+    # ---------------- croquis ----------------
     def render_croquis(self, pose=None, trajectory=None, landmarks=None,
                        gt_trajectory=None, path="croquis_mapa.png"):
-        """Genera una imagen tipo croquis del mapa de ocupación construido,
-        con la posición y orientación estimadas del usuario marcadas."""
+        """imagen tipo croquis del mapa con la pose del usuario."""
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -288,7 +232,6 @@ class OccupancyGrid:
                   -self.origin[1], self.n * self.resolution - self.origin[1]]
         ax.imshow(occ_prob, cmap="Greys", origin="lower", extent=extent, vmin=0, vmax=1)
 
-        # Peligros de piso (hoyos/coladeras) en rojo
         hz = np.argwhere(self.hazard_hits >= HAZARD_MIN_HITS)
         if len(hz):
             hx = [c * self.resolution - self.origin[0] for c in hz[:, 1]]

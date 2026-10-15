@@ -332,7 +332,7 @@ class TestSimulationEndToEnd(unittest.TestCase):
         corrigen, ver Observation.can_correct). Referencia re-medida
         sobre 6 semillas: ATE prom ~0.27 m, máx ~0.44 m, orientación
         ~3 grados."""
-        from simulation import run_simulation
+        from tests.simulation import run_simulation
         res = run_simulation(steps=250, seed=1, verbose=False,
                              croquis_path="croquis_test.png")
         self.assertLess(res["ate"], 0.35)
@@ -343,7 +343,7 @@ class TestSimulationEndToEnd(unittest.TestCase):
     def test_simulation_survives_occlusion(self):
         """Con pérdida del 60% de las detecciones visuales el sistema debe
         seguir funcionando (dead-reckoning + ultrasonido)."""
-        from simulation import run_simulation
+        from tests.simulation import run_simulation
         res = run_simulation(steps=250, seed=2, drop_prob=0.6, verbose=False,
                              croquis_path="croquis_test.png")
         self.assertLess(res["ate"], 0.45)

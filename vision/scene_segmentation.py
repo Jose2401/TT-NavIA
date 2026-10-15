@@ -33,17 +33,13 @@ class SceneSegmenter:
         self.FLOOR_IDS = [3]
         self.DOOR_IDS = [14]
 
-        # Superficies TRANSITABLES en interiores y exteriores (para el
-        # detector de peligros de piso: hoyos/coladeras = agujeros dentro
-        # de la superficie transitable):
-        # 3 floor, 6 road, 11 sidewalk, 13 earth, 28 rug, 29 field,
-        # 46 sand, 52 path, 54 runway, 91 dirt track, 94 land
+        # superficies transitables (un hoyo = agujero dentro de esto):
+        # floor, road, sidewalk, earth, rug, field, sand, path, runway,
+        # dirt track, land
         self.WALKABLE_IDS = [3, 6, 11, 13, 28, 29, 46, 52, 54, 91, 94]
-        # Agua (peligro directo): 21 water, 26 sea, 60 river,
-        # 109 swimming pool, 113 waterfall, 128 lake
+        # agua: water, sea, river, pool, waterfall, lake
         self.WATER_IDS = [21, 26, 60, 109, 113, 128]
-        # Escaleras / escalones (riesgo alto según la tabla de riesgo del
-        # proyecto): 53 stairs, 59 stairway, 96 escalator, 121 step
+        # escaleras/escalones: stairs, stairway, escalator, step
         self.STAIRS_IDS = [53, 59, 96, 121]
 
     def segment(self, frame):
@@ -77,8 +73,8 @@ class SceneSegmenter:
         return barrier_mask.astype(np.uint8), floor_mask.astype(np.uint8)
 
     def extract_ground_masks(self, seg_map):
-        """Máscaras para el detector de peligros de piso (interior y
-        exterior): superficie transitable, agua y escaleras/escalones."""
+        """mascaras pal detector de peligros de piso: transitable,
+        agua y escaleras."""
         walkable = np.isin(seg_map, self.WALKABLE_IDS)
         water = np.isin(seg_map, self.WATER_IDS)
         stairs = np.isin(seg_map, self.STAIRS_IDS)

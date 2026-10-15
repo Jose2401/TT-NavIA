@@ -242,6 +242,113 @@ class TestNavigatorSession(unittest.TestCase):
             self.assertEqual(obs.shape, (dim,))
             self.assertAlmostEqual(d, math.hypot(2, 1), places=5)
 
+    def _frame_blocked_front(self, x=0.5, y=0.5, theta=0.0, dist=0.6):
+        """Pared pintada al frente a `dist` m (como la ve el mapa)."""
+        from ekf_slam import EKFSlam
+        from map_manager import ChunkedMapManager
+        from navigation_feed import build_navigation_frame
+        from interfaces import Observation
+        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
+        for _ in range(3):
+            mgr.update_from_scan((x, y, theta), [
+                Observation(range_m=dist, bearing=theta + b * 0.1,
+                            sigma_r=0.05) for b in range(-6, 7)])
+        slam = EKFSlam(x, y, theta)
+        return build_navigation_frame(slam, mgr, []), mgr
+
+    def test_never_says_advance_when_front_is_critical(self):
+        """Coherencia alerta/instrucción: con el frente a < 0.80 m (el
+        umbral de 'Deténgase' del alg. 7) la indicación nunca es
+        'Avance', aunque el modelo lo pida; y el giro forzado mantiene
+        su sentido en ciclos consecutivos (sin izquierda/derecha/...)."""
+        from navigation_feed import safety_alerts, needs_replan
+        nav = self._navigator()
+        frame, mgr = self._frame_blocked_front(dist=0.6)
+        nav.handle_command("punto 3 0.5", frame)     # destino tras la pared
+        alerts = safety_alerts(frame)
+        self.assertTrue(needs_replan(alerts))
+        dirs = set()
+        for _ in range(5):
+            msgs = nav.update(frame, mgr, alerts)
+            self.assertNotEqual(nav.status.last_action, 0)
+            for m in msgs:
+                self.assertNotIn("Avance", m.text)
+            dirs.add(nav.status.last_action)
+        self.assertEqual(len(dirs), 1)      # mismo sentido de giro
+
+    def test_critical_alert_forces_immediate_decision(self):
+        """Señal recalcular_ruta (alg. 7/11): con cadencia lenta, una
+        alerta crítica hace decidir de inmediato."""
+        from navigation_feed import safety_alerts
+        nav = Navigator(_pick_model(), repeat_s=0.0, decide_every_s=1e6)
+        frame, mgr = self._frame_blocked_front(dist=0.6)
+        nav.handle_command("punto 3 0.5", frame)
+        self.assertTrue(nav.update(frame, mgr, []))           # 1a decisión
+        self.assertEqual(nav.update(frame, mgr, []), [])      # espera
+        msgs = nav.update(frame, mgr, safety_alerts(frame))   # recalcula
+        self.assertTrue(msgs)
+        self.assertEqual(msgs[0].kind, "instruccion")
+
+    def test_forward_repeats_are_collapsed(self):
+        """'Avance 3 metros' seguido de 'Avance 2 metros' dentro de
+        repeat_s es la misma indicación: no se repite."""
+        nav = Navigator(_pick_model(), repeat_s=10.0, decide_every_s=0.0)
+        frame, mgr = self._frame()
+        nav.handle_command("punto 3 0", frame)
+        said = []
+        for _ in range(6):
+            said += [m for m in nav.update(frame, mgr, [])
+                     if m.action == 0]
+        self.assertLessEqual(len(said), 1)
+
+
+class TestVisionEgoMotion(unittest.TestCase):
+    """Compensación del giro de la cámara en el rastreador de movimiento
+    del módulo de visión (vision_bridge.shift_tracker_for_yaw)."""
+
+    def test_static_object_not_flagged_moving_when_turning(self):
+        try:
+            from vision.motion import ObjectMotionTracker
+        except ImportError:
+            self.skipTest("vision/motion.py requiere OpenCV")
+        from vision_bridge import shift_tracker_for_yaw
+        hfov = math.radians(70)
+        w = 640
+        yaw_per_frame = math.radians(3)          # giro a la izquierda
+        px_per_frame = yaw_per_frame * w / hfov  # ~27 px: >> umbral 8 px
+
+        def run(compensate):
+            tracker = ObjectMotionTracker()
+            cx = 300.0
+            flags = None
+            for _ in range(5):
+                if compensate:
+                    shift_tracker_for_yaw(tracker, yaw_per_frame, hfov, w)
+                det = [{"bbox": (int(cx - 30), 200, int(cx + 30), 320)}]
+                flags = tracker.update(det)
+                cx += px_per_frame        # la escena se desplaza a la derecha
+            return flags[0]
+
+        self.assertTrue(run(compensate=False))   # sin compensar: "móvil"
+        self.assertFalse(run(compensate=True))   # compensado: estático
+
+    def test_truly_moving_object_still_detected(self):
+        try:
+            from vision.motion import ObjectMotionTracker
+        except ImportError:
+            self.skipTest("vision/motion.py requiere OpenCV")
+        from vision_bridge import shift_tracker_for_yaw
+        hfov, w = math.radians(70), 640
+        yaw = math.radians(3)
+        tracker = ObjectMotionTracker()
+        cx = 300.0
+        for _ in range(5):
+            shift_tracker_for_yaw(tracker, yaw, hfov, w)
+            flags = tracker.update([{"bbox": (int(cx - 30), 200,
+                                              int(cx + 30), 320)}])
+            cx += yaw * w / hfov + 12.0   # escena + movimiento propio
+        self.assertTrue(flags[0])
+
 
 class TestRealMapWorlds(unittest.TestCase):
     """Mapas reales guardados (chunks) como mundos de entrenamiento."""

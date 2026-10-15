@@ -1,33 +1,16 @@
 """
-main_lap.py
-MAIN SECUNDARIO — prueba en LAPTOP con interfaz gráfica.
+main_lap.py — main de pruebas en laptop (con ventanas).
 
-Ejecuta el pipeline completo de los tres módulos integrados (SLAM +
-Ray Casting/Mapeo por chunks + Visión) con el hardware disponible en la
-laptop: SOLO la cámara (sin ultrasonido MB1232, sin odometría — igual
-que hoy). Sirve para VER lo que en la Raspberry será salida auditiva:
-qué se detecta, qué se mapea, en qué chunk/cuarto está el usuario y qué
-recibiría el módulo de navegación.
+mismo pipeline que la pi (slam + chunks + visión) pero solo con cámara,
+ps la laptop no trae ultrasonido ni imu. sirve para VER lo que en la pi
+será puro audio.
 
-    python main_lap.py                        # cámara 0, mapa nuevo/continuado
-    python main_lap.py --camera 1
-    python main_lap.py --video paseo.mp4      # video grabado
-    python main_lap.py --sim                  # sin cámara: cuarto simulado
-    python main_lap.py --map-dir maps/casa    # persistencia del mapa
-    python main_lap.py --fresh                # ignora el mapa guardado
-    python main_lap.py --hazards              # peligros de piso (SegFormer,
-                                              #   lento sin GPU)
+    python main_lap.py                      # cámara 0
+    python main_lap.py --video paseo.mp4
+    python main_lap.py --sim                # cuarto simulado, sin cámara
 
-Controles (ventana activa):
-    q  salir (guarda mapa + landmarks + croquis)
-    m  guardar el mapa ahora
-    en --sim: w/s/a/d mueven al usuario, p alterna piloto automático
-
-Paneles:
-    izquierda  cámara anotada (o vista del cuarto simulado)
-    derecha    mapa global por chunks: pose, elipse de incertidumbre,
-               landmarks, peligros (rojo), fronteras de chunk (morado)
-    abajo      estado de navegación: d/riesgo por sector + alertas
+controles: q sale y guarda, m guarda el mapa ya; en --sim wasd mueve
+al usuario y p alterna el autopiloto.
 """
 import argparse
 import math
@@ -44,9 +27,6 @@ from vision_bridge import fuse_observations, free_space_rays
 from navigation_feed import build_navigation_frame, safety_alerts
 
 
-# ----------------------------------------------------------------------
-# Panel del mapa global por chunks
-# ----------------------------------------------------------------------
 def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
                          true_pose=None):
     import cv2
@@ -54,7 +34,7 @@ def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
     occ_prob = 1.0 / (1.0 + np.exp(-lo))
     img = (255 * (1 - occ_prob)).astype(np.uint8)
     view = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-    view[hz >= HAZARD_MIN_HITS] = (0, 0, 220)          # peligros en rojo
+    view[hz >= HAZARD_MIN_HITS] = (0, 0, 220)
 
     h, w = view.shape[:2]
     scale = size / float(max(h, w))
@@ -68,7 +48,6 @@ def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
         gy = wy / mgr.resolution - oy
         return int(gx * scale), int(vh - 1 - gy * scale)
 
-    # fronteras de chunk
     for (ci, cj) in mgr.known_chunk_indices():
         x0, y0 = to_px(ci * mgr.chunk_size_m, cj * mgr.chunk_size_m)
         x1, y1 = to_px((ci + 1) * mgr.chunk_size_m,
@@ -82,7 +61,6 @@ def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
                     cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 100, 180), 1,
                     cv2.LINE_AA)
 
-    # landmarks etiquetados
     for lm in slam.get_landmarks():
         px, py = to_px(lm["x"], lm["y"])
         if 0 <= px < vw and 0 <= py < vh:
@@ -97,7 +75,7 @@ def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
         gx, gy = to_px(true_pose[0], true_pose[1])
         cv2.circle(view, (gx, gy), 5, (0, 180, 0), -1)
 
-    # elipse de incertidumbre 2-sigma + pose estimada
+    # elipse 2-sigma de la covarianza
     P = np.array(output.covariance)[:2, :2]
     vals, vecs = np.linalg.eigh(P)
     vals = np.maximum(vals, 0.0)
@@ -113,7 +91,6 @@ def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
              (int(px + 22 * math.cos(output.theta)),
               int(py - 22 * math.sin(output.theta))), (0, 0, 255), 2)
 
-    # eventos recientes (chunk/cuarto)
     for i, txt in enumerate(events_log[-3:]):
         cv2.putText(view, txt, (8, 18 + 18 * i), cv2.FONT_HERSHEY_SIMPLEX,
                     0.45, (200, 80, 200), 1, cv2.LINE_AA)
@@ -121,8 +98,7 @@ def draw_chunk_map_panel(mgr, slam, output, events_log, size=520,
 
 
 def annotate_camera(frame, detections, hfov, yaw_ok, fps):
-    """Camara anotada: verde = estático usable, rojo = móvil (no
-    landmark), magenta = peligro de piso."""
+    """verde = estático (sirve de landmark), rojo = móvil, magenta = piso."""
     import cv2
     h, w = frame.shape[:2]
     for det in detections:
@@ -151,8 +127,7 @@ def annotate_camera(frame, detections, hfov, yaw_ok, fps):
 
 
 def draw_nav_bar(frame_nav, alerts, width, height=64):
-    """Barra inferior: el estado que recibirá el módulo de navegación
-    (d y riesgo por sector) + alertas de seguridad."""
+    """barra de abajo: distancias/riesgo por sector + alertas."""
     import cv2
     bar = np.zeros((height, width, 3), dtype=np.uint8)
     risk_color = {0: (0, 200, 0), 1: (0, 200, 200),
@@ -197,9 +172,6 @@ def describe_events(events, log):
         log.append(txt)
 
 
-# ----------------------------------------------------------------------
-# Modo cámara (laptop): visión real, sin ultrasonido ni odometría
-# ----------------------------------------------------------------------
 def run_camera(args):
     import cv2
     from vision_bridge import VisionBridge, GroundHazardDetector
@@ -210,9 +182,7 @@ def run_camera(args):
                           camera_profile=args.camera_profile,
                           cam_height_m=args.cam_height,
                           cam_pitch_deg=args.cam_pitch)
-    # Odometría: con --imu intenta la BNO055 (p. ej. la Pi con pantalla
-    # remota, o la laptop con un adaptador I2C); sin ella usa el giro
-    # por flujo óptico, como siempre.
+    # con --imu intenta la bno055; si no, giro por flujo óptico como siempre
     motion_est = make_motion_estimator(
         use_imu=args.imu, imu_bus=args.imu_bus, imu_addr=args.imu_addr,
         step_length_m=args.step_length,
@@ -255,31 +225,32 @@ def run_camera(args):
             last_t = now
             fps = 0.9 * fps + 0.1 * (1.0 / dt) if fps else 1.0 / dt
 
-            # 1) odometría (IMU si --imu; si no, giro por flujo óptico)
             motion, odo = motion_est.update(frame, dt)
             yaw_ok = odo["source"] != "ninguno"
+            # el pitch real de la imu se inyecta al bridge pq la geometría
+            # de plano de piso lo usa (si no, usa el fijo de calibración)
             if odo["pitch_deg"] is not None:
                 bridge.cam_pitch_deg = odo["pitch_deg"]
                 if hazard_det is not None:
                     hazard_det.cam_pitch_deg = odo["pitch_deg"]
 
-            # 2) visión: objetos YOLO + peligros de piso cada N frames
-            detections = bridge.process(frame)
+            # ego_yaw compensa al rastreador: girar la cabeza no vuelve
+            # "móvil" todo el cuarto
+            detections = bridge.process(frame, ego_yaw=motion.delta_rot)
             if hazard_det is not None and frames % args.hazard_every == 0:
                 last_hazards = hazard_det.process(frame, detections)
             detections = detections + last_hazards
 
-            # 3) SLAM + mapa por chunks (sin ultrasonido)
             observations = fuse_observations(detections, [])
             output = slam.step(motion, observations)
             pose = (output.x, output.y, output.theta)
             mgr.update_from_scan(pose, slam.observations_for_map(),
                                  max_range=args.max_range)
+            mgr.clear_footprint(output.x, output.y)
             events = mgr.update_position(pose, slam.get_landmarks())
             describe_events(events, events_log)
             trajectory.append((output.x, output.y))
 
-            # 4) lo que recibirá navegación + alertas de seguridad
             nav = build_navigation_frame(
                 slam, mgr, detections, max_range=args.max_range,
                 chunk=mgr.current_chunk, room=mgr.current_room)
@@ -288,7 +259,6 @@ def run_camera(args):
                 if prio == 0:
                     print(f"[ALERTA] {msg}")
 
-            # 5) interfaz
             if not args.headless:
                 cam_v = annotate_camera(frame.copy(), detections,
                                         bridge.hfov, yaw_ok, fps)
@@ -320,9 +290,6 @@ def run_camera(args):
     _finish(args, mgr, slam, output, trajectory)
 
 
-# ----------------------------------------------------------------------
-# Modo simulado: cuarto sintético, mismo pipeline, chunks visibles
-# ----------------------------------------------------------------------
 def run_sim(args):
     from sim_world import (SimulatedWorld, SimulatedMotion,
                            SimulatedUltrasonicArray, simulated_vision)
@@ -426,9 +393,6 @@ def run_sim(args):
     _finish(args, mgr, slam, output, trajectory, gt_traj)
 
 
-# ----------------------------------------------------------------------
-# Utilidades comunes
-# ----------------------------------------------------------------------
 def _setup_slam_and_map(args, x0=0.0, y0=0.0):
     map_dir = None if args.no_save else args.map_dir
     if map_dir and args.fresh and os.path.isdir(map_dir):

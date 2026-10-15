@@ -1,29 +1,13 @@
 """
-train.py — CREA el modelo de navegación (aprendizaje profundo por refuerzo).
+train.py — crea el modelo de navegación (PPO + gymnasium).
 
-Según el diseño del proyecto (TT_2026_B045 §7.3.1): red actor-crítico
-entrenada con PPO (Stable-Baselines3 + PyTorch) en un entorno Gymnasium
-(navigation/nav_env.py). La política resultante se usa después SOLO en
-inferencia (navigation/navigator.py, main_nav_lap.py, main_nav_pi.py).
-
-USO TÍPICO (desde la raíz del proyecto, con el venv activo):
-
-    # Entrenamiento completo (modelo final recomendado):
-    python -m navigation.train --timesteps 1500000 --obs extended \
-        --out models/nav_ppo
-
-    # Comparar metodologías (observación doc de 8 valores vs extendida)
-    # con un presupuesto corto y reportar cuál gana:
+uso típico:
+    python -m navigation.train --timesteps 1500000 --obs extended --out models/nav_ppo
     python -m navigation.train --compare --timesteps 300000
-
-    # Evaluar un modelo ya creado:
     python -m navigation.train --eval models/nav_ppo.zip
 
-Salidas (en --out):
-    <out>.zip          modelo SB3 completo (para laptop / seguir entrenando)
-    <out>_policy.npz   SOLO los pesos de la política (inferencia con numpy
-                       puro: la Raspberry no necesita SB3 ni torch)
-    <out>_meta.json    obs_mode, dimensiones, métricas de evaluación
+saca el .zip de SB3 y un _policy.npz con puros pesos: la raspberry
+hace inferencia con numpy, sin SB3 ni torch xd.
 """
 import argparse
 import json
@@ -35,14 +19,10 @@ import numpy as np
 from navigation.nav_env import NavEnv, make_env, WORLD_GENERATORS
 
 
-# ----------------------------------------------------------------------
-# Evaluación: métricas que importan para ESTE producto
-# ----------------------------------------------------------------------
 def evaluate(model_predict, obs_mode, episodes=120, seed=1000,
              by_world=True, real_map_dirs=None):
-    """model_predict: función obs -> acción (int). Devuelve métricas
-    globales y por tipo de mundo (cuarto / dos cuartos / exterior), y
-    si se dan mapas reales guardados, también sobre cada uno."""
+    """métricas globales y por tipo de mundo; si das mapas reales
+    guardados, también sobre cada uno."""
     results = {}
     per_world = max(1, episodes // len(WORLD_GENERATORS))
     for w_idx, gen in enumerate(WORLD_GENERATORS):
@@ -50,7 +30,7 @@ def evaluate(model_predict, obs_mode, episodes=120, seed=1000,
                  "steps": [], "n": 0}
         for ep in range(per_world):
             env = NavEnv(obs_mode=obs_mode, seed=seed + w_idx * 1000 + ep)
-            # forzar el tipo de mundo del episodio (evaluación estratificada)
+            # se fuerza el tipo de mundo pa evaluar estratificado
             env.reset()
             world, start, goal = gen(env.rng)
             env.world, env.pose, env.goal = world, list(start), goal
@@ -74,7 +54,6 @@ def evaluate(model_predict, obs_mode, episodes=120, seed=1000,
                 stats["timeout"] += 1
         results[gen.__name__] = stats
 
-    # Evaluación sobre MAPAS REALES guardados (si se dieron)
     for map_dir in (real_map_dirs or []):
         stats = {"success": 0, "collision": 0, "fell": 0, "timeout": 0,
                  "steps": [], "n": 0}
@@ -133,13 +112,9 @@ def print_eval(tag, s):
               f"choque/caída={r['collision_rate']:.1%}")
 
 
-# ----------------------------------------------------------------------
-# Exportación de la política a numpy puro (para la Raspberry)
-# ----------------------------------------------------------------------
 def export_policy_npz(model, path):
-    """Extrae los pesos del actor (MLP + capa de acción) del PPO de SB3.
-    La inferencia es un MLP con tanh: no requiere torch ni SB3 (ver
-    navigation.navigator.NumpyPolicy)."""
+    """saca los pesos del actor del PPO; la inferencia es un MLP con
+    tanh en numpy puro (ver NumpyPolicy), nada de torch en la pi."""
     import torch
     layers = {}
     idx = 0
@@ -155,15 +130,12 @@ def export_policy_npz(model, path):
     return path
 
 
-# ----------------------------------------------------------------------
-# Entrenamiento PPO
-# ----------------------------------------------------------------------
 PPO_KWARGS = dict(
     n_steps=2048,
     batch_size=512,
-    gamma=0.995,          # horizonte largo: llegar importa más que el paso
+    gamma=0.995,          # horizonte largo, llegar importa más que el paso
     gae_lambda=0.95,
-    ent_coef=0.01,        # exploración (evita políticas "solo avanzar")
+    ent_coef=0.01,
     learning_rate=3e-4,
     clip_range=0.2,
     policy_kwargs=dict(net_arch=dict(pi=[128, 128], vf=[128, 128])),
@@ -178,8 +150,7 @@ def train_one(obs_mode, timesteps, seed, n_envs, out_base, verbose=1,
     print(f"\n>>> Entrenando PPO  obs={obs_mode}  timesteps={timesteps:,}  "
           f"envs={n_envs}  seed={seed}")
     if real_map_dirs:
-        # precalcular la conversión de cada mapa ANTES de bifurcar los
-        # workers (y validar que los mapas sirven)
+        # precalienta la conversión de cada mapa antes de bifurcar workers
         from navigation.real_maps import get_factory
         for d in real_map_dirs:
             f = get_factory(d)
@@ -232,11 +203,8 @@ def train_one(obs_mode, timesteps, seed, n_envs, out_base, verbose=1,
 
 
 def compare_modes(timesteps, seed, n_envs):
-    """Entrena ambas observaciones con el mismo presupuesto y reporta.
-    La 'doc' es el vector mínimo del documento; la 'extended' agrega
-    rayos finos y distancias a peligros de piso (los hoyos NO aparecen
-    en d_front/left/right porque no bloquean rayos: la doc solo los ve
-    vía r_*)."""
+    """entrena doc vs extended con el mismo presupuesto y reporta.
+    ojo: la doc solo ve los hoyos vía r_* pq no bloquean rayos."""
     results = {}
     for mode in ("doc", "extended"):
         _, summary = train_one(mode, timesteps, seed, n_envs,

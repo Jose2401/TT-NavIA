@@ -25,7 +25,7 @@ from occupancy_grid import OccupancyGrid
 from sim_world import (SimulatedWorld, SimulatedMotion,
                        SimulatedUltrasonicArray, simulated_vision)
 from vision_bridge import fuse_observations, free_space_rays
-from metrics import (compute_ate, compute_orientation_error,
+from tests.metrics import (compute_ate, compute_orientation_error,
                      uncertainty_series, map_occupancy_accuracy)
 
 
