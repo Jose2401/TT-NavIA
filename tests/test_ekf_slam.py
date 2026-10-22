@@ -10,17 +10,17 @@ import math
 import unittest
 import numpy as np
 
-from ekf_slam import EKFSlam, wrap_angle
+from ekf_slam import EKFSlam, wrapAngle
 from interfaces import (MotionEstimate, Observation, UltrasonicReading,
                         VisionDetection)
-from vision_bridge import fuse_observations, free_space_rays
+from vision_bridge import fuseObservations, freeSpaceRays
 
 
 class TestEKFSlam(unittest.TestCase):
 
     def test_initial_pose(self):
         slam = EKFSlam(1.0, 2.0, math.radians(30))
-        out = slam.get_output()
+        out = slam.getOutput()
         self.assertAlmostEqual(out.x, 1.0)
         self.assertAlmostEqual(out.y, 2.0)
 
@@ -63,7 +63,7 @@ class TestEKFSlam(unittest.TestCase):
         np.testing.assert_allclose(slam.mu, mu_before)
 
     def test_spurious_candidate_is_pruned(self):
-        slam = EKFSlam(0, 0, 0, candidate_ttl=5)
+        slam = EKFSlam(0, 0, 0, candidateTtl=5)
         slam.correct([Observation(range_m=3.0, bearing=1.0)])
         self.assertEqual(len(slam.landmarks), 1)
         for _ in range(10):
@@ -94,7 +94,7 @@ class TestEKFSlam(unittest.TestCase):
         """Un rango impreciso (monocular) debe corregir MENOS que uno
         preciso (ultrasonido) ante la misma innovación."""
         def displacement(sigma_r):
-            slam = EKFSlam(0, 0, 0, confirm_hits=1)
+            slam = EKFSlam(0, 0, 0, confirmHits=1)
             slam.correct([Observation(range_m=2.0, bearing=0.0)])
             slam.predict(MotionEstimate(delta_trans=0.1, delta_rot=0.0))
             mu_before = slam.mu.copy()
@@ -108,7 +108,7 @@ class TestEKFSlam(unittest.TestCase):
         slam = EKFSlam(0, 0, 0)
         slam.predict(MotionEstimate(delta_trans=0.5, delta_rot=0.0))
         slam.correct([])   # sin observaciones -> solo predicción
-        self.assertEqual(slam.cycles_without_correction, 1)
+        self.assertEqual(slam.cyclesWithoutCorrection, 1)
         self.assertLess(slam.confidence, 1.0)
 
     def test_confidence_drops_progressively(self):
@@ -127,8 +127,8 @@ class TestEKFSlam(unittest.TestCase):
 
     def test_output_structure(self):
         slam = EKFSlam(0, 0, 0)
-        out = slam.get_output()
-        d = out.as_dict()
+        out = slam.getOutput()
+        d = out.asDict()
         for key in ("pose", "covarianza", "timestamp", "confianza"):
             self.assertIn(key, d)
         self.assertEqual(len(d["covarianza"]), 3)
@@ -145,7 +145,7 @@ class TestEKFSlam(unittest.TestCase):
         slam.predict(MotionEstimate(delta_trans=0.0,
                                     delta_rot=math.radians(30)))
         self.assertLessEqual(slam.mu[2], math.pi)
-        self.assertAlmostEqual(slam.mu[2], wrap_angle(math.radians(200)),
+        self.assertAlmostEqual(slam.mu[2], wrapAngle(math.radians(200)),
                                places=6)
 
 
@@ -181,7 +181,7 @@ class TestNoDuplicateLandmarks(unittest.TestCase):
     def test_flickering_false_positive_never_confirms(self):
         """Un falso positivo de YOLO que dura 2 frames no debe volverse
         un obstáculo 'inventado' (min_confirm_hits=4 monocular)."""
-        slam = EKFSlam(0, 0, 0, candidate_ttl=10)
+        slam = EKFSlam(0, 0, 0, candidateTtl=10)
         fake = Observation(range_m=3.0, bearing=0.5, label="vase",
                            sigma_r=0.9, min_confirm_hits=4)
         slam.correct([fake])
@@ -196,12 +196,12 @@ class TestNoDuplicateLandmarks(unittest.TestCase):
         slam = EKFSlam(0, 0, 0)
         a = Landmark(2.0, 0.0, label="chair"); a.confirmed = True
         b = Landmark(2.4, 0.3, label="chair"); b.confirmed = True
-        b.seen_count = 3
+        b.seenCount = 3
         slam.landmarks = [a, b]
         slam.correct([])
         chairs = [lm for lm in slam.landmarks if lm.label == "chair"]
         self.assertEqual(len(chairs), 1)
-        self.assertEqual(chairs[0].seen_count, 4)
+        self.assertEqual(chairs[0].seenCount, 4)
 
     def test_observations_for_map_snap(self):
         """Las observaciones asociadas se anclan a la posición consolidada
@@ -214,7 +214,7 @@ class TestNoDuplicateLandmarks(unittest.TestCase):
             r = 2.0 * (1.0 + random.gauss(0.0, 0.25))
             slam.correct([Observation(range_m=max(0.3, r), bearing=0.0,
                                       label="chair", sigma_r=0.5)])
-        snapped = slam.observations_for_map()
+        snapped = slam.observationsForMap()
         self.assertEqual(len(snapped), 1)          # una silla = una marca
         self.assertEqual(snapped[0].label, "chair")
         # La marca coincide con el landmark consolidado, no con el rango
@@ -241,7 +241,7 @@ class TestFusion(unittest.TestCase):
     def test_vision_plus_ultrasonic_uses_us_range(self):
         dets = [VisionDetection(bearing=0.05, label="chair", range_est=3.0)]
         us = [UltrasonicReading(range_m=1.8, sensor_bearing=0.0)]
-        obs = fuse_observations(dets, us)
+        obs = fuseObservations(dets, us)
         self.assertEqual(len(obs), 1)
         self.assertAlmostEqual(obs[0].range_m, 1.8)
         self.assertAlmostEqual(obs[0].bearing, 0.05)   # bearing de visión
@@ -250,15 +250,15 @@ class TestFusion(unittest.TestCase):
     def test_vision_without_us_uses_monocular_with_high_sigma(self):
         dets = [VisionDetection(bearing=1.0, label="chair", range_est=3.0)]
         us = [UltrasonicReading(range_m=1.8, sensor_bearing=0.0)]
-        obs = fuse_observations(dets, us)
+        obs = fuseObservations(dets, us)
         vis_obs = [o for o in obs if o.label == "chair"]
         self.assertEqual(len(vis_obs), 1)
         self.assertAlmostEqual(vis_obs[0].range_m, 3.0)
         self.assertGreater(vis_obs[0].sigma_r, 0.5)
 
     def test_unmatched_us_becomes_wide_bearing_observation(self):
-        obs = fuse_observations([], [UltrasonicReading(range_m=2.0,
-                                                       sensor_bearing=0.7)])
+        obs = fuseObservations([], [UltrasonicReading(range_m=2.0,
+                                                      sensor_bearing=0.7)])
         self.assertEqual(len(obs), 1)
         self.assertEqual(obs[0].label, "eco_us")
         self.assertGreater(obs[0].sigma_phi, math.radians(5))
@@ -266,13 +266,13 @@ class TestFusion(unittest.TestCase):
     def test_moving_objects_excluded(self):
         dets = [VisionDetection(bearing=0.0, label="person",
                                 range_est=2.0, moving=True)]
-        self.assertEqual(fuse_observations(dets, []), [])
+        self.assertEqual(fuseObservations(dets, []), [])
 
     def test_invalid_us_ignored_for_ekf_but_gives_free_ray(self):
         us = [UltrasonicReading(range_m=4.0, sensor_bearing=0.0,
                                 max_range=4.0, valid=False)]
-        self.assertEqual(fuse_observations([], us), [])
-        rays = free_space_rays(us)
+        self.assertEqual(fuseObservations([], us), [])
+        rays = freeSpaceRays(us)
         self.assertEqual(len(rays), 1)
         self.assertGreater(rays[0].range_m, 4.0)
 
@@ -291,7 +291,7 @@ class TestVisualYaw(unittest.TestCase):
     def test_pan_left_is_positive(self):
         from vision_bridge import VisualYawEstimator
         big = self._textured()
-        est = VisualYawEstimator(hfov_deg=70)
+        est = VisualYawEstimator(hfovDeg=70)
         est.update(big[:, 400:1040])
         # la escena se desplaza +20 px (a la derecha) = giro a la izquierda
         dyaw, ok = est.update(big[:, 380:1020])
@@ -302,7 +302,7 @@ class TestVisualYaw(unittest.TestCase):
     def test_pan_right_is_negative(self):
         from vision_bridge import VisualYawEstimator
         big = self._textured()
-        est = VisualYawEstimator(hfov_deg=70)
+        est = VisualYawEstimator(hfovDeg=70)
         est.update(big[:, 380:1020])
         dyaw, ok = est.update(big[:, 400:1040])
         self.assertTrue(ok)
@@ -311,7 +311,7 @@ class TestVisualYaw(unittest.TestCase):
     def test_no_texture_reports_not_ok(self):
         from vision_bridge import VisualYawEstimator
         flat = np.full((480, 640, 3), 127, np.uint8)
-        est = VisualYawEstimator(hfov_deg=70)
+        est = VisualYawEstimator(hfovDeg=70)
         est.update(flat)
         dyaw, ok = est.update(flat)
         self.assertFalse(ok)
@@ -338,7 +338,7 @@ class TestSimulationEndToEnd(unittest.TestCase):
         self.assertLess(res["ate"], 0.35)
         self.assertLess(math.degrees(res["orientation_error"]), 10.0)
         self.assertGreater(res["slam"].confidence, 0.5)
-        self.assertGreaterEqual(len(res["slam"].confirmed_landmarks()), 3)
+        self.assertGreaterEqual(len(res["slam"].confirmedLandmarks()), 3)
 
     def test_simulation_survives_occlusion(self):
         """Con pérdida del 60% de las detecciones visuales el sistema debe

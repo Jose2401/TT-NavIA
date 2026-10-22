@@ -1,11 +1,3 @@
-"""
-obstacle_logic.py 
-
-Clasificación semántica + heurística
-Alias de etiquetas
-Estimación de distancia 
-"""
-
 # ─Alias para mejorar detecciones YOLO 
 LABEL_ALIASES: dict[str, str] = {
     "tv": "monitor",

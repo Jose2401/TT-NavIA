@@ -1,4 +1,21 @@
-"""
+import argparse
+import math
+import os
+import queue
+import threading
+import time
+
+import numpy as np
+
+from interfaces import MotionEstimate
+from vision_bridge import fuseObservations, freeSpaceRays
+from navigation_feed import buildNavigationFrame, safetyAlerts
+from navigation.navigator import Navigator, FORWARD_STEP, TURN_STEP
+from main_lap import (drawChunkMapPanel, drawNavBar, annotateCamera,
+                      describeEvents, _armarSlamYMapa, _hudLine,
+                      _hstackPad)
+
+AYUDA = """
 main_nav_lap.py — navegación completa en laptop (gui): slam + chunks +
 visión -> Navigator (drl) -> indicaciones una a una. como no hay voz,
 los comandos se escriben en la terminal y enter.
@@ -13,54 +30,37 @@ ruta alternativa | estado
 en --sim el usuario "obedece" las indicaciones (así validamos que, una
 a una, sí te llevan al destino sin chocar xd); 'o' cambia a wasd manual.
 """
-import argparse
-import math
-import os
-import queue
-import threading
-import time
-
-import numpy as np
-
-from interfaces import MotionEstimate
-from vision_bridge import fuse_observations, free_space_rays
-from navigation_feed import build_navigation_frame, safety_alerts
-from navigation.navigator import Navigator, FORWARD_STEP, TURN_STEP
-from main_lap import (draw_chunk_map_panel, draw_nav_bar, annotate_camera,
-                      describe_events, _setup_slam_and_map, _hud_line,
-                      _hstack_pad)
 
 
-def start_command_thread(q):
+def startCommandThread(q):
     def loop():
         while True:
             try:
-                line = input()
+                linea = input()
             except EOFError:
                 return
-            q.put(line)
+            q.put(linea)
     t = threading.Thread(target=loop, daemon=True)
     t.start()
     return t
 
 
-def draw_nav_overlay(view, navigator, mgr):
-    """pinta el destino sobre el panel del mapa."""
+def drawNavOverlay(view, navigator, mgr):
     import cv2
     st = navigator.status
     if st.goal is None:
         return view
-    lo, _hz, (ox, oy) = mgr.stitched(include_disk=False)
+    lo, _hz, (ox, oy) = mgr.stitched(includeDisk=False)
     h, w = lo.shape
     vh, vw = view.shape[:2]
-    scale = min(vh / h, vw / w) if h and w else 1.0
+    escala = min(vh / h, vw / w) if h and w else 1.0
 
-    def to_px(wx, wy):
+    def aPx(wx, wy):
         gx = wx / mgr.resolution - ox
-        gy = wy / mgr.resolution - oy
-        return int(gx * scale), int(vh - 1 - gy * scale)
+        gy =wy / mgr.resolution - oy
+        return int(gx * escala), int(vh - 1 - gy * escala)
 
-    gx, gy = to_px(*st.goal)
+    gx, gy = aPx(*st.goal)
     cv2.drawMarker(view, (gx, gy), (255, 0, 200), cv2.MARKER_STAR, 18, 2)
     label = st.goal_label or "destino"
     cv2.putText(view, label, (gx + 8, gy + 4), cv2.FONT_HERSHEY_SIMPLEX,
@@ -68,49 +68,49 @@ def draw_nav_overlay(view, navigator, mgr):
     return view
 
 
-def print_msgs(msgs):
+# imprime lo que diria la voz
+def printMsgs(msgs):
     for m in msgs:
         print(f"[NAV p{m.priority}] {m.text}", flush=True)
 
 
-def run_sim(args):
+# sim donde el usuario obedece al navegador
+def runSim(args):
     if not args.headless:
         import cv2
     from sim_world import (SimulatedWorld, SimulatedUltrasonicArray,
-                           simulated_vision)
+                           simulatedVision)
     from sim_world import KeyboardUser
     if args.headless and args.max_frames is None:
         args.max_frames = 500
 
-    world = SimulatedWorld.default_room()
+    world = SimulatedWorld.defaultRoom()
     user = KeyboardUser(world, start=(0.7, 0.7, 0.0))
-    us_array = SimulatedUltrasonicArray(world)
-    slam, mgr = _setup_slam_and_map(args, x0=0.7, y0=0.7)
-    # cadencia igualita al entrenamiento: 1 decisión ~cada 2 frames,
-    # avanzando FORWARD_STEP/2 por frame
+    usArray = SimulatedUltrasonicArray(world)
+    slam, mgr = _armarSlamYMapa(args, x0=0.7, y0=0.7)
     navigator = Navigator(args.model_nav, decide_every_s=0.0,
                           repeat_s=2.5)
 
-    cmd_q = queue.Queue()
-    start_command_thread(cmd_q)
-    print(__doc__)
+    colaCmd = queue.Queue()
+    startCommandThread(colaCmd)
+    print(AYUDA)
     print("[NAV p2] Sistema listo. Diga su destino. "
           "(ej: 've a la silla', 'punto 5 3')")
 
-    obey = True
-    events_log = []
-    trajectory = []
-    output = slam.get_output()
-    nav_frame = None
-    step = 0
+    obedecer = True
+    eventsLog = []
+    trayectoria = []
+    output = slam.getOutput()
+    navFrame = None
+    paso = 0
 
-    while args.max_frames is None or step < args.max_frames:
-        step += 1
+    while args.max_frames is None or paso < args.max_frames:
+        paso += 1
 
         try:
             while True:
-                line = cmd_q.get_nowait()
-                print_msgs(navigator.handle_command(line, nav_frame))
+                linea = colaCmd.get_nowait()
+                printMsgs(navigator.handle_command(linea, navFrame))
         except queue.Empty:
             pass
 
@@ -124,9 +124,9 @@ def run_sim(args):
         if key == ord('q'):
             break
         elif key == ord('o'):
-            obey = not obey
-            print(f"[modo] {'obedecer navegador' if obey else 'manual wasd'}")
-        elif not obey:
+            obedecer = not obedecer
+            print(f"[modo] {'obedecer navegador' if obedecer else 'manual wasd'}")
+        elif not obedecer:
             if key == ord('w'):
                 forward = FORWARD_STEP / 2
             elif key == ord('s'):
@@ -137,97 +137,97 @@ def run_sim(args):
                 rot = -TURN_STEP / 2
         elif navigator.status.session == "activo" \
                 and navigator.status.last_action is not None:
-            act = navigator.status.last_action
-            if act == 0:
+            papu = navigator.status.last_action
+            if papu == 0:
                 forward = FORWARD_STEP / 2
-            elif act == 1:
+            elif papu == 1:
                 rot = TURN_STEP / 2
-            elif act == 2:
+            elif papu == 2:
                 rot = -TURN_STEP / 2
         motion = user.command(forward, rot)
 
-        true_pose = tuple(user.true_pose)
-        us_readings = us_array.read(true_pose)
-        detections = simulated_vision(world, true_pose)
-        observations = fuse_observations(detections, us_readings)
-        output = slam.step(motion, observations)
+        truePose = tuple(user.truePose)
+        usLecturas = usArray.read(truePose)
+        detections = simulatedVision(world, truePose)
+        observaciones = fuseObservations(detections, usLecturas)
+        output = slam.step(motion, observaciones)
         pose = (output.x, output.y, output.theta)
-        mgr.update_from_scan(pose, slam.observations_for_map()
-                             + free_space_rays(us_readings),
-                             max_range=args.max_range)
-        describe_events(mgr.update_position(pose, slam.get_landmarks()),
-                        events_log)
-        trajectory.append((output.x, output.y))
+        mgr.updateFromScan(pose, slam.observationsForMap()
+                           + freeSpaceRays(usLecturas),
+                           maxRange=args.max_range)
+        describeEvents(mgr.updatePosition(pose, slam.getLandmarks()),
+                       eventsLog)
+        trayectoria.append((output.x, output.y))
 
-        nav_frame = build_navigation_frame(
-            slam, mgr, detections, max_range=args.max_range,
-            chunk=mgr.current_chunk, room=mgr.current_room,
-            ultrasonic=us_readings)
+        navFrame = buildNavigationFrame(
+            slam, mgr, detections, maxRange=args.max_range,
+            chunk=mgr.currentChunk, room=mgr.currentRoom,
+            ultrasonic=usLecturas)
 
-        # seguridad primero (alg. 7), luego navegación (alg. 11)
-        alerts = safety_alerts(nav_frame)
-        for prio, msg in alerts:
+        alertas = safetyAlerts(navFrame)
+        for prio, msg in alertas:
             if prio == 0:
                 print(f"[ALERTA p0] {msg}")
-        print_msgs(navigator.update(nav_frame, mgr, alerts))
+        printMsgs(navigator.update(navFrame, mgr, alertas))
 
         if not args.headless:
             import cv2
-            view = draw_chunk_map_panel(mgr, slam, output, events_log,
-                                        size=560, true_pose=true_pose)
-            view = draw_nav_overlay(view, navigator, mgr)
+            vista = drawChunkMapPanel(mgr, slam, output, eventsLog,
+                                      size=560, truePose=truePose)
+            vista = drawNavOverlay(vista, navigator, mgr)
             st = navigator.status
             estado = f"sesion={st.session}"
             if st.goal_label:
                 estado += f" destino={st.goal_label}"
             if st.d_goal:
                 estado += f" faltan={st.d_goal:.1f}m"
-            cv2.putText(view, estado, (8, view.shape[0] - 28),
+            cv2.putText(vista, estado, (8, vista.shape[0] - 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 200), 1,
                         cv2.LINE_AA)
-            cv2.putText(view, _hud_line(output, mgr, slam),
-                        (8, view.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
+            cv2.putText(vista, _hudLine(output, mgr, slam),
+                        (8, vista.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
                         0.45, (255, 60, 60), 1, cv2.LINE_AA)
-            bar = draw_nav_bar(nav_frame, alerts, view.shape[1])
+            barra = drawNavBar(navFrame, alertas, vista.shape[1])
             cv2.imshow("NavIA - navegacion DRL (sim)",
-                       np.vstack([view, bar]))
+                       np.vstack([vista, barra]))
 
     if not args.headless:
         import cv2
         cv2.destroyAllWindows()
     if not args.no_save:
-        mgr.save_all()
-        mgr.save_landmarks(slam.export_landmarks())
+        mgr.saveAll()
+        mgr.saveLandmarks(slam.exportLandmarks())
 
 
-def run_camera(args):
+# lo mismo pero con camara
+def runCamera(args):
     import cv2
     from vision_bridge import VisionBridge
-    from odometry import make_motion_estimator
+    from odometry import makeMotionEstimator
 
     print("Cargando módulo de visión (YOLOv8-seg)...")
-    bridge = VisionBridge(model_path=args.model,
-                          camera_profile=args.camera_profile)
-    motion_est = make_motion_estimator(
-        use_imu=args.imu, imu_bus=args.imu_bus, imu_addr=args.imu_addr,
-        step_length_m=args.step_length,
-        hfov_deg=math.degrees(bridge.hfov))
-    slam, mgr = _setup_slam_and_map(args)
+    bridge = VisionBridge(modelPath=args.model,
+                          cameraProfile=args.camera_profile)
+    motionEst = makeMotionEstimator(
+        useImu=args.imu, imuBus=args.imu_bus, imuAddr=args.imu_addr,
+        stepLengthM=args.step_length,
+        hfovDeg=math.degrees(bridge.hfov))
+    slam, mgr = _armarSlamYMapa(args)
     navigator = Navigator(args.model_nav)
 
     cap = cv2.VideoCapture(args.video if args.video else args.camera)
     if not cap.isOpened():
         raise SystemExit("No se pudo abrir la cámara/video")
 
-    cmd_q = queue.Queue()
-    start_command_thread(cmd_q)
+    colaCmd = queue.Queue()
+    startCommandThread(colaCmd)
     print("[NAV p2] Sistema listo. Diga su destino.")
 
-    events_log = []
-    output = slam.get_output()
-    nav_frame = None
-    last_t = time.time()
-    frames = 0
+    eventsLog = []
+    output = slam.getOutput()
+    navFrame = None
+    lastT = time.time()
+    frames =0
     try:
         while args.max_frames is None or frames < args.max_frames:
             ret, frame = cap.read()
@@ -236,50 +236,50 @@ def run_camera(args):
                     break
                 continue
             frames += 1
-            now = time.time()
-            dt = max(1e-3, now - last_t)
-            last_t = now
+            ahora = time.time()
+            dt = max(1e-3, ahora - lastT)
+            lastT = ahora
 
             try:
                 while True:
-                    print_msgs(navigator.handle_command(cmd_q.get_nowait(),
-                                                        nav_frame))
+                    printMsgs(navigator.handle_command(colaCmd.get_nowait(),
+                                                       navFrame))
             except queue.Empty:
                 pass
 
-            motion, odo = motion_est.update(frame, dt)
-            yaw_ok = odo["source"] != "ninguno"
+            motion, odo = motionEst.update(frame, dt)
+            yawOk = odo["source"] != "ninguno"
             if odo["pitch_deg"] is not None:
-                bridge.cam_pitch_deg = odo["pitch_deg"]
-            detections = bridge.process(frame, ego_yaw=motion.delta_rot)
-            observations = fuse_observations(detections, [])
-            output = slam.step(motion, observations)
+                bridge.camPitchDeg = odo["pitch_deg"]
+            detections = bridge.process(frame, egoYaw=motion.delta_rot)
+            observaciones = fuseObservations(detections, [])
+            output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
-            mgr.update_from_scan(pose, slam.observations_for_map(),
-                                 max_range=args.max_range)
-            mgr.clear_footprint(output.x, output.y)
-            describe_events(mgr.update_position(pose, slam.get_landmarks()),
-                            events_log)
+            mgr.updateFromScan(pose, slam.observationsForMap(),
+                               maxRange=args.max_range)
+            mgr.clearFootprint(output.x, output.y)
+            describeEvents(mgr.updatePosition(pose, slam.getLandmarks()),
+                           eventsLog)
 
-            nav_frame = build_navigation_frame(
-                slam, mgr, detections, max_range=args.max_range,
-                chunk=mgr.current_chunk, room=mgr.current_room)
-            alerts = safety_alerts(nav_frame)
-            for prio, msg in alerts:
+            navFrame = buildNavigationFrame(
+                slam, mgr, detections, maxRange=args.max_range,
+                chunk=mgr.currentChunk, room=mgr.currentRoom)
+            alertas = safetyAlerts(navFrame)
+            for prio, msg in alertas:
                 if prio == 0:
                     print(f"[ALERTA p0] {msg}")
-            print_msgs(navigator.update(nav_frame, mgr, alerts))
+            printMsgs(navigator.update(navFrame, mgr, alertas))
 
             if not args.headless:
-                cam_v = annotate_camera(frame.copy(), detections,
-                                        bridge.hfov, yaw_ok, 1.0 / dt)
-                map_v = draw_chunk_map_panel(mgr, slam, output, events_log,
-                                             size=cam_v.shape[0])
-                map_v = draw_nav_overlay(map_v, navigator, mgr)
-                top = _hstack_pad(cam_v, map_v)
-                bar = draw_nav_bar(nav_frame, alerts, top.shape[1])
+                camV = annotateCamera(frame.copy(), detections,
+                                      bridge.hfov, yawOk, 1.0 / dt)
+                mapV = drawChunkMapPanel(mgr, slam, output, eventsLog,
+                                         size=camV.shape[0])
+                mapV = drawNavOverlay(mapV, navigator, mgr)
+                arriba = _hstackPad(camV, mapV)
+                barra = drawNavBar(navFrame, alertas, arriba.shape[1])
                 cv2.imshow("NavIA - navegacion DRL (camara)",
-                           np.vstack([top, bar]))
+                           np.vstack([arriba, barra]))
                 if (cv2.waitKey(1) & 0xFF) == ord('q'):
                     break
     finally:
@@ -287,11 +287,11 @@ def run_camera(args):
         if not args.headless:
             cv2.destroyAllWindows()
         if not args.no_save:
-            mgr.save_all()
-            mgr.save_landmarks(slam.export_landmarks())
+            mgr.saveAll()
+            mgr.saveLandmarks(slam.exportLandmarks())
 
 
-def build_parser():
+def buildParser():
     p = argparse.ArgumentParser(description="Navegación DRL en laptop (GUI)")
     p.add_argument("--sim", action="store_true")
     p.add_argument("--camera", type=int, default=0)
@@ -318,8 +318,8 @@ def build_parser():
 
 
 if __name__ == "__main__":
-    args = build_parser().parse_args()
+    args = buildParser().parse_args()
     if args.sim:
-        run_sim(args)
+        runSim(args)
     else:
-        run_camera(args)
+        runCamera(args)

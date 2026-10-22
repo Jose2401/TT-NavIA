@@ -34,12 +34,12 @@ class RealMapWorldFactory:
 
         if not os.path.isdir(map_dir):
             raise FileNotFoundError(f"No existe el mapa: {map_dir}")
-        mgr = ChunkedMapManager.open_existing(map_dir)
-        if not mgr.known_chunk_indices():
+        mgr = ChunkedMapManager.openExisting(map_dir)
+        if not mgr.knownChunkIndices():
             raise ValueError(
                 f"El mapa {map_dir} está vacío: recorre el entorno con "
                 "main_lap.py o video_a_mapa.py primero.")
-        lo, hz, (ox, oy) = mgr.stitched(include_disk=True)
+        lo, hz, (ox, oy) = mgr.stitched(includeDisk=True)
         res = mgr.resolution
         self.map_dir = map_dir
         self.resolution = res

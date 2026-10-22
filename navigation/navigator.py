@@ -1,12 +1,5 @@
 """
-navigator.py — el runtime que USA el modelo entrenado.
-
-construye el estado desde el NavigationFrame + mapa, corre la política
-y suelta indicaciones una por una pa el módulo de voz. ojo: las frases
-de instrucciones y de sesión son las LITERALES del documento del TT
-(hay tests que las comparan tal cual), no moverles ni una letra.
-puede cargar el .zip de SB3 (laptop) o el _policy.npz con numpy puro
-(la raspberry no necesita SB3 ni torch).
+navigator.py, es el runtime que usa el modelo entrenado.
 """
 import json
 import math
@@ -21,8 +14,8 @@ import numpy as np
 from navigation.nav_env import (MAX_RANGE, RISK_RANGE, EXT_RAY_ANGLES,
                                 DOC_RAY_ANGLES, FRONT_HALF, SIDE_MAX,
                                 FORWARD_STEP, TURN_STEP)
-from navigation_feed import (CRITICAL_DISTANCE_M, effective_front_distance,
-                             needs_replan)
+from navigation_feed import (CRITICAL_DISTANCE_M, effectiveFrontDistance,
+                             needsReplan)
 
 ARRIVAL_RADIUS = 0.6
 WAYPOINT_RADIUS = 1.0
@@ -35,10 +28,6 @@ MAX_FORCED_STREAK = 8
 
 @dataclass
 class NavCommand:
-    """lo que el módulo de voz/PLN (futuro) le entrega a navegación.
-    tipo: navegar | pausar | reanudar | detener | ruta_alternativa |
-    estado | desconocido; destino es etiqueta o None, punto es (x, y).
-    """
     tipo: str
     destino: Optional[str] = None
     punto: Optional[tuple] = None
@@ -49,8 +38,6 @@ _DEST_WORDS = r"(?:ve|ir|vamos|llevame|llévame|navega|navegar|guiame|guíame) (
 
 
 def parse_command(text: str) -> NavCommand:
-    """español simple -> NavCommand. es el sustituto ligero del
-    clasificador de intenciones del PLN mientras ese módulo no existe."""
     t = text.strip().lower()
     if not t:
         return NavCommand("desconocido", texto_original=text)
@@ -84,7 +71,7 @@ def parse_command(text: str) -> NavCommand:
     return NavCommand("desconocido", texto_original=text)
 
 
-# sinónimos español -> etiquetas de landmarks del SLAM
+# sinónimos españo etiquetas de landmarks del SLAM
 DEST_ALIASES = {
     "salida": "door", "puerta": "door", "entrada": "door",
     "silla": "chair", "mesa": "table", "sofa": "sofa", "sillon": "sofa",
@@ -226,8 +213,8 @@ def build_observation(frame, grid, goal, obs_mode, prev_action):
         # fino se cuela entre dos celdas; el abanico cierra esos huecos
         fan = math.radians(6)
         rays = np.array([
-            min(grid.cast_distance(pose[0], pose[1], pose[2] + a + da,
-                                   MAX_RANGE)
+            min(grid.castDistance(pose[0], pose[1], pose[2] + a + da,
+                                  MAX_RANGE)
                 for da in (-fan, 0.0, fan))
             for a in EXT_RAY_ANGLES])
         hz = _hazard_sector_from_costmap(frame)
@@ -385,7 +372,7 @@ class Navigator:
                                kind="evento")]
 
         now = time.time()
-        replan = needs_replan(alerts or [])
+        replan = needsReplan(alerts or [])
         if not replan and now - self._last_decide_t < self.decide_every_s:
             return msgs
         self._last_decide_t = now
@@ -400,7 +387,7 @@ class Navigator:
         # umbral y distancia efectiva que las alertas), se anula y se
         # gira — con histéresis en el sentido, pq si no en una esquina
         # oirías izquierda/derecha/izquierda sin salir nunca
-        eff_front = effective_front_distance(frame)
+        eff_front = effectiveFrontDistance(frame)
         if action == 0 and eff_front < CRITICAL_DISTANCE_M \
                 and d_final > ARRIVAL_RADIUS:
             action = self._forced_turn(frame, phi)

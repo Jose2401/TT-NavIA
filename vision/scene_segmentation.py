@@ -73,8 +73,6 @@ class SceneSegmenter:
         return barrier_mask.astype(np.uint8), floor_mask.astype(np.uint8)
 
     def extract_ground_masks(self, seg_map):
-        """mascaras pal detector de peligros de piso: transitable,
-        agua y escaleras."""
         walkable = np.isin(seg_map, self.WALKABLE_IDS)
         water = np.isin(seg_map, self.WATER_IDS)
         stairs = np.isin(seg_map, self.STAIRS_IDS)

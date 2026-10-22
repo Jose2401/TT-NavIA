@@ -1,21 +1,14 @@
 # Dependencias del pipeline SLAM + mapeo por chunks + visión.
-# Probado con Python 3.13 (laptop). En la Raspberry Pi instalar las
-# variantes ARM de torch/opencv según corresponda.
 numpy>=2.0
 opencv-python>=4.10
 matplotlib>=3.9
 
-# Módulo de visión (paquete vision/)
+# Módulo de visión 
 torch>=2.4
 ultralytics>=8.3          # YOLOv8-seg
-transformers>=4.44        # SegFormer ADE20K (peligros de piso)
+transformers>=4.44        
 
 # Módulo de navegación (DRL)
 gymnasium>=1.0            # entorno de entrenamiento
-stable-baselines3>=2.3    # PPO (solo para ENTRENAR / laptop; en la
-                          # Raspberry la inferencia usa numpy puro con
-                          # models/*_policy.npz)
+stable-baselines3>=2.3    # PPO (solo para ENTRENAR)
 
-# Hardware Raspberry Pi (descomentar cuando exista el hardware)
-# smbus2                  # I2C: ultrasonido MB1232 + IMU BNO055 (odometry.py)
-# pyttsx3                 # salida de voz

@@ -1,15 +1,3 @@
-"""
-main_pi.py — main principal en la raspberry (sin pantalla, todo es audio).
-
-mismo pipeline que main_lap.py pero headless. ojo: el hardware que falta
-queda marcado con TODO aquí mismo (ultrasonido MB1232 en Mb1232Array,
-voz real en VoiceOutput.say); la imu bno055 ya está en odometry.py con
-fallback a flujo óptico.
-
-    python main_pi.py --map-dir maps/casa
-    python main_pi.py --hazards --hazard-every 10
-    ctrl+c guarda mapa + landmarks y sale.
-"""
 import argparse
 import math
 import os
@@ -17,45 +5,39 @@ import time
 
 from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
-from vision_bridge import fuse_observations
-from navigation_feed import build_navigation_frame, safety_alerts
+from vision_bridge import fuseObservations
+from navigation_feed import buildNavigationFrame, safetyAlerts
 
 
 class Mb1232Array:
-    """par de MB1232 (izq/der). TODO hardware: smbus2, write 0x51 ->
-    esperar ~100ms -> leer 2 bytes (cm); direcciones y montaje según
-    TT_2026_B045 §7.6. mientras, read() da [] y jala solo con cámara."""
-
     LEFT_BEARING = math.radians(90)
     RIGHT_BEARING = math.radians(-90)
     MAX_RANGE_M = 7.65
 
-    def __init__(self, addr_left=0x20, addr_right=0x21, bus=1):
-        self.addr_left = addr_left
-        self.addr_right = addr_right
-        self.available = False   # TODO: detectar el bus i2c real
+    def __init__(self, addrLeft=0x20, addrRight=0x21, bus=1):
+        self.addrLeft = addrLeft
+        self.addrRight= addrRight
+        self.available = False
 
+    # TODO hardware, por ahora nada
     def read(self):
-        """-> list[UltrasonicReading]. TODO hardware."""
         return []
 
 
 class VoiceOutput:
-    """TODO: conectar el tts real del equipo (pyttsx3 con cola
-    priorizada 0/1/2). por ahora imprime con prefijo [VOZ]."""
-
     def __init__(self):
-        self._last = {}
+        self._ultimo = {}
 
-    def say(self, msg, priority=2, repeat_after_s=4.0):
-        # no repetir la misma frase en ráfaga (el tts real lo hará solo)
-        now = time.time()
-        if now - self._last.get(msg, 0.0) < repeat_after_s:
+    # no repite la misma frase en rafaga
+    def say(self, msg, priority=2, repeatAfterS=4.0):
+        ahora = time.time()
+        if ahora - self._ultimo.get(msg, 0.0) < repeatAfterS:
             return
-        self._last[msg] = now
+        self._ultimo[msg] = ahora
         print(f"[VOZ p{priority}] {msg}", flush=True)
 
 
+# loop headless de la pi
 def main():
     p = argparse.ArgumentParser(description="Main Raspberry Pi (headless)")
     p.add_argument("--camera", type=int, default=0)
@@ -84,41 +66,41 @@ def main():
 
     import cv2
     from vision_bridge import VisionBridge, GroundHazardDetector
-    from odometry import make_motion_estimator
+    from odometry import makeMotionEstimator
 
-    voice = VoiceOutput()
-    voice.say("Iniciando sistema de navegacion", priority=2)
+    voz = VoiceOutput()
+    voz.say("Iniciando sistema de navegacion", priority=2)
 
-    bridge = VisionBridge(model_path=args.model,
-                          camera_profile="picam3wide",
-                          cam_height_m=args.cam_height,
-                          cam_pitch_deg=args.cam_pitch)
-    hazard_det = GroundHazardDetector(
-        camera_profile="picam3wide", cam_height_m=args.cam_height,
-        cam_pitch_deg=args.cam_pitch) if args.hazards else None
-    motion_est = make_motion_estimator(
-        use_imu=not args.no_imu, imu_bus=args.imu_bus,
-        imu_addr=args.imu_addr, step_length_m=args.step_length,
-        hfov_deg=math.degrees(bridge.hfov),
-        say=lambda m: voice.say(m, priority=2))
-    ultrasonic = Mb1232Array()
+    bridge = VisionBridge(modelPath=args.model,
+                          cameraProfile="picam3wide",
+                          camHeightM=args.cam_height,
+                          camPitchDeg=args.cam_pitch)
+    detPeligros = GroundHazardDetector(
+        cameraProfile="picam3wide", camHeightM=args.cam_height,
+        camPitchDeg=args.cam_pitch) if args.hazards else None
+    motionEst = makeMotionEstimator(
+        useImu=not args.no_imu, imuBus=args.imu_bus,
+        imuAddr=args.imu_addr, stepLengthM=args.step_length,
+        hfovDeg=math.degrees(bridge.hfov),
+        say=lambda m: voz.say(m, priority=2))
+    ultrasonico = Mb1232Array()
 
-    mgr = ChunkedMapManager(map_dir=args.map_dir,
-                            chunk_size_m=args.chunk_size,
+    mgr = ChunkedMapManager(mapDir=args.map_dir,
+                            chunkSizeM=args.chunk_size,
                             resolution=args.resolution)
     slam = EKFSlam(0.0, 0.0, 0.0)
-    saved = mgr.load_landmarks()
-    if saved:
-        slam.import_landmarks(saved)
-        voice.say("Mapa conocido cargado", priority=2)
+    guardados = mgr.loadLandmarks()
+    if guardados:
+        slam.importLandmarks(guardados)
+        voz.say("Mapa conocido cargado", priority=2)
 
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
         raise SystemExit("No se pudo abrir la cámara")
 
-    last_t = time.time()
-    last_save = last_t
-    last_hazards = []
+    lastT = time.time()
+    lastSave= lastT
+    ultimosPeligros = []
     frames = 0
     nav = None
 
@@ -128,61 +110,58 @@ def main():
             if not ret:
                 continue
             frames += 1
-            now = time.time()
-            dt = max(1e-3, now - last_t)
-            last_t = now
+            ahora = time.time()
+            dt = max(1e-3, ahora - lastT)
+            lastT =ahora
 
-            motion, odo = motion_est.update(frame, dt)
-            # pitch real de la imu -> bridge: la geometría de plano de piso
-            # usa el ángulo verdadero, no el fijo de calibración
+            motion, odo = motionEst.update(frame, dt)
             if odo["pitch_deg"] is not None:
-                bridge.cam_pitch_deg = odo["pitch_deg"]
-                if hazard_det is not None:
-                    hazard_det.cam_pitch_deg = odo["pitch_deg"]
-            detections = bridge.process(frame, ego_yaw=motion.delta_rot)
-            if hazard_det is not None and frames % args.hazard_every == 0:
-                last_hazards = hazard_det.process(frame, detections)
-            detections = detections + last_hazards
+                bridge.camPitchDeg = odo["pitch_deg"]
+                if detPeligros is not None:
+                    detPeligros.camPitchDeg = odo["pitch_deg"]
+            detections = bridge.process(frame, egoYaw=motion.delta_rot)
+            if detPeligros is not None and frames % args.hazard_every == 0:
+                ultimosPeligros = detPeligros.process(frame, detections)
+            detections = detections + ultimosPeligros
 
-            us_readings = ultrasonic.read()          # [] hasta tener hw
-            observations = fuse_observations(detections, us_readings)
-            output = slam.step(motion, observations)
+            usLecturas = ultrasonico.read()
+            observaciones = fuseObservations(detections, usLecturas)
+            output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
-            mgr.update_from_scan(pose, slam.observations_for_map(),
-                                 max_range=args.max_range)
-            mgr.clear_footprint(output.x, output.y)
-            events = mgr.update_position(pose, slam.get_landmarks())
+            mgr.updateFromScan(pose, slam.observationsForMap(),
+                               maxRange=args.max_range)
+            mgr.clearFootprint(output.x, output.y)
+            eventos = mgr.updatePosition(pose, slam.getLandmarks())
 
-            for ev in events:
+            for ev in eventos:
                 if ev["type"] == "chunk_change" and not ev["known"]:
-                    voice.say("Zona nueva", priority=2)
+                    voz.say("Zona nueva", priority=2)
                 elif ev["type"] == "room_recognized":
-                    voice.say(f"Estas en {ev['room']}", priority=1)
+                    voz.say(f"Estas en {ev['room']}", priority=1)
                 elif ev["type"] == "door_crossed":
-                    voice.say("Cruzaste una puerta", priority=1)
+                    voz.say("Cruzaste una puerta", priority=1)
 
-            # este NavigationFrame es la entrada del módulo drl
-            nav = build_navigation_frame(
-                slam, mgr, detections, max_range=args.max_range,
-                chunk=mgr.current_chunk, room=mgr.current_room,
-                ultrasonic=us_readings)
+            nav = buildNavigationFrame(
+                slam, mgr, detections, maxRange=args.max_range,
+                chunk=mgr.currentChunk, room=mgr.currentRoom,
+                ultrasonic=usLecturas)
 
-            for prio, msg in safety_alerts(nav):
-                voice.say(msg, priority=prio,
-                          repeat_after_s=2.0 if prio == 0 else 5.0)
+            for prio, msg in safetyAlerts(nav):
+                voz.say(msg, priority=prio,
+                        repeatAfterS=2.0 if prio == 0 else 5.0)
 
-            if now - last_save > args.save_every:
-                mgr.save_all()
-                mgr.save_landmarks(slam.export_landmarks())
-                last_save = now
+            if ahora - lastSave > args.save_every:
+                mgr.saveAll()
+                mgr.saveLandmarks(slam.exportLandmarks())
+                lastSave = ahora
     except KeyboardInterrupt:
         pass
     finally:
         cap.release()
-        n = mgr.save_all()
-        mgr.save_landmarks(slam.export_landmarks())
+        n = mgr.saveAll()
+        mgr.saveLandmarks(slam.exportLandmarks())
         print(f"\n[mapa] {n} chunks + landmarks guardados en {args.map_dir}")
-        voice.say("Sistema detenido", priority=2)
+        voz.say("Sistema detenido", priority=2)
 
 
 if __name__ == "__main__":

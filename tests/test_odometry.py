@@ -33,7 +33,7 @@ class TestStepDetector(unittest.TestCase):
         det = StepDetector()
         count = sum(det.update(m, t) for m, t in self._walk_trace(8))
         self.assertEqual(count, 8)
-        self.assertEqual(det.steps_total, 8)
+        self.assertEqual(det.stepsTotal, 8)
 
     def test_sustained_peak_counts_once(self):
         """Un pico largo (sin regresar bajo reset_level) = UN paso."""
@@ -43,7 +43,7 @@ class TestStepDetector(unittest.TestCase):
 
     def test_min_interval_rejects_bounces(self):
         """Dos picos a 0.1 s (rebote del sensor) = un solo paso."""
-        det = StepDetector(min_interval_s=0.30)
+        det = StepDetector(minIntervalS=0.30)
         trace = [(2.5, 0.00), (0.2, 0.05), (2.5, 0.10), (0.2, 0.15),
                  (2.5, 0.50), (0.2, 0.55)]
         count = sum(det.update(m, t) for m, t in trace)
@@ -64,11 +64,11 @@ class FakeImu:
         self.accels = list(accels)
         self.i = 0
 
-    def read_euler(self):
+    def readEuler(self):
         v = self.eulers[min(self.i, len(self.eulers) - 1)]
         return v
 
-    def read_linear_accel(self):
+    def readLinearAccel(self):
         v = self.accels[min(self.i, len(self.accels) - 1)]
         self.i += 1
         return v
@@ -105,7 +105,7 @@ class TestMotionEstimator(unittest.TestCase):
         imu = FakeImu(eulers=[(0, 0, 0)] * 4,
                       accels=[(0, 0, 0.2), (0, 0, 2.5),
                               (0, 0, 0.2), (0, 0, 0.2)])
-        est = MotionEstimator(imu=imu, step_length_m=0.7)
+        est = MotionEstimator(imu=imu, stepLengthM=0.7)
         dists = [est.update(None, 0.2)[0].delta_trans for _ in range(4)]
         self.assertEqual(dists.count(0.7), 1)           # un paso
         self.assertAlmostEqual(sum(dists), 0.7)
@@ -122,7 +122,7 @@ class TestMotionEstimator(unittest.TestCase):
 
     def test_io_error_mid_session_falls_back_that_cycle(self):
         class FlakyImu(FakeImu):
-            def read_euler(self):
+            def readEuler(self):
                 return None                             # I2C falló
         est = MotionEstimator(imu=FlakyImu([], []))
         m, info = est.update(None, 0.1)

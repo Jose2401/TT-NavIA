@@ -41,7 +41,7 @@ def map_occupancy_accuracy(grid_est, grid_gt_occupied_cells, threshold=1.0,
     celda verdadera a esa distancia (en celdas). Con resolución de 5 cm y
     ruido de rango de varios cm, exigir coincidencia exacta de celda
     castigaría errores menores que el propio ruido del sensor."""
-    est_occ = set(map(tuple, np.argwhere(grid_est.log_odds > threshold)))
+    est_occ = set(map(tuple, np.argwhere(grid_est.logOdds > threshold)))
     gt_occ = set(grid_gt_occupied_cells)
     if not gt_occ:
         return None

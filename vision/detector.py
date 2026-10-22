@@ -1,32 +1,15 @@
-"""
-detector.py
------------
-Usa YOLOv8-seg (modelo de segmentación) para obtener:
-  - Bounding box
-  - Máscara de segmentación (silueta real del objeto)
-  - Clase y confianza
-
-La CNN interna de YOLO tiene dos cabezas:
-  1. Detección   → bounding boxes
-  2. Segmentación → máscaras de 160×160 upscaleadas al frame
-"""
-
 from ultralytics import YOLO
 import numpy as np
 
 
 class ObjectDetector:
-    # yolov8n-seg.pt  → nano  (rápido, menos preciso)
-    # yolov8s-seg.pt  → small (buen balance para TT)
+    # yolov8n-seg.pt  = nano  (rápido, menos preciso, probable modelo para la pi xd)
+    # yolov8s-seg.pt  = small (mas pro ojala funcione en la pi)
     def __init__(self, model_path: str = "yolov8s-seg.pt", confidence: float = 0.4):
         self.model = YOLO(model_path)
         self.confidence = confidence
 
     def detect(self, frame: np.ndarray) -> list[dict]:
-        """
-        Retorna lista de detecciones con:
-          label, confidence, bbox (x1,y1,x2,y2), mask (H×W bool array | None)
-        """
         results = self.model(frame, stream=False, verbose=False)
         detections = []
 
@@ -44,7 +27,7 @@ class ObjectDetector:
                 # Máscara de segmentación (binaria, mismo tamaño que el frame)
                 mask = None
                 if masks is not None and i < len(masks.data):
-                    # masks.data[i] es tensor float [H, W] → binarizar
+                    # masks.data[i] es tensor float [H, W] 
                     mask_tensor = masks.data[i].cpu().numpy()
                     mask = (mask_tensor > 0.5).astype(np.uint8)  # 0 ó 1
 
@@ -52,7 +35,7 @@ class ObjectDetector:
                     "label":      label,
                     "confidence": conf,
                     "bbox":       (x1, y1, x2, y2),
-                    "mask":       mask,          # np.ndarray H×W uint8 | None
+                    "mask":       mask,       
                 })
 
         return detections

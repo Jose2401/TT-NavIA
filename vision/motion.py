@@ -1,17 +1,3 @@
-"""
-motion.py
-
---------- para no usar el tracker de liberia
-Dos niveles de detección de movimiento:
-
-  1. GlobalMotionDetector  → diferencia de frames completos (fondo vs escena)
-  2. ObjectMotionTracker   → rastrea centroide de cada objeto entre frames
-                             para saber SI ESE OBJETO específico se mueve
-
-El tracker usa IoU para asociar detecciones consecutivas sin depender
-de un tracking externo (no requiere ByteTrack/DeepSORT).
-"""
-
 import cv2
 import numpy as np
 from collections import deque
@@ -65,10 +51,8 @@ def _iou(b1: tuple, b2: tuple) -> float:
 
 
 class ObjectMotionTracker:
-    """
-    Mantiene un historial de centroides por objeto.
-    Asocia detecciones frame a frame por IoU de bboxes.
-    """
+
+    #Mantiene un historial de centroides por objeto.
 
     def __init__(self, history_len: int = 6, move_threshold: float = 8.0):
         self.history: dict[int, deque] = {} 
@@ -78,10 +62,6 @@ class ObjectMotionTracker:
         self.move_threshold = move_threshold  # px de desplazamiento para "en movimiento"
 
     def update(self, detections: list[dict]) -> list[bool]:
-        """
-        Recibe lista de detecciones del frame actual.
-        Retorna lista de bools: True si ese objeto está en movimiento.
-        """
         current_bboxes = [d["bbox"] for d in detections]
         is_moving      = [False] * len(detections)
 

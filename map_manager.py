@@ -1,11 +1,3 @@
-"""
-map_manager.py
-mapa de ocupacion GLOBAL por chunks (bloques de 8x8 m por default) con
-persistencia a disco. un grid gigante desperdicia RAM en la raspberry y
-uno chico se queda corto al salir del cuarto; con chunks el mapa crece
-solo hacia donde camina el usuario y lo ya visitado se recarga de disco.
-mismo nucleo de ray casting que occupancy_grid.py.
-"""
 import json
 import math
 import os
@@ -18,40 +10,37 @@ from occupancy_grid import (bresenham, L_OCC, L_FREE, L_CLAMP, L_BLOCK,
 
 
 class MapChunk:
-    """un bloque cuadrado del mapa global. solo datos + (de)serializacion;
-    la logica de rayos vive en ChunkedMapManager."""
-
-    __slots__ = ("index", "cells", "log_odds", "hazard_hits", "room",
-                 "visits", "created_at", "last_seen_at", "dirty")
+    __slots__ = ("index", "cells", "logOdds", "hazardHits", "room",
+                 "visits", "createdAt", "lastSeenAt", "dirty")
 
     def __init__(self, index, cells, room=None):
-        self.index = index                      # (i, j) enteros
-        self.cells = cells                      # celdas por lado
-        self.log_odds = np.zeros((cells, cells), dtype=np.float32)
-        self.hazard_hits = np.zeros((cells, cells), dtype=np.uint8)
-        self.room = room
+        self.index = index
+        self.cells= cells
+        self.logOdds = np.zeros((cells, cells), dtype=np.float32)
+        self.hazardHits = np.zeros((cells, cells), dtype=np.uint8)
+        self.room =room
         self.visits = 0
-        self.created_at = time.time()
-        self.last_seen_at = self.created_at
+        self.createdAt = time.time()
+        self.lastSeenAt = self.createdAt
         self.dirty = False
 
     @staticmethod
-    def filename(index):
+    def fileName(index):
         return f"chunk_{index[0]}_{index[1]}.npz"
 
-    def save(self, map_dir):
+    def save(self, mapDir):
         np.savez_compressed(
-            os.path.join(map_dir, self.filename(self.index)),
-            log_odds=self.log_odds.astype(np.float16),
-            hazard_hits=self.hazard_hits,
-            meta=np.array([self.visits, self.created_at, self.last_seen_at]),
+            os.path.join(mapDir, self.fileName(self.index)),
+            log_odds=self.logOdds.astype(np.float16),
+            hazard_hits=self.hazardHits,
+            meta=np.array([self.visits, self.createdAt, self.lastSeenAt]),
             room=np.array(self.room if self.room is not None else "",
                           dtype=np.str_))
-        self.dirty = False
+        self.dirty= False
 
     @classmethod
-    def load(cls, map_dir, index, cells):
-        data = np.load(os.path.join(map_dir, cls.filename(index)),
+    def load(cls, mapDir, index, cells):
+        data = np.load(os.path.join(mapDir, cls.fileName(index)),
                        allow_pickle=False)
         chunk = cls(index, cells)
         lo = data["log_odds"].astype(np.float32)
@@ -59,491 +48,437 @@ class MapChunk:
             raise ValueError(
                 f"Chunk {index}: tamaño {lo.shape} != {(cells, cells)} "
                 "(el mapa en disco usa otra resolución/tamaño de chunk)")
-        chunk.log_odds = lo
-        chunk.hazard_hits = data["hazard_hits"].astype(np.uint8)
-        visits, created, last_seen = data["meta"]
+        chunk.logOdds = lo
+        chunk.hazardHits = data["hazard_hits"].astype(np.uint8)
+        visits, created, lastSeen = data["meta"]
         chunk.visits = int(visits)
-        chunk.created_at = float(created)
-        chunk.last_seen_at = float(last_seen)
-        room = str(data["room"])
-        chunk.room = room if room else None
+        chunk.createdAt =float(created)
+        chunk.lastSeenAt = float(lastSeen)
+        papu = str(data["room"])
+        chunk.room = papu if papu else None
         chunk.dirty = False
         return chunk
 
 
 class ChunkedMapManager:
-    """mapa global por chunks con la misma semantica de celdas e interfaz
-    que OccupancyGrid, pa que slam/navegacion no distingan entre un grid
-    simple y el mapa global."""
-
-    def __init__(self, map_dir=None, chunk_size_m=8.0, resolution=0.05,
-                 keep_loaded=25, door_radius=0.7, door_cooldown_steps=60):
-        """
-        map_dir: carpeta de persistencia; None = solo memoria (pa tests).
-        keep_loaded: max de chunks en RAM (con 8 m y 5 cm, ~128 KB cada
-            uno; 25 ≈ 3 MB). los lejanos se guardan y descargan.
-        door_radius / door_cooldown_steps: heuristica de cruce de puerta.
-        """
+    def __init__(self, mapDir=None, chunkSizeM=8.0, resolution=0.05,
+                 keepLoaded=25, doorRadius=0.7, doorCooldownSteps=60):
         self.resolution = resolution
-        self.chunk_size_m = chunk_size_m
-        self.cells = int(round(chunk_size_m / resolution))
-        self.map_dir = map_dir
-        self.keep_loaded = max(4, keep_loaded)
-        self.door_radius = door_radius
-        self.door_cooldown_steps = door_cooldown_steps
+        self.chunkSizeM = chunkSizeM
+        self.cells = int(round(chunkSizeM / resolution))
+        self.mapDir =mapDir
+        self.keepLoaded = max(4, keepLoaded)
+        self.doorRadius = doorRadius
+        self.doorCooldownSteps= doorCooldownSteps
 
-        self.chunks = {}            # (i, j) -> MapChunk en RAM
-        self.disk_index = set()     # chunks que existen en disco
-        self.current_chunk = None
-        self.current_room = None
-        self._next_room_id = 1
-        self._last_door_step = -10 ** 9
+        self.chunks = {}
+        self.diskIndex = set()
+        self.currentChunk = None
+        self.currentRoom = None
+        self._nextRoomId = 1
+        self._lastDoorStep = -10 ** 9
         self._step = 0
-        self._last_lookup = (None, None)   # cache del ultimo acceso
+        self._lastLookup = (None, None)
 
-        if map_dir:
-            os.makedirs(map_dir, exist_ok=True)
-            self._load_meta()
-            # (pa abrir un mapa sin conocer su geometria: open_existing)
-            for fname in os.listdir(map_dir):
+        if mapDir:
+            os.makedirs(mapDir, exist_ok=True)
+            self._cargarMeta()
+            for fname in os.listdir(mapDir):
                 if fname.startswith("chunk_") and fname.endswith(".npz"):
                     try:
                         _, i, j = fname[:-4].split("_")
-                        self.disk_index.add((int(i), int(j)))
+                        self.diskIndex.add((int(i), int(j)))
                     except ValueError:
                         continue
 
-        self.events = []            # eventos del ultimo update_position()
+        self.events = []
 
     @classmethod
-    def open_existing(cls, map_dir, **kw):
-        """abre un mapa guardado adoptando la geometria de su meta.json."""
-        meta_path = os.path.join(map_dir, "meta.json")
+    def openExisting(cls, mapDir, **kw):
+        metaPath = os.path.join(mapDir, "meta.json")
         try:
-            with open(meta_path, "r", encoding="utf-8") as fh:
+            with open(metaPath, "r", encoding="utf-8") as fh:
                 meta = json.load(fh)
             kw.setdefault("resolution", meta.get("resolution", 0.05))
-            kw.setdefault("chunk_size_m", meta.get("chunk_size_m", 8.0))
+            kw.setdefault("chunkSizeM", meta.get("chunk_size_m", 8.0))
         except (OSError, ValueError):
             pass
-        return cls(map_dir=map_dir, **kw)
+        return cls(mapDir=mapDir, **kw)
 
-    # ---------- coordenadas: mundo -> celda global -> (chunk, local) ----------
-    def world_to_cell(self, x, y):
+    def worldToCell(self, x, y):
         return (int(math.floor(x / self.resolution)),
                 int(math.floor(y / self.resolution)))
 
-    def cell_to_world(self, gx, gy):
-        """centro de la celda global."""
+    def cellToWorld(self, gx, gy):
         return ((gx + 0.5) * self.resolution, (gy + 0.5) * self.resolution)
 
-    def cell_to_chunk(self, gx, gy):
+    def cellToChunk(self, gx, gy):
         ci, cj = gx // self.cells, gy // self.cells
         return (ci, cj), (gx - ci * self.cells, gy - cj * self.cells)
 
-    def chunk_of_pose(self, x, y):
-        gx, gy = self.world_to_cell(x, y)
-        return self.cell_to_chunk(gx, gy)[0]
+    def chunkOfPose(self, x, y):
+        gx, gy = self.worldToCell(x, y)
+        return self.cellToChunk(gx, gy)[0]
 
-    # ---------- gestion de chunks (RAM <-> disco) ----------
-    def is_known_chunk(self, index):
-        return index in self.chunks or index in self.disk_index
+    def isKnownChunk(self, index):
+        return index in self.chunks or index in self.diskIndex
 
-    def get_chunk(self, index, create=True):
+    def getChunk(self, index, create=True):
         chunk = self.chunks.get(index)
         if chunk is not None:
             return chunk
-        if index in self.disk_index:
-            chunk = MapChunk.load(self.map_dir, index, self.cells)
+        if index in self.diskIndex:
+            chunk = MapChunk.load(self.mapDir, index, self.cells)
             self.chunks[index] = chunk
             return chunk
         if not create:
             return None
         chunk = MapChunk(index, self.cells)
-        chunk.dirty = True
+        chunk.dirty =True
         self.chunks[index] = chunk
         return chunk
 
-    def _chunk_for_cell(self, gx, gy, create=True):
-        # los rayos recorren celdas contiguas, casi siempre caen en el
-        # mismo chunk: se cachea el ultimo
-        index, local = self.cell_to_chunk(gx, gy)
-        cached_index, cached_chunk = self._last_lookup
-        if cached_index == index and cached_chunk is not None:
-            return cached_chunk, local
-        chunk = self.get_chunk(index, create=create)
-        self._last_lookup = (index, chunk)
+    def _chunkDeCelda(self, gx, gy, create=True):
+        index, local = self.cellToChunk(gx, gy)
+        idxCache, chunkCache = self._lastLookup
+        if idxCache == index and chunkCache is not None:
+            return chunkCache, local
+        chunk = self.getChunk(index, create=create)
+        self._lastLookup = (index, chunk)
         return chunk, local
 
-    def _evict_if_needed(self):
-        if len(self.chunks) <= self.keep_loaded:
+    def _sacarSiHaceFalta(self):
+        if len(self.chunks) <= self.keepLoaded:
             return
-        if not self.map_dir:
-            return          # sin persistencia no se descarga nada (no perder datos)
-        # descarga los mas lejanos al chunk actual
-        cur = self.current_chunk or (0, 0)
-        by_distance = sorted(
+        if not self.mapDir:
+            return
+        cur = self.currentChunk or (0, 0)
+        porDistancia = sorted(
             self.chunks.keys(),
             key=lambda ij: max(abs(ij[0] - cur[0]), abs(ij[1] - cur[1])),
             reverse=True)
-        for index in by_distance:
-            if len(self.chunks) <= self.keep_loaded:
+        for index in porDistancia:
+            if len(self.chunks) <= self.keepLoaded:
                 break
-            if index == self.current_chunk:
+            if index == self.currentChunk:
                 continue
             chunk = self.chunks.pop(index)
             if chunk.dirty:
-                chunk.save(self.map_dir)
-            self.disk_index.add(index)
-            if self._last_lookup[0] == index:
-                self._last_lookup = (None, None)
+                chunk.save(self.mapDir)
+            self.diskIndex.add(index)
+            if self._lastLookup[0] == index:
+                self._lastLookup = (None, None)
 
-    # ---------- transiciones de chunk / cuarto ----------
-    def update_position(self, pose, landmarks=None):
-        """llamar una vez por ciclo con la pose del slam. devuelve eventos:
-        chunk_change (geometrico, determinista), door_crossed y
-        room_recognized (heuristica semantica de puertas, la navegacion
-        no depende de ella)."""
+    # cambio de chunk/cuarto, regresa eventos
+    def updatePosition(self, pose, landmarks=None):
         self._step += 1
         self.events = []
         x, y = pose[0], pose[1]
-        index = self.chunk_of_pose(x, y)
+        index = self.chunkOfPose(x, y)
 
-        if index != self.current_chunk:
-            # ojo: "conocido" = ya estaba en disco o ya fue VISITADO; que el
-            # scan de este ciclo lo haya creado hace un instante no cuenta
-            existing = self.chunks.get(index)
-            known = (index in self.disk_index
-                     or (existing is not None and existing.visits > 0))
-            chunk = self.get_chunk(index)
+        if index != self.currentChunk:
+            yaExiste = self.chunks.get(index)
+            known = (index in self.diskIndex
+                     or (yaExiste is not None and yaExiste.visits > 0))
+            chunk = self.getChunk(index)
             chunk.visits += 1
-            chunk.last_seen_at = time.time()
+            chunk.lastSeenAt = time.time()
             chunk.dirty = True
-            self.current_chunk = index
+            self.currentChunk = index
 
-            if chunk.room is not None and chunk.room != self.current_room:
-                # el chunk destino recuerda a que cuarto pertenece
-                self.current_room = chunk.room
+            if chunk.room is not None and chunk.room != self.currentRoom:
+                self.currentRoom = chunk.room
                 self.events.append({"type": "room_recognized",
                                     "room": chunk.room})
-            elif chunk.room is None and self.current_room is not None:
-                # el cuarto actual se extiende a este chunk
-                chunk.room = self.current_room
+            elif chunk.room is None and self.currentRoom is not None:
+                chunk.room = self.currentRoom
 
             self.events.append({"type": "chunk_change", "chunk": index,
                                 "known": known, "room": chunk.room})
-            self._evict_if_needed()
+            self._sacarSiHaceFalta()
 
         if landmarks:
-            self._check_door_crossing(x, y, landmarks)
+            self._checarPuerta(x, y, landmarks)
         return self.events
 
-    def _check_door_crossing(self, x, y, landmarks):
-        """pasar pegado a un landmark 'door' confirmado = cambio de cuarto,
-        con cooldown pa no disparar N veces cruzando el marco."""
-        if self._step - self._last_door_step < self.door_cooldown_steps:
+    def _checarPuerta(self, x, y, landmarks):
+        if self._step - self._lastDoorStep < self.doorCooldownSteps:
             return
         for lm in landmarks:
             if lm.get("label") != "door" or not lm.get("confirmed", False):
                 continue
-            if math.hypot(lm["x"] - x, lm["y"] - y) <= self.door_radius:
-                self._last_door_step = self._step
-                chunk = self.get_chunk(self.current_chunk)
-                new_room = f"cuarto_{self._next_room_id}"
-                self._next_room_id += 1
-                self.current_room = new_room
-                chunk.room = chunk.room or new_room
+            if math.hypot(lm["x"] - x, lm["y"] - y) <= self.doorRadius:
+                self._lastDoorStep = self._step
+                chunk = self.getChunk(self.currentChunk)
+                cuartoNuevo = f"cuarto_{self._nextRoomId}"
+                self._nextRoomId += 1
+                self.currentRoom = cuartoNuevo
+                chunk.room = chunk.room or cuartoNuevo
                 chunk.dirty = True
                 self.events.append({"type": "door_crossed",
-                                    "room": new_room})
+                                    "room": cuartoNuevo})
                 return
 
-    def set_room_label(self, label):
-        """etiqueta manual/por voz del cuarto actual ('cocina', 'pasillo')."""
-        self.current_room = label
-        if self.current_chunk is not None:
-            chunk = self.get_chunk(self.current_chunk)
+    def setRoomLabel(self, label):
+        self.currentRoom = label
+        if self.currentChunk is not None:
+            chunk = self.getChunk(self.currentChunk)
             chunk.room = label
             chunk.dirty = True
 
-    # ---------- ray casting global ----------
-    def _add_log_odds(self, gx, gy, delta):
-        chunk, (lx, ly) = self._chunk_for_cell(gx, gy)
-        v = chunk.log_odds[ly, lx] + delta
-        chunk.log_odds[ly, lx] = min(L_CLAMP, max(-L_CLAMP, v))
+    def _addLogOdds(self, gx, gy, delta):
+        chunk, (lx, ly) = self._chunkDeCelda(gx, gy)
+        v = chunk.logOdds[ly, lx] + delta
+        chunk.logOdds[ly, lx] = min(L_CLAMP, max(-L_CLAMP, v))
         chunk.dirty = True
 
-    def _add_hazard(self, gx, gy):
-        chunk, (lx, ly) = self._chunk_for_cell(gx, gy)
-        chunk.hazard_hits[ly, lx] = min(HAZARD_MAX_HITS,
-                                        int(chunk.hazard_hits[ly, lx]) + 1)
-        chunk.dirty = True
+    def _addHazard(self, gx, gy):
+        chunk, (lx, ly) = self._chunkDeCelda(gx, gy)
+        chunk.hazardHits[ly, lx] = min(HAZARD_MAX_HITS,
+                                       int(chunk.hazardHits[ly, lx]) + 1)
+        chunk.dirty= True
 
-    def _cell_values(self, gx, gy):
-        """(log_odds, hazard_hits) de la celda global; (0, 0) si no hay chunk."""
-        index, (lx, ly) = self.cell_to_chunk(gx, gy)
+    def _cellValues(self, gx, gy):
+        index, (lx, ly) = self.cellToChunk(gx, gy)
         chunk = self.chunks.get(index)
         if chunk is None:
-            if index in self.disk_index:
-                chunk = self.get_chunk(index)
+            if index in self.diskIndex:
+                chunk = self.getChunk(index)
             else:
                 return 0.0, 0
-        return float(chunk.log_odds[ly, lx]), int(chunk.hazard_hits[ly, lx])
+        return float(chunk.logOdds[ly, lx]), int(chunk.hazardHits[ly, lx])
 
-    def update_from_scan(self, pose, observations, max_range=4.0):
-        """igual que OccupancyGrid.update_from_scan pero en el plano global:
-        los rayos cruzan fronteras de chunk sin recortes."""
+    # ray casting global, cruza chunks sin recortar
+    def updateFromScan(self, pose, observations, maxRange=4.0):
         x, y, theta = pose
-        gx0, gy0 = self.world_to_cell(x, y)
+        gx0, gy0 = self.worldToCell(x, y)
         for obs in observations:
-            r = min(obs.range_m, max_range)
+            r = min(obs.range_m, maxRange)
             sigma = getattr(obs, "sigma_r", None)
-            imprecise = sigma is not None and sigma > 0.15
-            is_hazard = getattr(obs, "is_hazard", False)
+            impreciso = sigma is not None and sigma > 0.15
+            esHoyo =getattr(obs, "is_hazard", False)
 
-            angle = theta + obs.bearing
-            ex = x + r * math.cos(angle)
-            ey = y + r * math.sin(angle)
-            gx1, gy1 = self.world_to_cell(ex, ey)
-            ray = bresenham(gx0, gy0, gx1, gy1)
+            ang = theta + obs.bearing
+            ex = x + r * math.cos(ang)
+            ey = y + r * math.sin(ang)
+            gx1, gy1 = self.worldToCell(ex, ey)
+            papuRay = bresenham(gx0, gy0, gx1, gy1)
 
-            free_cells = ray[:-1]
-            if imprecise and r > 1e-6:
+            celdasLibres = papuRay[:-1]
+            if impreciso and r > 1e-6:
                 frac = max(0.0, (r - 2.0 * sigma) / r)
-                free_cells = ray[:int(len(ray) * frac)]
+                celdasLibres = papuRay[:int(len(papuRay) * frac)]
 
-            blocked = False
-            for (cx, cy) in free_cells:
-                lo, _ = self._cell_values(cx, cy)
+            bloqueado = False
+            for (cx, cy) in celdasLibres:
+                lo, _ = self._cellValues(cx, cy)
                 if lo > L_BLOCK:
-                    blocked = True     # pared solida: no perforar
+                    bloqueado = True
                     break
-                self._add_log_odds(cx, cy, L_FREE)
+                self._addLogOdds(cx, cy, L_FREE)
 
-            if not blocked and obs.range_m <= max_range:
-                if is_hazard:
-                    self._add_hazard(gx1, gy1)
-                elif not imprecise:
-                    # solo rangos precisos pintan ocupado (ver
-                    # OccupancyGrid.update_from_scan)
-                    self._add_log_odds(gx1, gy1, L_OCC)
+            if not bloqueado and obs.range_m <= maxRange:
+                if esHoyo:
+                    self._addHazard(gx1, gy1)
+                elif not impreciso:
+                    self._addLogOdds(gx1, gy1, L_OCC)
 
-    def clear_footprint(self, x, y, radius=0.45):
-        """marca libre un disco alrededor del usuario: si caminaste por
-        ahi, ps es transitable. clave en modo solo-camara, donde no hay
-        rayos que despejen piso si yolo no ve objetos (pasillo vacio =
-        mapa vacio). no despeja celdas ya solidas (una pared pintada no
-        se borra por pasar cerca)."""
-        gx0, gy0 = self.world_to_cell(x, y)
+    def clearFootprint(self, x, y, radius=0.45):
+        gx0, gy0 = self.worldToCell(x, y)
         rc = max(1, int(round(radius / self.resolution)))
         for dy in range(-rc, rc + 1):
             for dx in range(-rc, rc + 1):
                 if dx * dx + dy * dy > rc * rc:
                     continue
-                lo, _ = self._cell_values(gx0 + dx, gy0 + dy)
+                lo, _ = self._cellValues(gx0 + dx, gy0 + dy)
                 if lo > OCC_THRESHOLD:
                     continue
-                self._add_log_odds(gx0 + dx, gy0 + dy, L_FREE)
+                self._addLogOdds(gx0 + dx, gy0 + dy, L_FREE)
 
-    # ---------- consultas pa navegacion ----------
-    def is_blocked_cell(self, gx, gy):
-        lo, hz = self._cell_values(gx, gy)
+    def isBlockedCell(self, gx, gy):
+        lo, hz = self._cellValues(gx, gy)
         return lo > OCC_THRESHOLD or hz >= HAZARD_MIN_HITS
 
-    def cast_distance(self, x, y, angle, max_range=4.0):
-        """distancia a la primera celda bloqueada; max_range si esta libre."""
-        gx0, gy0 = self.world_to_cell(x, y)
-        ex = x + max_range * math.cos(angle)
-        ey = y + max_range * math.sin(angle)
-        for (cx, cy) in bresenham(gx0, gy0, *self.world_to_cell(ex, ey)):
-            if (cx, cy) != (gx0, gy0) and self.is_blocked_cell(cx, cy):
-                wx, wy = self.cell_to_world(cx, cy)
-                return min(max_range, math.hypot(wx - x, wy - y))
-        return max_range
+    def castDistance(self, x, y, angle, maxRange=4.0):
+        gx0, gy0 = self.worldToCell(x, y)
+        ex = x + maxRange * math.cos(angle)
+        ey =y + maxRange * math.sin(angle)
+        for (cx, cy) in bresenham(gx0, gy0, *self.worldToCell(ex, ey)):
+            if (cx, cy) != (gx0, gy0) and self.isBlockedCell(cx, cy):
+                wx, wy = self.cellToWorld(cx, cy)
+                return min(maxRange, math.hypot(wx - x, wy - y))
+        return maxRange
 
-    def local_costmap(self, pose, size_m=4.0):
-        """parche egocentrico (2, H, W) float32 ensamblado a traves de los
-        chunks que toque. canal 0 = prob ocupacion (0.5 = desconocido),
-        canal 1 = peligros de piso."""
+    # parche egocentrico armado de varios chunks
+    def localCostmap(self, pose, sizeM=4.0):
         x, y = pose[0], pose[1]
-        half = int(round((size_m / 2.0) / self.resolution))
-        side = 2 * half + 1
-        out = np.zeros((2, side, side), dtype=np.float32)
+        half = int(round((sizeM / 2.0) / self.resolution))
+        lado = 2 * half + 1
+        out = np.zeros((2, lado, lado), dtype=np.float32)
         out[0].fill(0.5)
 
-        gx0, gy0 = self.world_to_cell(x, y)
-        lo_x, lo_y = gx0 - half, gy0 - half          # celda global de out[0,0]
-        hi_x, hi_y = lo_x + side, lo_y + side        # exclusivo
+        gx0, gy0 = self.worldToCell(x, y)
+        loX, loY = gx0 - half, gy0 - half
+        hiX, hiY = loX + lado, loY + lado
 
-        ci0, cj0 = lo_x // self.cells, lo_y // self.cells
-        ci1, cj1 = (hi_x - 1) // self.cells, (hi_y - 1) // self.cells
+        ci0, cj0 = loX // self.cells, loY // self.cells
+        ci1, cj1 = (hiX - 1) // self.cells, (hiY - 1) // self.cells
         for cj in range(cj0, cj1 + 1):
             for ci in range(ci0, ci1 + 1):
                 index = (ci, cj)
-                if not self.is_known_chunk(index):
+                if not self.isKnownChunk(index):
                     continue
-                chunk = self.get_chunk(index)
-                # interseccion chunk-parche en celdas globales
+                chunk = self.getChunk(index)
                 cx0, cy0 = ci * self.cells, cj * self.cells
-                ix0, iy0 = max(lo_x, cx0), max(lo_y, cy0)
-                ix1 = min(hi_x, cx0 + self.cells)
-                iy1 = min(hi_y, cy0 + self.cells)
+                ix0, iy0 = max(loX, cx0), max(loY, cy0)
+                ix1 = min(hiX, cx0 + self.cells)
+                iy1= min(hiY, cy0 + self.cells)
                 if ix0 >= ix1 or iy0 >= iy1:
                     continue
-                src = chunk.log_odds[iy0 - cy0:iy1 - cy0, ix0 - cx0:ix1 - cx0]
-                dst_y, dst_x = iy0 - lo_y, ix0 - lo_x
-                out[0, dst_y:dst_y + (iy1 - iy0),
-                    dst_x:dst_x + (ix1 - ix0)] = 1.0 / (1.0 + np.exp(-src))
-                hz = chunk.hazard_hits[iy0 - cy0:iy1 - cy0,
-                                       ix0 - cx0:ix1 - cx0]
-                out[1, dst_y:dst_y + (iy1 - iy0),
-                    dst_x:dst_x + (ix1 - ix0)] = \
+                src = chunk.logOdds[iy0 - cy0:iy1 - cy0, ix0 - cx0:ix1 - cx0]
+                dstY, dstX = iy0 - loY, ix0 - loX
+                out[0, dstY:dstY + (iy1 - iy0),
+                    dstX:dstX + (ix1 - ix0)] = 1.0 / (1.0 + np.exp(-src))
+                hz = chunk.hazardHits[iy0 - cy0:iy1 - cy0,
+                                      ix0 - cx0:ix1 - cx0]
+                out[1, dstY:dstY + (iy1 - iy0),
+                    dstX:dstX + (ix1 - ix0)] = \
                     (hz >= HAZARD_MIN_HITS).astype(np.float32)
         return out
 
-    def get_nearby_obstacles(self, x, y, radius=1.5, threshold=OCC_THRESHOLD):
-        """celdas ocupadas alrededor de (x, y) cruzando chunks."""
-        cm = self.local_costmap((x, y), size_m=2 * radius)
+    def getNearbyObstacles(self, x, y, radius=1.5, threshold=OCC_THRESHOLD):
+        cm = self.localCostmap((x, y), sizeM=2 * radius)
         half = cm.shape[1] // 2
-        prob_thr = 1.0 / (1.0 + math.exp(-threshold))
-        ys, xs = np.where(cm[0] > prob_thr)
-        gx0, gy0 = self.world_to_cell(x, y)
-        obstacles = []
+        probThr = 1.0 / (1.0 + math.exp(-threshold))
+        ys, xs = np.where(cm[0] > probThr)
+        gx0, gy0 = self.worldToCell(x, y)
+        obstaculos = []
         for yy, xx in zip(ys, xs):
-            wx, wy = self.cell_to_world(gx0 + (xx - half), gy0 + (yy - half))
-            obstacles.append((wx, wy))
-        return obstacles
+            wx, wy = self.cellToWorld(gx0 + (xx - half), gy0 + (yy - half))
+            obstaculos.append((wx, wy))
+        return obstaculos
 
-    # ---------- persistencia ----------
-    def save_all(self):
-        """guarda chunks sucios + meta. llamar al salir y en cambios de chunk."""
-        if not self.map_dir:
+    def saveAll(self):
+        if not self.mapDir:
             return 0
-        saved = 0
+        guardados = 0
         for chunk in self.chunks.values():
             if chunk.dirty:
-                chunk.save(self.map_dir)
-                self.disk_index.add(chunk.index)
-                saved += 1
-        self._save_meta()
-        return saved
+                chunk.save(self.mapDir)
+                self.diskIndex.add(chunk.index)
+                guardados += 1
+        self._guardarMeta()
+        return guardados
 
-    def _meta_path(self):
-        return os.path.join(self.map_dir, "meta.json")
+    def _metaPath(self):
+        return os.path.join(self.mapDir, "meta.json")
 
-    def _save_meta(self):
+    def _guardarMeta(self):
         rooms = {}
         for chunk in self.chunks.values():
             if chunk.room:
                 rooms[f"{chunk.index[0]},{chunk.index[1]}"] = chunk.room
         meta = {
             "resolution": self.resolution,
-            "chunk_size_m": self.chunk_size_m,
-            "next_room_id": self._next_room_id,
-            "current_room": self.current_room,
+            "chunk_size_m": self.chunkSizeM,
+            "next_room_id": self._nextRoomId,
+            "current_room": self.currentRoom,
             "rooms": rooms,
         }
-        # conservar cuartos de chunks no cargados
-        old = self._read_meta()
-        if old:
-            for key, room in old.get("rooms", {}).items():
+        viejo = self._leerMeta()
+        if viejo:
+            for key, room in viejo.get("rooms", {}).items():
                 rooms.setdefault(key, room)
-        with open(self._meta_path(), "w", encoding="utf-8") as fh:
+        with open(self._metaPath(), "w", encoding="utf-8") as fh:
             json.dump(meta, fh, ensure_ascii=False, indent=1)
 
-    def _read_meta(self):
+    def _leerMeta(self):
         try:
-            with open(self._meta_path(), "r", encoding="utf-8") as fh:
+            with open(self._metaPath(), "r", encoding="utf-8") as fh:
                 return json.load(fh)
         except (OSError, ValueError):
             return None
 
-    def _load_meta(self):
-        meta = self._read_meta()
+    def _cargarMeta(self):
+        meta = self._leerMeta()
         if not meta:
             return
         if abs(meta.get("resolution", self.resolution) - self.resolution) > 1e-9 \
-                or abs(meta.get("chunk_size_m", self.chunk_size_m)
-                       - self.chunk_size_m) > 1e-9:
+                or abs(meta.get("chunk_size_m", self.chunkSizeM)
+                       - self.chunkSizeM) > 1e-9:
             raise ValueError(
-                f"El mapa en {self.map_dir} fue creado con "
+                f"El mapa en {self.mapDir} fue creado con "
                 f"resolution={meta.get('resolution')} y chunk_size_m="
                 f"{meta.get('chunk_size_m')}; no coincide con la "
                 "configuración actual. Usa otra carpeta o borra el mapa.")
-        self._next_room_id = meta.get("next_room_id", 1)
-        self.current_room = meta.get("current_room")
+        self._nextRoomId = meta.get("next_room_id", 1)
+        self.currentRoom= meta.get("current_room")
 
-    # -------- landmarks (mapa ligero del slam) --------
-    def save_landmarks(self, landmarks):
-        if not self.map_dir:
+    def saveLandmarks(self, landmarks):
+        if not self.mapDir:
             return
-        path = os.path.join(self.map_dir, "landmarks.json")
+        path = os.path.join(self.mapDir, "landmarks.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(landmarks, fh, ensure_ascii=False, indent=1)
 
-    def load_landmarks(self):
-        if not self.map_dir:
+    def loadLandmarks(self):
+        if not self.mapDir:
             return []
-        path = os.path.join(self.map_dir, "landmarks.json")
+        path = os.path.join(self.mapDir, "landmarks.json")
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 return json.load(fh)
         except (OSError, ValueError):
             return []
 
-    # ---------- visualizacion ----------
-    def known_chunk_indices(self):
-        return set(self.chunks.keys()) | set(self.disk_index)
+    def knownChunkIndices(self):
+        return set(self.chunks.keys()) | set(self.diskIndex)
 
-    def stitched(self, include_disk=True):
-        """une los chunks conocidos en un mosaico (log_odds, hazard, origen).
-        solo pa visualizacion, no usar en el ciclo de control."""
-        indices = self.known_chunk_indices() if include_disk \
+    def stitched(self, includeDisk=True):
+        indices = self.knownChunkIndices() if includeDisk \
             else set(self.chunks.keys())
         if not indices:
-            side = self.cells
-            return (np.zeros((side, side), np.float32),
-                    np.zeros((side, side), np.uint8), (0, 0))
+            lado = self.cells
+            return (np.zeros((lado, lado), np.float32),
+                    np.zeros((lado, lado), np.uint8), (0, 0))
         ci0 = min(i for i, _ in indices)
         cj0 = min(j for _, j in indices)
         ci1 = max(i for i, _ in indices)
         cj1 = max(j for _, j in indices)
         w = (ci1 - ci0 + 1) * self.cells
-        h = (cj1 - cj0 + 1) * self.cells
+        h =(cj1 - cj0 + 1) * self.cells
         lo = np.zeros((h, w), np.float32)
         hz = np.zeros((h, w), np.uint8)
         for index in indices:
-            chunk = self.get_chunk(index)
+            chunk = self.getChunk(index)
             x0 = (index[0] - ci0) * self.cells
             y0 = (index[1] - cj0) * self.cells
-            lo[y0:y0 + self.cells, x0:x0 + self.cells] = chunk.log_odds
-            hz[y0:y0 + self.cells, x0:x0 + self.cells] = chunk.hazard_hits
-        origin_cell = (ci0 * self.cells, cj0 * self.cells)
-        return lo, hz, origin_cell
+            lo[y0:y0 + self.cells, x0:x0 + self.cells] = chunk.logOdds
+            hz[y0:y0 + self.cells, x0:x0 + self.cells] = chunk.hazardHits
+        celdaOrigen = (ci0 * self.cells, cj0 * self.cells)
+        return lo, hz, celdaOrigen
 
-    def render_croquis(self, pose=None, trajectory=None, landmarks=None,
-                       gt_trajectory=None, path="croquis_mapa.png"):
-        """croquis del mapa global con fronteras de chunk y cuartos."""
+    def renderCroquis(self, pose=None, trajectory=None, landmarks=None,
+                      gtTrajectory=None, path="croquis_mapa.png"):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
         lo, hz, (ox, oy) = self.stitched()
-        occ_prob = 1.0 - 1.0 / (1.0 + np.exp(lo))
+        occProb = 1.0 - 1.0 / (1.0 + np.exp(lo))
         h, w = lo.shape
         extent = [ox * self.resolution, (ox + w) * self.resolution,
                   oy * self.resolution, (oy + h) * self.resolution]
 
         fig, ax = plt.subplots(figsize=(7, 7))
-        ax.imshow(occ_prob, cmap="Greys", origin="lower", extent=extent,
+        ax.imshow(occProb, cmap="Greys", origin="lower", extent=extent,
                   vmin=0, vmax=1)
 
-        # fronteras de chunk + etiqueta de cuarto
-        for index in self.known_chunk_indices():
-            x0 = index[0] * self.chunk_size_m
-            y0 = index[1] * self.chunk_size_m
-            ax.add_patch(plt.Rectangle((x0, y0), self.chunk_size_m,
-                                       self.chunk_size_m, fill=False,
+        for index in self.knownChunkIndices():
+            x0 = index[0] * self.chunkSizeM
+            y0 = index[1] * self.chunkSizeM
+            ax.add_patch(plt.Rectangle((x0, y0), self.chunkSizeM,
+                                       self.chunkSizeM, fill=False,
                                        edgecolor="tab:purple",
                                        linewidth=0.6, alpha=0.5))
             chunk = self.chunks.get(index)
@@ -558,9 +493,9 @@ class ChunkedMapManager:
                     (oy + ys + 0.5) * self.resolution, "s",
                     color="tab:red", markersize=3, label="Peligros de piso")
 
-        if gt_trajectory:
-            ax.plot([p[0] for p in gt_trajectory],
-                    [p[1] for p in gt_trajectory], "--",
+        if gtTrajectory:
+            ax.plot([p[0] for p in gtTrajectory],
+                    [p[1] for p in gtTrajectory], "--",
                     color="tab:green", linewidth=1.2, label="Trayectoria real")
         if trajectory:
             ax.plot([p[0] for p in trajectory],

@@ -23,8 +23,8 @@ import numpy as np
 from ekf_slam import EKFSlam
 from occupancy_grid import OccupancyGrid
 from sim_world import (SimulatedWorld, SimulatedMotion,
-                       SimulatedUltrasonicArray, simulated_vision)
-from vision_bridge import fuse_observations, free_space_rays
+                       SimulatedUltrasonicArray, simulatedVision)
+from vision_bridge import fuseObservations, freeSpaceRays
 from tests.metrics import (compute_ate, compute_orientation_error,
                      uncertainty_series, map_occupancy_accuracy)
 
@@ -34,26 +34,26 @@ def run_simulation(steps=300, seed=0, drop_prob=0.0, verbose=True,
     random.seed(seed)
     np.random.seed(seed)
 
-    world = SimulatedWorld.default_room()
+    world = SimulatedWorld.defaultRoom()
     motion_sim = SimulatedMotion(start=(0.7, 0.7, 0.0))
     us_array = SimulatedUltrasonicArray(world)
 
     slam = EKFSlam(x0=0.7, y0=0.7, theta0=0.0)   # posición inicial conocida
-    grid = OccupancyGrid(size_m=8.0, resolution=0.05, origin=(1.0, 1.0))
+    grid = OccupancyGrid(sizeM=8.0, resolution=0.05, origin=(1.0, 1.0))
 
     gt_traj, est_traj, cov_hist, conf_hist = [], [], [], []
 
     for step in range(steps):
         # 1) Movimiento (odometría simulada con ruido) + pose real
         motion = motion_sim.get()
-        true_pose = tuple(motion_sim.true_pose)
+        true_pose = tuple(motion_sim.truePose)
 
         # 2) Sensores simulados coherentes con el cuarto
         us_readings = us_array.read(true_pose)
-        vision_dets = simulated_vision(world, true_pose, drop_prob=drop_prob)
+        vision_dets = simulatedVision(world, true_pose, dropProb=drop_prob)
 
         # 3) Fusión -> observaciones para el EKF
-        observations = fuse_observations(vision_dets, us_readings)
+        observations = fuseObservations(vision_dets, us_readings)
 
         # 4) Ciclo SLAM (predicción + corrección)
         output = slam.step(motion, observations)
@@ -61,9 +61,9 @@ def run_simulation(steps=300, seed=0, drop_prob=0.0, verbose=True,
         # 5) Mapa de ocupación (Ray Casting) con la pose ya corregida y
         #    las observaciones ancladas a los landmarks consolidados;
         #    también recibe los rayos "sin eco" (solo espacio libre)
-        grid.update_from_scan((output.x, output.y, output.theta),
-                              slam.observations_for_map()
-                              + free_space_rays(us_readings))
+        grid.updateFromScan((output.x, output.y, output.theta),
+                            slam.observationsForMap()
+                            + freeSpaceRays(us_readings))
 
         gt_traj.append(true_pose)
         est_traj.append((output.x, output.y, output.theta))
@@ -76,11 +76,11 @@ def run_simulation(steps=300, seed=0, drop_prob=0.0, verbose=True,
                   f"est=({output.x:.2f},{output.y:.2f},"
                   f"{math.degrees(output.theta):6.1f}°)  "
                   f"conf={output.confidence:.2f}  "
-                  f"landmarks={len(slam.confirmed_landmarks())}")
+                  f"landmarks={len(slam.confirmedLandmarks())}")
 
     ate = compute_ate(est_traj, gt_traj)
     ori_err = compute_orientation_error(est_traj, gt_traj)
-    map_acc = map_occupancy_accuracy(grid, world.occupied_cells(grid))
+    map_acc = map_occupancy_accuracy(grid, world.occupiedCells(grid))
     unc = uncertainty_series(cov_hist)
 
     if verbose:
@@ -91,14 +91,14 @@ def run_simulation(steps=300, seed=0, drop_prob=0.0, verbose=True,
         if map_acc:
             print(f"Mapa vs cuarto real: precisión={map_acc['precision']:.2f} "
                   f"recall={map_acc['recall']:.2f}")
-        print(f"Landmarks confirmados: {len(slam.confirmed_landmarks())} "
+        print(f"Landmarks confirmados: {len(slam.confirmedLandmarks())} "
               f"(candidatos vivos: {len(slam.landmarks)})")
 
-    path = grid.render_croquis(
+    path = grid.renderCroquis(
         pose=est_traj[-1],
         trajectory=[(p[0], p[1]) for p in est_traj],
-        gt_trajectory=[(p[0], p[1]) for p in gt_traj],
-        landmarks=slam.confirmed_landmarks(),
+        gtTrajectory=[(p[0], p[1]) for p in gt_traj],
+        landmarks=slam.confirmedLandmarks(),
         path=croquis_path)
     if verbose:
         print(f"Croquis de la simulación guardado en: {path}")

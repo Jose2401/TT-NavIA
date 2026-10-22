@@ -1,13 +1,3 @@
-"""
-test_navigation.py
-Pruebas del módulo de navegación: entorno de entrenamiento, formatos de
-entrada (comandos) y salida (indicaciones), submódulo de dirección con
-las frases exactas del documento, backends del modelo (SB3 vs numpy) y
-lazo cerrado con el modelo entrenado.
-
-Ejecutar con:
-    python -m unittest test_navigation -v
-"""
 import math
 import os
 import unittest
@@ -23,7 +13,7 @@ CMP_MODEL = "models/nav_ppo_extended_cmp"
 FINAL_MODEL = "models/nav_ppo"
 
 
-def _pick_model():
+def _elegirModelo():
     for base in (FINAL_MODEL, CMP_MODEL):
         if os.path.exists(base + "_policy.npz"):
             return base
@@ -32,17 +22,16 @@ def _pick_model():
 
 class TestNavEnv(unittest.TestCase):
 
-    def test_spaces_and_reset(self):
+    def testSpacesAndReset(self):
         for mode, dim in (("doc", 8), ("extended", 24)):
             env = NavEnv(obs_mode=mode, seed=1)
             obs, _ = env.reset()
             self.assertEqual(obs.shape, (dim,))
             self.assertTrue(np.all(obs >= -1.0) and np.all(obs <= 1.0))
 
-    def test_forward_into_wall_terminates_with_collision(self):
+    def testForwardIntoWallTerminatesWithCollision(self):
         env = NavEnv(obs_mode="doc", seed=2, sensor_noise=0)
         env.reset()
-        # colocar al agente pegado a la pared oeste mirando hacia ella
         env.pose = [0.35, env.world.bounds[3] / 2.0, math.pi]
         env.prev_d_goal = env._d_goal()
         obs, r, term, trunc, info = env.step(0)
@@ -50,31 +39,30 @@ class TestNavEnv(unittest.TestCase):
         self.assertTrue(info.get("collision"))
         self.assertLess(r, -50)
 
-    def test_reaching_goal_gives_success(self):
+    def testReachingGoalGivesSuccess(self):
         env = NavEnv(obs_mode="doc", seed=3, sensor_noise=0)
         env.reset()
-        # goal justo al frente, sin obstáculos en medio
         x, y, th = env.pose
         env.goal = (x + 0.5 * math.cos(th), y + 0.5 * math.sin(th))
         env.world.statics = np.zeros((0, 3))
         env.world.movers = np.zeros((0, 5))
-        env.world.hazards = np.zeros((0, 3))
+        env.world.hazards= np.zeros((0, 3))
         env.prev_d_goal = env._d_goal()
         obs, r, term, trunc, info = env.step(0)
         self.assertTrue(info.get("success"))
         self.assertGreater(r, 50)
 
-    def test_hazard_fall(self):
+    def testHazardFall(self):
         env = NavEnv(obs_mode="extended", seed=4, sensor_noise=0)
         env.reset()
         x, y, th = env.pose
         hx = x + 0.3 * math.cos(th)
-        hy = y + 0.3 * math.sin(th)
+        hy =y + 0.3 * math.sin(th)
         env.world.hazards = np.array([[hx, hy, 0.25]])
         obs, r, term, trunc, info = env.step(0)
         self.assertTrue(info.get("fell"))
 
-    def test_world_generators_produce_valid_worlds(self):
+    def testWorldGeneratorsProduceValidWorlds(self):
         rng = np.random.default_rng(0)
         for gen in (gen_room, gen_two_rooms, gen_outdoor):
             world, start, goal = gen(rng)
@@ -85,9 +73,8 @@ class TestNavEnv(unittest.TestCase):
 
 
 class TestCommandFormat(unittest.TestCase):
-    """Formato de ENTRADA: las intenciones del documento (Alg. 9)."""
 
-    def test_destination_phrases(self):
+    def testDestinationPhrases(self):
         for texto, destino in (("ve a la silla", "silla"),
                                ("llevame a la salida", "salida"),
                                ("navega hacia la puerta", "puerta"),
@@ -96,12 +83,12 @@ class TestCommandFormat(unittest.TestCase):
             self.assertEqual(cmd.tipo, "navegar", texto)
             self.assertEqual(cmd.destino, destino, texto)
 
-    def test_point_destination(self):
+    def testPointDestination(self):
         cmd = parse_command("punto 3.5 -2")
         self.assertEqual(cmd.tipo, "navegar")
         self.assertEqual(cmd.punto, (3.5, -2.0))
 
-    def test_session_intents(self):
+    def testSessionIntents(self):
         self.assertEqual(parse_command("pausa").tipo, "pausar")
         self.assertEqual(parse_command("continúa por favor").tipo, "reanudar")
         self.assertEqual(parse_command("detente").tipo, "detener")
@@ -112,35 +99,33 @@ class TestCommandFormat(unittest.TestCase):
 
 
 class TestDirectionText(unittest.TestCase):
-    """Submódulo de dirección (Alg. 5): frases y umbrales EXACTOS."""
 
-    def test_forward_with_distance(self):
+    def testForwardWithDistance(self):
         self.assertEqual(direction_text(0, 7.4, 0.0), "Avance 4 metros")
 
-    def test_slight_turn_at_45_or_less(self):
+    def testSlightTurnAt45OrLess(self):
         self.assertEqual(direction_text(1, 8.0, math.radians(30)),
                          "Gire ligeramente a la izquierda")
         self.assertEqual(direction_text(2, 8.0, math.radians(-45)),
                          "Gire ligeramente a la derecha")
 
-    def test_full_turn_over_45(self):
+    def testFullTurnOver45(self):
         self.assertEqual(direction_text(1, 8.0, math.radians(90)),
                          "Gire a la izquierda 90 grados")
 
-    def test_stop(self):
+    def testStop(self):
         self.assertEqual(direction_text(3, 8.0, 0.0), "Deténgase")
 
-    def test_near_destination_prefix(self):
+    def testNearDestinationPrefix(self):
         txt = direction_text(0, 3.0, 0.0)
         self.assertTrue(txt.startswith("Está cerca de su destino. "), txt)
 
 
-@unittest.skipUnless(_pick_model(), "aún no hay modelo entrenado")
+@unittest.skipUnless(_elegirModelo(), "aún no hay modelo entrenado")
 class TestPolicyBackends(unittest.TestCase):
 
-    def test_numpy_matches_sb3(self):
-        """El backend numpy (Raspberry) debe decidir IGUAL que SB3."""
-        base = _pick_model()
+    def testNumpyMatchesSb3(self):
+        base = _elegirModelo()
         npz = NumpyPolicy(base + "_policy.npz")
         try:
             from navigation.navigator import SB3Policy
@@ -149,46 +134,46 @@ class TestPolicyBackends(unittest.TestCase):
             self.skipTest("SB3 no disponible")
         rng = np.random.default_rng(0)
         dim = npz.layers[0][0].shape[1]
-        agree = 0
+        coinciden = 0
         for _ in range(200):
             obs = rng.uniform(-1, 1, size=dim).astype(np.float32)
             if npz.predict(obs) == sb3.predict(obs):
-                agree += 1
-        self.assertGreaterEqual(agree, 198)   # tolerancia numérica mínima
+                coinciden += 1
+        self.assertGreaterEqual(coinciden, 198)
 
-    def test_model_beats_random_in_env(self):
-        base = _pick_model()
-        policy, obs_mode = load_policy(base)
-        successes = 0
+    def testModelBeatsRandomInEnv(self):
+        base = _elegirModelo()
+        policy, obsMode = load_policy(base)
+        exitos = 0
         for ep in range(20):
-            env = NavEnv(obs_mode=obs_mode, seed=5000 + ep)
+            env = NavEnv(obs_mode=obsMode, seed=5000 + ep)
             obs, _ = env.reset()
             done = False
             while not done:
                 obs, _r, term, trunc, info = env.step(policy.predict(obs))
                 done = term or trunc
-            successes += bool(info.get("success"))
-        self.assertGreaterEqual(successes, 10)   # >=50% (aleatorio: ~0%)
+            exitos += bool(info.get("success"))
+        self.assertGreaterEqual(exitos, 10)
 
 
-@unittest.skipUnless(_pick_model(), "aún no hay modelo entrenado")
+@unittest.skipUnless(_elegirModelo(), "aún no hay modelo entrenado")
 class TestNavigatorSession(unittest.TestCase):
-    """Máquina de estados (Alg. 11) + formato de salida."""
 
     def _navigator(self):
-        return Navigator(_pick_model(), repeat_s=0.0, decide_every_s=0.0)
+        return Navigator(_elegirModelo(), repeat_s=0.0, decide_every_s=0.0)
 
     def _frame(self, x=0.0, y=0.0, theta=0.0, landmarks=None):
         from ekf_slam import EKFSlam
         from map_manager import ChunkedMapManager
-        from navigation_feed import build_navigation_frame
+        from navigation_feed import buildNavigationFrame
         slam = EKFSlam(x, y, theta)
         if landmarks:
-            slam.import_landmarks(landmarks)
-        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
-        return build_navigation_frame(slam, mgr, []), mgr
+            slam.importLandmarks(landmarks)
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=4.0)
+        return buildNavigationFrame(slam, mgr, []), mgr
 
-    def test_full_session_flow(self):
+    # flujo completo de sesion
+    def testFullSessionFlow(self):
         nav = self._navigator()
         frame, mgr = self._frame(landmarks=[
             {"x": 3.0, "y": 0.0, "label": "door", "seen_count": 5,
@@ -207,14 +192,14 @@ class TestNavigatorSession(unittest.TestCase):
 
         self.assertEqual(nav.handle_command("pausa")[0].text,
                          "Navegación pausada.")
-        self.assertEqual(nav.update(frame, mgr), [])      # pausado: silencio
+        self.assertEqual(nav.update(frame, mgr), [])
         self.assertEqual(nav.handle_command("reanuda")[0].text,
                          "Reanudando navegación.")
         self.assertEqual(nav.handle_command("detener")[0].text,
                          "Navegación detenida.")
         self.assertEqual(nav.status.session, "en_espera")
 
-    def test_arrival_message(self):
+    def testArrivalMessage(self):
         nav = self._navigator()
         frame, mgr = self._frame(x=2.8, y=0.0, landmarks=[
             {"x": 3.0, "y": 0.0, "label": "door", "seen_count": 5,
@@ -224,14 +209,14 @@ class TestNavigatorSession(unittest.TestCase):
         self.assertEqual(msgs[0].text, "Ha llegado a su destino.")
         self.assertEqual(nav.status.session, "en_espera")
 
-    def test_unknown_destination(self):
+    def testUnknownDestination(self):
         nav = self._navigator()
         frame, _ = self._frame()
         msgs = nav.handle_command("ve a la cocina", frame)
         self.assertEqual(nav.status.session, "en_espera")
         self.assertIn("conozco", msgs[0].text)
 
-    def test_point_goal_and_observation_shapes(self):
+    def testPointGoalAndObservationShapes(self):
         nav = self._navigator()
         frame, mgr = self._frame()
         nav.handle_command("punto 2 1", frame)
@@ -242,124 +227,111 @@ class TestNavigatorSession(unittest.TestCase):
             self.assertEqual(obs.shape, (dim,))
             self.assertAlmostEqual(d, math.hypot(2, 1), places=5)
 
-    def _frame_blocked_front(self, x=0.5, y=0.5, theta=0.0, dist=0.6):
-        """Pared pintada al frente a `dist` m (como la ve el mapa)."""
+    def _frameParedEnfrente(self, x=0.5, y=0.5, theta=0.0, dist=0.6):
         from ekf_slam import EKFSlam
         from map_manager import ChunkedMapManager
-        from navigation_feed import build_navigation_frame
+        from navigation_feed import buildNavigationFrame
         from interfaces import Observation
-        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=4.0)
         for _ in range(3):
-            mgr.update_from_scan((x, y, theta), [
+            mgr.updateFromScan((x, y, theta), [
                 Observation(range_m=dist, bearing=theta + b * 0.1,
                             sigma_r=0.05) for b in range(-6, 7)])
         slam = EKFSlam(x, y, theta)
-        return build_navigation_frame(slam, mgr, []), mgr
+        return buildNavigationFrame(slam, mgr, []), mgr
 
-    def test_never_says_advance_when_front_is_critical(self):
-        """Coherencia alerta/instrucción: con el frente a < 0.80 m (el
-        umbral de 'Deténgase' del alg. 7) la indicación nunca es
-        'Avance', aunque el modelo lo pida; y el giro forzado mantiene
-        su sentido en ciclos consecutivos (sin izquierda/derecha/...)."""
-        from navigation_feed import safety_alerts, needs_replan
+    def testNeverSaysAdvanceWhenFrontIsCritical(self):
+        from navigation_feed import safetyAlerts, needsReplan
         nav = self._navigator()
-        frame, mgr = self._frame_blocked_front(dist=0.6)
-        nav.handle_command("punto 3 0.5", frame)     # destino tras la pared
-        alerts = safety_alerts(frame)
-        self.assertTrue(needs_replan(alerts))
+        frame, mgr = self._frameParedEnfrente(dist=0.6)
+        nav.handle_command("punto 3 0.5", frame)
+        alertas = safetyAlerts(frame)
+        self.assertTrue(needsReplan(alertas))
         dirs = set()
         for _ in range(5):
-            msgs = nav.update(frame, mgr, alerts)
+            msgs = nav.update(frame, mgr, alertas)
             self.assertNotEqual(nav.status.last_action, 0)
             for m in msgs:
                 self.assertNotIn("Avance", m.text)
             dirs.add(nav.status.last_action)
-        self.assertEqual(len(dirs), 1)      # mismo sentido de giro
+        self.assertEqual(len(dirs), 1)
 
-    def test_critical_alert_forces_immediate_decision(self):
-        """Señal recalcular_ruta (alg. 7/11): con cadencia lenta, una
-        alerta crítica hace decidir de inmediato."""
-        from navigation_feed import safety_alerts
-        nav = Navigator(_pick_model(), repeat_s=0.0, decide_every_s=1e6)
-        frame, mgr = self._frame_blocked_front(dist=0.6)
+    def testCriticalAlertForcesImmediateDecision(self):
+        from navigation_feed import safetyAlerts
+        nav = Navigator(_elegirModelo(), repeat_s=0.0, decide_every_s=1e6)
+        frame, mgr = self._frameParedEnfrente(dist=0.6)
         nav.handle_command("punto 3 0.5", frame)
-        self.assertTrue(nav.update(frame, mgr, []))           # 1a decisión
-        self.assertEqual(nav.update(frame, mgr, []), [])      # espera
-        msgs = nav.update(frame, mgr, safety_alerts(frame))   # recalcula
+        self.assertTrue(nav.update(frame, mgr, []))
+        self.assertEqual(nav.update(frame, mgr, []), [])
+        msgs = nav.update(frame, mgr, safetyAlerts(frame))
         self.assertTrue(msgs)
         self.assertEqual(msgs[0].kind, "instruccion")
 
-    def test_forward_repeats_are_collapsed(self):
-        """'Avance 3 metros' seguido de 'Avance 2 metros' dentro de
-        repeat_s es la misma indicación: no se repite."""
-        nav = Navigator(_pick_model(), repeat_s=10.0, decide_every_s=0.0)
+    def testForwardRepeatsAreCollapsed(self):
+        nav = Navigator(_elegirModelo(), repeat_s=10.0, decide_every_s=0.0)
         frame, mgr = self._frame()
         nav.handle_command("punto 3 0", frame)
-        said = []
+        dichos = []
         for _ in range(6):
-            said += [m for m in nav.update(frame, mgr, [])
-                     if m.action == 0]
-        self.assertLessEqual(len(said), 1)
+            dichos += [m for m in nav.update(frame, mgr, [])
+                       if m.action == 0]
+        self.assertLessEqual(len(dichos), 1)
 
 
 class TestVisionEgoMotion(unittest.TestCase):
-    """Compensación del giro de la cámara en el rastreador de movimiento
-    del módulo de visión (vision_bridge.shift_tracker_for_yaw)."""
 
-    def test_static_object_not_flagged_moving_when_turning(self):
+    def testStaticObjectNotFlaggedMovingWhenTurning(self):
         try:
             from vision.motion import ObjectMotionTracker
         except ImportError:
             self.skipTest("vision/motion.py requiere OpenCV")
-        from vision_bridge import shift_tracker_for_yaw
+        from vision_bridge import shiftTrackerForYaw
         hfov = math.radians(70)
         w = 640
-        yaw_per_frame = math.radians(3)          # giro a la izquierda
-        px_per_frame = yaw_per_frame * w / hfov  # ~27 px: >> umbral 8 px
+        yawPorFrame = math.radians(3)
+        pxPorFrame = yawPorFrame * w / hfov
 
-        def run(compensate):
+        def correr(compensar):
             tracker = ObjectMotionTracker()
             cx = 300.0
             flags = None
             for _ in range(5):
-                if compensate:
-                    shift_tracker_for_yaw(tracker, yaw_per_frame, hfov, w)
+                if compensar:
+                    shiftTrackerForYaw(tracker, yawPorFrame, hfov, w)
                 det = [{"bbox": (int(cx - 30), 200, int(cx + 30), 320)}]
                 flags = tracker.update(det)
-                cx += px_per_frame        # la escena se desplaza a la derecha
+                cx += pxPorFrame
             return flags[0]
 
-        self.assertTrue(run(compensate=False))   # sin compensar: "móvil"
-        self.assertFalse(run(compensate=True))   # compensado: estático
+        self.assertTrue(correr(compensar=False))
+        self.assertFalse(correr(compensar=True))
 
-    def test_truly_moving_object_still_detected(self):
+    def testTrulyMovingObjectStillDetected(self):
         try:
             from vision.motion import ObjectMotionTracker
         except ImportError:
             self.skipTest("vision/motion.py requiere OpenCV")
-        from vision_bridge import shift_tracker_for_yaw
+        from vision_bridge import shiftTrackerForYaw
         hfov, w = math.radians(70), 640
         yaw = math.radians(3)
         tracker = ObjectMotionTracker()
         cx = 300.0
         for _ in range(5):
-            shift_tracker_for_yaw(tracker, yaw, hfov, w)
+            shiftTrackerForYaw(tracker, yaw, hfov, w)
             flags = tracker.update([{"bbox": (int(cx - 30), 200,
                                               int(cx + 30), 320)}])
-            cx += yaw * w / hfov + 12.0   # escena + movimiento propio
+            cx += yaw * w / hfov + 12.0
         self.assertTrue(flags[0])
 
 
 class TestRealMapWorlds(unittest.TestCase):
-    """Mapas reales guardados (chunks) como mundos de entrenamiento."""
 
-    def _make_map(self, tmpdir):
-        """Construye un mapa guardado pintando un cuarto de 4x3 m con
-        ecos precisos (como lo haría un recorrido real)."""
+    # cuarto de 4x3 pintado con ecos buenos
+    def _hacerMapa(self, tmpdir):
         import math as m
         from map_manager import ChunkedMapManager
         from interfaces import Observation
-        mgr = ChunkedMapManager(map_dir=tmpdir, chunk_size_m=4.0)
+        mgr = ChunkedMapManager(mapDir=tmpdir, chunkSizeM=4.0)
         poses = [(x, y, th) for x in (1.0, 2.0, 3.0)
                  for y in (0.8, 1.5, 2.2)
                  for th in (0.0, m.pi / 2, m.pi, -m.pi / 2)]
@@ -368,8 +340,7 @@ class TestRealMapWorlds(unittest.TestCase):
             obs = []
             for b in [k * 0.2 - 1.2 for k in range(13)]:
                 ang = th + b
-                # distancia a las "paredes" del cuarto [0,4]x[0,3]
-                best = 4.0
+                mejor = 4.0
                 for (wx0, wy0, wx1, wy1) in ((0, 0, 4, 0), (4, 0, 4, 3),
                                              (4, 3, 0, 3), (0, 3, 0, 0)):
                     ex, ey = wx1 - wx0, wy1 - wy0
@@ -377,30 +348,29 @@ class TestRealMapWorlds(unittest.TestCase):
                     if abs(den) < 1e-9:
                         continue
                     t = ((wx0 - x) * ey - (wy0 - y) * ex) / den
-                    u = ((x - wx0) * m.sin(ang)
-                         - (y - wy0) * m.cos(ang)) / -den
+                    u= ((x - wx0) * m.sin(ang)
+                        - (y - wy0) * m.cos(ang)) / -den
                     if t > 0 and 0 <= u <= 1:
-                        best = min(best, t)
-                obs.append(Observation(range_m=best, bearing=b,
+                        mejor = min(mejor, t)
+                obs.append(Observation(range_m=mejor, bearing=b,
                                        sigma_r=0.05))
             for _ in range(2):
-                mgr.update_from_scan(pose, obs)
-        mgr.save_all()
+                mgr.updateFromScan(pose, obs)
+        mgr.saveAll()
         return mgr
 
-    def test_factory_and_episode(self):
+    def testFactoryAndEpisode(self):
         import tempfile, shutil
         from navigation import real_maps
         tmpdir = tempfile.mkdtemp(prefix="realmap_test_")
         try:
-            self._make_map(tmpdir)
+            self._hacerMapa(tmpdir)
             real_maps._CACHE.clear()
-            f = real_maps.RealMapWorldFactory(tmpdir)
-            self.assertGreater(len(f.statics), 20)      # paredes pintadas
-            self.assertGreater(f.free_area_m2(), 1.0)
+            papu = real_maps.RealMapWorldFactory(tmpdir)
+            self.assertGreater(len(papu.statics), 20)
+            self.assertGreater(papu.free_area_m2(), 1.0)
             rng = np.random.default_rng(0)
-            world, start, goal = f.sample_episode(rng, movers=False)
-            # inicio con espacio libre y rayos que chocan con las paredes
+            world, start, goal = papu.sample_episode(rng, movers=False)
             self.assertGreater(world.clearance_at(start[0], start[1]),
                                0.2)
             d = world.ray_distances(start[0], start[1],
@@ -410,12 +380,12 @@ class TestRealMapWorlds(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def test_env_uses_real_map(self):
+    def testEnvUsesRealMap(self):
         import tempfile, shutil
         from navigation import real_maps
         tmpdir = tempfile.mkdtemp(prefix="realmap_env_")
         try:
-            self._make_map(tmpdir)
+            self._hacerMapa(tmpdir)
             real_maps._CACHE.clear()
             env = NavEnv(obs_mode="extended", seed=0,
                          real_map_dirs=[tmpdir], real_map_prob=1.0)
@@ -431,36 +401,32 @@ class TestRealMapWorlds(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-@unittest.skipUnless(_pick_model(), "aún no hay modelo entrenado")
+@unittest.skipUnless(_elegirModelo(), "aún no hay modelo entrenado")
 class TestClosedLoopIntegration(unittest.TestCase):
-    """El sistema COMPLETO: SLAM + mapa por chunks + navegador. El
-    usuario simulado obedece las indicaciones y debe llegar al destino
-    esquivando los muebles del cuarto."""
 
-    def test_guided_walk_reaches_goal(self):
+    def testGuidedWalkReachesGoal(self):
         import random
         random.seed(11)
         from sim_world import (SimulatedWorld, SimulatedUltrasonicArray,
-                               simulated_vision)
+                               simulatedVision)
         from sim_world import KeyboardUser
         from ekf_slam import EKFSlam
         from map_manager import ChunkedMapManager
-        from vision_bridge import fuse_observations, free_space_rays
-        from navigation_feed import build_navigation_frame
+        from vision_bridge import fuseObservations, freeSpaceRays
+        from navigation_feed import buildNavigationFrame
         from navigation.nav_env import FORWARD_STEP, TURN_STEP
 
-        world = SimulatedWorld.default_room()
+        world = SimulatedWorld.defaultRoom()
         user = KeyboardUser(world, start=(0.7, 0.7, 0.0))
         us = SimulatedUltrasonicArray(world)
         slam = EKFSlam(0.7, 0.7, 0.0)
-        mgr = ChunkedMapManager(map_dir=None, chunk_size_m=4.0)
-        nav = Navigator(_pick_model(), repeat_s=0.0, decide_every_s=0.0)
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=4.0)
+        nav = Navigator(_elegirModelo(), repeat_s=0.0, decide_every_s=0.0)
 
-        goal = (5.0, 3.0)          # esquina opuesta, tras los muebles
+        goal = (5.0, 3.0)
         frame = None
-        arrived = False
-        for step in range(400):
-            # obedecer la última acción decidida
+        llego = False
+        for paso in range(400):
             forward = rot = 0.0
             act = nav.status.last_action
             if nav.status.session == "activo" and act is not None:
@@ -472,27 +438,27 @@ class TestClosedLoopIntegration(unittest.TestCase):
                     rot = -TURN_STEP / 2
             motion = user.command(forward, rot)
 
-            tp = tuple(user.true_pose)
-            dets = simulated_vision(world, tp)
-            readings = us.read(tp)
-            out = slam.step(motion, fuse_observations(dets, readings))
+            tp = tuple(user.truePose)
+            dets = simulatedVision(world, tp)
+            lecturas = us.read(tp)
+            out = slam.step(motion, fuseObservations(dets, lecturas))
             pose = (out.x, out.y, out.theta)
-            mgr.update_from_scan(pose, slam.observations_for_map()
-                                 + free_space_rays(readings))
-            mgr.update_position(pose, slam.get_landmarks())
-            frame = build_navigation_frame(slam, mgr, dets)
+            mgr.updateFromScan(pose, slam.observationsForMap()
+                               + freeSpaceRays(lecturas))
+            mgr.updatePosition(pose, slam.getLandmarks())
+            frame = buildNavigationFrame(slam, mgr, dets)
 
-            if step == 10:
+            if paso == 10:
                 nav.handle_command("punto 5 3", frame)
             msgs = nav.update(frame, mgr)
             if any(m.text == "Ha llegado a su destino." for m in msgs):
-                arrived = True
+                llego = True
                 break
 
-        self.assertTrue(arrived, "el usuario guiado no llegó al destino")
-        err = math.hypot(user.true_pose[0] - goal[0],
-                         user.true_pose[1] - goal[1])
-        self.assertLess(err, 1.2)   # llegada real, no solo estimada
+        self.assertTrue(llego, "el usuario guiado no llegó al destino")
+        err = math.hypot(user.truePose[0] - goal[0],
+                         user.truePose[1] - goal[1])
+        self.assertLess(err, 1.2)
 
 
 if __name__ == "__main__":
