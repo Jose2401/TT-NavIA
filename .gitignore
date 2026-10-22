@@ -8,4 +8,5 @@ maps/
 models/*_cmp*
 videosxd/
 .DS_Store
-videosxd
+navigation_nlp_memory.json
+models/vosk-*

@@ -10,8 +10,9 @@ from map_manager import ChunkedMapManager
 from vision_bridge import fuseObservations
 from navigation_feed import buildNavigationFrame, safetyAlerts
 from navigation.navigator import Navigator
-from main_pi import Mb1232Array, VoiceOutput
+from main_pi import Mb1232Array
 from odometry import makeMotionEstimator
+from interaccion import armarInteraccion
 
 
 # lee comandos de stdin en otro hilo
@@ -44,13 +45,22 @@ def main():
     p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
     p.add_argument("--imu-bus", type=int, default=1)
     p.add_argument("--step-length", type=float, default=0.68)
+    p.add_argument("--no-voz", action="store_true",
+                   help="sin micrófono/vosk (comandos por stdin)")
+    p.add_argument("--no-tts", action="store_true",
+                   help="sin voz de salida (solo consola)")
+    p.add_argument("--vosk-model", default="models/vosk-model-small-es-0.42")
+    p.add_argument("--mic-device", type=int, default=None)
     args = p.parse_args()
 
     import cv2
     from vision_bridge import VisionBridge, GroundHazardDetector
 
-    voz = VoiceOutput()
-    voz.say("Sistema listo. Diga su destino.", priority=2)
+    navigator = Navigator(args.model_nav)
+    inter, voz, oido = armarInteraccion(
+        navigator, usarVoz=not args.no_voz, usarTts=not args.no_tts,
+        voskModel=args.vosk_model, micDevice=args.mic_device)
+    voz.decir("Sistema listo. Diga su destino.", prioridad=2)
 
     bridge = VisionBridge(modelPath=args.model, cameraProfile="picam3wide")
     detPeligros = GroundHazardDetector(cameraProfile="picam3wide") \
@@ -59,7 +69,7 @@ def main():
         useImu=not args.no_imu, imuBus=args.imu_bus,
         imuAddr=args.imu_addr, stepLengthM=args.step_length,
         hfovDeg=math.degrees(bridge.hfov),
-        say=lambda m: voz.say(m, priority=2))
+        say=lambda m: voz.decir(m, prioridad=2))
     ultrasonico = Mb1232Array()
 
     mgr = ChunkedMapManager(mapDir=args.map_dir,
@@ -69,11 +79,13 @@ def main():
     guardados = mgr.loadLandmarks()
     if guardados:
         slam.importLandmarks(guardados)
-        voz.say("Mapa conocido cargado.", priority=2)
+        voz.decir("Mapa conocido cargado.", prioridad=2)
 
-    navigator = Navigator(args.model_nav)
+    # el mic y el teclado meten frases a la misma cola
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
+    if oido is not None:
+        oido.start(colaCmd, muteFn=lambda: voz.hablando)
 
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
@@ -96,9 +108,8 @@ def main():
 
             try:
                 while True:
-                    for m in navigator.handle_command(colaCmd.get_nowait(),
-                                                      navFrame):
-                        voz.say(m.text, priority=m.priority)
+                    voz.decirMsgs(inter.manejarTexto(colaCmd.get_nowait(),
+                                                     navFrame))
             except queue.Empty:
                 pass
 
@@ -122,9 +133,10 @@ def main():
             eventos = mgr.updatePosition(pose, slam.getLandmarks())
             for ev in eventos:
                 if ev["type"] == "chunk_change" and not ev["known"]:
-                    voz.say("Zona nueva.", priority=2)
+                    voz.decir("Zona nueva.", prioridad=2, cadaS=5.0)
                 elif ev["type"] == "room_recognized":
-                    voz.say(f"Está en {ev['room']}.", priority=1)
+                    voz.decir(f"Está en {ev['room']}.", prioridad=1,
+                              cadaS=5.0)
 
             navFrame = buildNavigationFrame(
                 slam, mgr, detections, maxRange=args.max_range,
@@ -133,10 +145,9 @@ def main():
 
             alertas = safetyAlerts(navFrame)
             for prio, msg in alertas:
-                voz.say(msg, priority=prio,
-                        repeatAfterS=2.0 if prio == 0 else 5.0)
-            for m in navigator.update(navFrame, mgr, alertas):
-                voz.say(m.text, priority=m.priority)
+                voz.decir(msg, prioridad=prio,
+                          cadaS=2.0 if prio == 0 else 5.0)
+            voz.decirMsgs(inter.ciclo(navFrame, mgr, alertas))
 
             if ahora - lastSave > args.save_every:
                 mgr.saveAll()
@@ -148,7 +159,7 @@ def main():
         cap.release()
         mgr.saveAll()
         mgr.saveLandmarks(slam.exportLandmarks())
-        voz.say("Sistema detenido.", priority=2)
+        voz.decir("Sistema detenido.", prioridad=2)
 
 
 if __name__ == "__main__":

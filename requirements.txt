@@ -12,3 +12,9 @@ transformers>=4.44
 gymnasium>=1.0            # entorno de entrenamiento
 stable-baselines3>=2.3    # PPO (solo para ENTRENAR)
 
+
+# Interacción por voz (VozYPLN; opcionales, el sistema cae a teclado/consola)
+# vosk                    # reconocimiento offline (+ modelo: vosk-model-small-es-0.42)
+# sounddevice             # micrófono
+# pyttsx3                 # voz de salida
+# smbus2                  # I2C en la Pi: MB1232 + IMU BNO055

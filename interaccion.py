@@ -1,0 +1,284 @@
+"""
+interaccion.py — une el modulo de voz/pln del equipo (VozYPLN) con el
+navegador: mic -> vosk -> NavigationNLP -> NavCommand/acciones -> tts
+con cola de prioridades (0 alerta interrumpe, 1 navegacion, 2 respuesta).
+todo es opcional: sin mic o sin tts el sistema sigue con texto/consola.
+"""
+import math
+import queue
+import threading
+import time
+
+from navigation.navigator import NavCommand, NavMessage
+
+
+class ColaVoz:
+    # tts con prioridades; si no hay pyttsx3 solo imprime
+    def __init__(self, hablar=True, rate=165, echo=True):
+        self.echo = echo
+        self.engine = None
+        self.hablando = False
+        self._cola = queue.PriorityQueue()
+        self._n = 0
+        self._ultima = {}
+        if hablar:
+            try:
+                import pyttsx3
+                self.engine = pyttsx3.init()
+                self.engine.setProperty("rate", rate)
+                threading.Thread(target=self._worker, daemon=True).start()
+            except Exception as e:
+                print(f"[VOZ] tts no disponible ({e}), solo consola")
+
+    def decir(self, texto, prioridad=2, cadaS=0.0):
+        # cadaS > 0: no repetir la misma frase antes de ese tiempo
+        if cadaS > 0:
+            ahora = time.time()
+            if ahora - self._ultima.get(texto, 0.0) < cadaS:
+                return
+            self._ultima[texto] = ahora
+        if self.echo:
+            print(f"[VOZ p{prioridad}] {texto}", flush=True)
+        if self.engine is None:
+            return
+        if prioridad == 0:
+            try:
+                self.engine.stop()   # p0 interrumpe lo que se este diciendo
+            except Exception:
+                pass
+        self._n += 1
+        self._cola.put((prioridad, self._n, texto))
+
+    def decirMsgs(self, msgs):
+        for m in msgs:
+            self.decir(m.text, m.priority)
+
+    def _worker(self):
+        while True:
+            _p, _n, texto = self._cola.get()
+            self.hablando = True
+            try:
+                self.engine.say(texto)
+                self.engine.runAndWait()
+            except Exception:
+                pass
+            self.hablando = False
+
+
+class OidoVoz:
+    # mic -> texto con vosk; corre en su hilo y mete frases a una cola
+    def __init__(self, modelPath, device=None):
+        self.ok = False
+        self.razon = ""
+        self._rec = None
+        try:
+            import sys, os
+            ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "VozYPLN")
+            if ruta not in sys.path:
+                sys.path.insert(0, ruta)
+            from voz_recog import VoiceRecognizer
+            self._rec = VoiceRecognizer(modelPath, device=device)
+            self.ok = True
+        except FileNotFoundError as e:
+            self.razon = str(e)
+        except ImportError as e:
+            self.razon = f"falta dependencia: {e}"
+        except Exception as e:
+            self.razon = str(e)
+
+    def start(self, colaTexto, muteFn=lambda: False):
+        if not self.ok:
+            return
+        def loop():
+            while True:
+                try:
+                    texto = self._rec.listen()
+                except Exception as e:
+                    print(f"[VOZ] mic fallo: {e}")
+                    time.sleep(2)
+                    continue
+                # si el tts estaba hablando, lo mas seguro es que el mic
+                # se oyo a si mismo
+                if texto and not muteFn():
+                    colaTexto.put(texto)
+        threading.Thread(target=loop, daemon=True).start()
+
+
+AYUDA_VOZ = ("Puede decir: llévame a un lugar, pausa, continúa, detener, "
+             "otra ruta, dónde estoy, qué hay enfrente, o repite.")
+
+_ARTICULOS = ("el ", "la ", "los ", "las ", "un ", "una ", "al ")
+
+
+def _limpiarDestino(destino):
+    # el pln a veces deja el articulo ("la puerta") o plural ("banos");
+    # el navigator espera la palabra pelona pa sus alias
+    if not destino:
+        return destino
+    d = destino.strip().lower()
+    for art in _ARTICULOS:
+        if d.startswith(art):
+            d = d[len(art):]
+            break
+    from navigation.navigator import DEST_ALIASES
+    if d not in DEST_ALIASES and d.endswith("s") and d[:-1] in DEST_ALIASES:
+        d = d[:-1]
+    return d
+
+
+class Interaccion:
+    """recibe texto (de voz o teclado), lo pasa por el pln del equipo y
+    ejecuta: lo de sesion va al Navigator, lo demas (entorno, repetir,
+    emergencia, ayuda...) se resuelve aqui."""
+
+    def __init__(self, navigator, nlp=None):
+        if nlp is None:
+            import sys, os
+            ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "VozYPLN")
+            if ruta not in sys.path:
+                sys.path.insert(0, ruta)
+            from PLN_oneimport import NavigationNLP
+            nlp = NavigationNLP()
+        self.nlp = nlp
+        self.navigator = navigator
+        self.pendienteDestino = False
+        self.ultimaInstruccion = None
+
+    def manejarTexto(self, texto, navFrame=None):
+        if not texto or not texto.strip():
+            return []
+
+        # atajo de desarrollo: "punto 5 3" va directo, sin pasar por pln
+        from navigation.navigator import parse_command
+        rapido = parse_command(texto)
+        if rapido.tipo == "navegar" and rapido.punto is not None:
+            return self.navigator.handle_command(rapido, navFrame)
+
+        # veniamos de "¿a que lugar quieres ir?": lo que diga es el destino
+        if self.pendienteDestino:
+            self.pendienteDestino = False
+            r = self.nlp.process(texto)
+            if r["accion"] not in ("denegar", "detener_navegacion",
+                                   "cancelar_ruta"):
+                texto = f"llevame a {texto}"
+
+        r = self.nlp.process(texto)
+        accion = r["accion"]
+
+        if accion == "navegar":
+            if r["requiere_aclaracion"]:
+                self.pendienteDestino = True
+                return [NavMessage(r["respuesta_sugerida"], priority=2,
+                                   kind="respuesta")]
+            cmd = NavCommand("navegar", destino=_limpiarDestino(r["destino"]),
+                             texto_original=texto)
+            return self.navigator.handle_command(cmd, navFrame)
+
+        simple = {"pausar_navegacion": "pausar",
+                  "reanudar_navegacion": "reanudar",
+                  "detener_navegacion": "detener",
+                  "cancelar_ruta": "detener",
+                  "recalcular_ruta": "ruta_alternativa",
+                  "consultar_ubicacion": "estado",
+                  "consultar_estado_ruta": "estado"}
+        if accion in simple:
+            cmd = NavCommand(simple[accion], texto_original=texto)
+            return self.navigator.handle_command(cmd, navFrame)
+
+        if accion == "describir_entorno":
+            return [NavMessage(self.describirEntorno(navFrame),
+                               priority=1, kind="respuesta")]
+        if accion == "repetir_ultima_instruccion":
+            if self.ultimaInstruccion:
+                return [NavMessage(self.ultimaInstruccion, priority=1,
+                                   kind="instruccion")]
+            return [NavMessage("No hay ninguna instrucción reciente.",
+                               priority=2, kind="respuesta")]
+        if accion == "notificar_emergencia":
+            msgs = [NavMessage("Emergencia activada. Deteniéndome.",
+                               priority=0, kind="alerta")]
+            if self.navigator.status.session == "activo":
+                msgs += self.navigator.handle_command(
+                    NavCommand("pausar"), navFrame)
+            # TODO: aqui va el aviso real a contactos/servicios cuando
+            # el equipo defina ese modulo
+            return msgs
+        if accion == "mostrar_ayuda":
+            return [NavMessage(AYUDA_VOZ, priority=2, kind="respuesta")]
+        if accion == "confirmar":
+            return [NavMessage("De acuerdo.", priority=2, kind="respuesta")]
+        if accion == "denegar":
+            self.pendienteDestino = False
+            return [NavMessage("Entendido, cancelado.", priority=2,
+                               kind="respuesta")]
+
+        # DESCONOCIDO
+        return [NavMessage(r["respuesta_sugerida"], priority=2,
+                           kind="respuesta")]
+
+    def ciclo(self, navFrame, mgr, alertas=None):
+        msgs = self.navigator.update(navFrame, mgr, alertas)
+        for m in msgs:
+            if m.kind == "instruccion":
+                self.ultimaInstruccion = m.text
+        return msgs
+
+    def describirEntorno(self, frame):
+        if frame is None:
+            return "Aún no tengo información del entorno."
+        partes = []
+        for nombre, lo, hi in (("Al frente", -math.radians(30),
+                                math.radians(30)),
+                               ("A la izquierda", math.radians(30),
+                                math.radians(90)),
+                               ("A la derecha", -math.radians(90),
+                                -math.radians(30))):
+            cerca = None
+            for d in frame.detections:
+                if lo <= d.bearing <= hi and d.range_est is not None:
+                    if cerca is None or d.range_est < cerca.range_est:
+                        cerca = d
+            if cerca is not None:
+                extra = " en movimiento" if cerca.moving else ""
+                tag = "peligro de piso" if cerca.hazard else cerca.label
+                partes.append(f"{nombre}, {tag}{extra} a "
+                              f"{cerca.range_est:.0f} metros"
+                              if cerca.range_est >= 1.5 else
+                              f"{nombre}, {tag}{extra} a "
+                              f"{int(cerca.range_est * 100)} centímetros")
+            else:
+                d_libre = {"Al frente": frame.d_front,
+                           "A la izquierda": frame.d_left,
+                           "A la derecha": frame.d_right}[nombre]
+                if d_libre >= 3.99:
+                    partes.append(f"{nombre} libre")
+                else:
+                    partes.append(f"{nombre}, obstáculo a "
+                                  f"{d_libre:.0f} metros"
+                                  if d_libre >= 1.5 else
+                                  f"{nombre}, obstáculo a "
+                                  f"{int(d_libre * 100)} centímetros")
+        if frame.room:
+            partes.append(f"Está en {frame.room}")
+        return ". ".join(partes) + "."
+
+
+def armarInteraccion(navigator, usarVoz=False, usarTts=False,
+                     voskModel=None, micDevice=None, echo=True):
+    """fabrica todo el stack de interaccion con fallbacks: sin modelo
+    vosk o sin mic avisa y sigue solo con teclado."""
+    voz = ColaVoz(hablar=usarTts, echo=echo)
+    inter = Interaccion(navigator)
+    oido = None
+    if usarVoz:
+        oido = OidoVoz(voskModel or "models/vosk-model-small-es-0.42",
+                       device=micDevice)
+        if oido.ok:
+            print("[VOZ] micrófono + vosk listos")
+        else:
+            print(f"[VOZ] reconocimiento no disponible: {oido.razon}")
+            print("[VOZ] seguimos con comandos por teclado")
+            oido = None
+    return inter, voz, oido

@@ -14,6 +14,7 @@ from navigation.navigator import Navigator, FORWARD_STEP, TURN_STEP
 from main_lap import (drawChunkMapPanel, drawNavBar, annotateCamera,
                       describeEvents, _armarSlamYMapa, _hudLine,
                       _hstackPad)
+from interaccion import armarInteraccion
 
 AYUDA = """
 main_nav_lap.py — navegación completa en laptop (gui): slam + chunks +
@@ -24,8 +25,8 @@ los comandos se escriben en la terminal y enter.
     python main_nav_lap.py                        # cámara real
     python main_nav_lap.py --model-nav models/nav_ppo
 
-comandos: ve a la silla | punto 3.5 2.0 | pausa | reanuda | detener |
-ruta alternativa | estado
+comandos (teclado, o mic con --voz): ve a la silla | punto 3.5 2.0 |
+pausa | reanuda | detener | otra ruta | donde estoy | que hay enfrente
 
 en --sim el usuario "obedece" las indicaciones (así validamos que, una
 a una, sí te llevan al destino sin chocar xd); 'o' cambia a wasd manual.
@@ -90,9 +91,14 @@ def runSim(args):
     slam, mgr = _armarSlamYMapa(args, x0=0.7, y0=0.7)
     navigator = Navigator(args.model_nav, decide_every_s=0.0,
                           repeat_s=2.5)
+    inter, voz, oido = armarInteraccion(
+        navigator, usarVoz=args.voz, usarTts=args.tts,
+        voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
 
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
+    if oido is not None:
+        oido.start(colaCmd, muteFn=lambda: voz.hablando)
     print(AYUDA)
     print("[NAV p2] Sistema listo. Diga su destino. "
           "(ej: 've a la silla', 'punto 5 3')")
@@ -110,7 +116,9 @@ def runSim(args):
         try:
             while True:
                 linea = colaCmd.get_nowait()
-                printMsgs(navigator.handle_command(linea, navFrame))
+                msgs = inter.manejarTexto(linea, navFrame)
+                printMsgs(msgs)
+                voz.decirMsgs(msgs)
         except queue.Empty:
             pass
 
@@ -168,7 +176,10 @@ def runSim(args):
         for prio, msg in alertas:
             if prio == 0:
                 print(f"[ALERTA p0] {msg}")
-        printMsgs(navigator.update(navFrame, mgr, alertas))
+                voz.decir(msg, prioridad=0, cadaS=2.0)
+        msgs = inter.ciclo(navFrame, mgr, alertas)
+        printMsgs(msgs)
+        voz.decirMsgs(msgs)
 
         if not args.headless:
             import cv2
@@ -214,6 +225,9 @@ def runCamera(args):
         hfovDeg=math.degrees(bridge.hfov))
     slam, mgr = _armarSlamYMapa(args)
     navigator = Navigator(args.model_nav)
+    inter, voz, oido = armarInteraccion(
+        navigator, usarVoz=args.voz, usarTts=args.tts,
+        voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
 
     cap = cv2.VideoCapture(args.video if args.video else args.camera)
     if not cap.isOpened():
@@ -221,6 +235,8 @@ def runCamera(args):
 
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
+    if oido is not None:
+        oido.start(colaCmd, muteFn=lambda: voz.hablando)
     print("[NAV p2] Sistema listo. Diga su destino.")
 
     eventsLog = []
@@ -242,8 +258,9 @@ def runCamera(args):
 
             try:
                 while True:
-                    printMsgs(navigator.handle_command(colaCmd.get_nowait(),
-                                                       navFrame))
+                    msgs = inter.manejarTexto(colaCmd.get_nowait(), navFrame)
+                    printMsgs(msgs)
+                    voz.decirMsgs(msgs)
             except queue.Empty:
                 pass
 
@@ -268,7 +285,10 @@ def runCamera(args):
             for prio, msg in alertas:
                 if prio == 0:
                     print(f"[ALERTA p0] {msg}")
-            printMsgs(navigator.update(navFrame, mgr, alertas))
+                    voz.decir(msg, prioridad=0, cadaS=2.0)
+            msgs = inter.ciclo(navFrame, mgr, alertas)
+            printMsgs(msgs)
+            voz.decirMsgs(msgs)
 
             if not args.headless:
                 camV = annotateCamera(frame.copy(), detections,
@@ -314,6 +334,12 @@ def buildParser():
     p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
     p.add_argument("--imu-bus", type=int, default=1)
     p.add_argument("--step-length", type=float, default=0.68)
+    p.add_argument("--voz", action="store_true",
+                   help="comandos por micrófono (vosk)")
+    p.add_argument("--tts", action="store_true",
+                   help="respuestas habladas (pyttsx3)")
+    p.add_argument("--vosk-model", default="models/vosk-model-small-es-0.42")
+    p.add_argument("--mic-device", type=int, default=None)
     return p
 
 
