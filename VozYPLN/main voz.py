@@ -1,15 +1,20 @@
 
 from voz_recog import VoiceRecognizer
 from PLN_oneimport import NavigationNLP, DESCONOCIDO, INTENTS, normalize_text
+from Tts import Speaker
+import dialogo
+ 
 
 MODEL_PATH = "D:\\Users\\thani\\SLAM\\vosk-model-small-es-0.42"
 MIC_DEVICE = None       
 ENABLE_TTS = True          
 ENABLE_FEEDBACK = False    
 EXIT_COMMANDS = {"apagar sistema", "terminar programa"} 
+DEMO_GUIDANCE = True
 
+speaker = Speaker(voice="es-MX-DaliaNeural", rate="-5%")
 
-#  Salida hablada (opcional) 
+'''
 _tts = None
 if ENABLE_TTS:
     try:
@@ -25,39 +30,16 @@ def speak(text):
     if _tts:
         _tts.say(text)
         _tts.runAndWait()  # bloquea: evita que el micrófono capte la voz del sistema
-
+'''
 
 #  Ejecución de acciones (conecta aquí tu módulo de navegación) 
 def execute_action(result):
     accion = result["accion"]
     destino = result["destino"]
     print(f"[ACCIÓN] {accion} | destino={destino}")
-    # Ejemplo:
-    # if accion == "navegar": navegador.ir_a(destino)
-    # elif accion == "detener_navegacion": navegador.detener()
-    # elif accion == "notificar_emergencia": alertas.enviar()
-
-
-def handle_command(nlp, voice, text):
-    result = nlp.process(text)
-
-    # Falta el destino: se pregunta y se vuelve a escuchar
-    if result.get("requiere_aclaracion"):
-        speak(result["respuesta_sugerida"])
-        answer = voice.listen(timeout=8)
-        if not answer:
-            speak("No escuché el destino.")
-            return
-        result = nlp.process(f"llevame a {answer}")
-
-    speak(result["respuesta_sugerida"])
-
-    if result["intencion"] == DESCONOCIDO:
-        if ENABLE_FEEDBACK:
-            teach(nlp, text)
-        return
-
-    execute_action(result)
+    if accion == "navegar" and DEMO_GUIDANCE:
+        # DEMO: reemplaza con los datos reales de tu módulo de navegación
+        speaker.say(dialogo.navigation_instruction(turn_degrees=45, distance_m=8))
 
 
 def teach(nlp, text):
@@ -73,16 +55,38 @@ def teach(nlp, text):
     print(" Frase aprendida.")
 
 
+def handle_command(nlp, voice, text):
+    result = nlp.process(text)
+
+    # Falta el destino: se pregunta y se vuelve a escuchar
+    if result.get("requiere_aclaracion"):
+        speaker.say(dialogo.ask_destination())
+        answer = voice.listen(timeout=8)
+        if not answer:
+            speaker.say(dialogo.no_audio_message())
+            return
+        result = nlp.process(f"llevame a {answer}")
+
+    speaker.say(dialogo.friendly_response(result))
+
+    if result["intencion"] == DESCONOCIDO:
+        if ENABLE_FEEDBACK:
+            teach(nlp, text)
+        return
+
+    execute_action(result)
+
+
 def main():
     nlp = NavigationNLP()
     voice = VoiceRecognizer(MODEL_PATH, device=MIC_DEVICE)
 
-    speak("Sistema de navegación listo.")
+    speaker.say(dialogo.introduction())
     try:
         while True:
             text = voice.listen()
             if normalize_text(text) in EXIT_COMMANDS:
-                speak("Apagando el sistema.")
+                speaker.say(dialogo.goodbye())
                 break
             handle_command(nlp, voice, text)
     except KeyboardInterrupt:

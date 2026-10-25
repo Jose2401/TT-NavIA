@@ -113,14 +113,18 @@ def runSim(args):
     while args.max_frames is None or paso < args.max_frames:
         paso += 1
 
+        apagar = False
         try:
             while True:
                 linea = colaCmd.get_nowait()
                 msgs = inter.manejarTexto(linea, navFrame)
                 printMsgs(msgs)
                 voz.decirMsgs(msgs)
+                apagar = apagar or any(m.kind == "despedida" for m in msgs)
         except queue.Empty:
             pass
+        if apagar:
+            break
 
         forward = rot = 0.0
         if args.headless:
@@ -256,13 +260,17 @@ def runCamera(args):
             dt = max(1e-3, ahora - lastT)
             lastT = ahora
 
+            apagar = False
             try:
                 while True:
                     msgs = inter.manejarTexto(colaCmd.get_nowait(), navFrame)
                     printMsgs(msgs)
                     voz.decirMsgs(msgs)
+                    apagar = apagar or any(m.kind == "despedida" for m in msgs)
             except queue.Empty:
                 pass
+            if apagar:
+                break
 
             motion, odo = motionEst.update(frame, dt)
             yawOk = odo["source"] != "ninguno"

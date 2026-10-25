@@ -1,6 +1,7 @@
 """
-pruebas de la capa de interaccion (VozYPLN + navigator + tts) sin
-hardware: pln real (es puro python), tts con motor falso, frames falsos.
+pruebas de la capa de interaccion (VozYPLN: pln + dialogo + tts) sin
+hardware. las frases de dialogo.py son aleatorias, asi que se asierta
+por estado de sesion y contenido, no por texto exacto.
 correr: python -m unittest tests.test_interaccion
 """
 import math
@@ -43,27 +44,36 @@ class TestInteraccionFlujos(unittest.TestCase):
     def test_destino_por_voz(self):
         frame, _ = _frame(landmarks=PUERTA)
         msgs = self.inter.manejarTexto("llevame a la salida", frame)
-        self.assertEqual(msgs[0].text, "Ruta calculada. Iniciando navegación.")
+        self.assertTrue(msgs and msgs[0].text)
         self.assertEqual(self.inter.navigator.status.session, "activo")
         self.assertEqual(self.inter.navigator.status.goal_label, "door")
 
     def test_sesion_completa_frases_naturales(self):
         frame, _ = _frame(landmarks=PUERTA)
         self.inter.manejarTexto("quiero ir a la puerta", frame)
-        self.assertEqual(self.inter.manejarTexto("pausa por favor")[0].text,
-                         "Navegación pausada.")
-        self.assertEqual(self.inter.manejarTexto("sigue con la ruta")[0].text,
-                         "Reanudando navegación.")
-        self.assertEqual(self.inter.manejarTexto("ya quiero parar")[0].text,
-                         "Navegación detenida.")
+        self.assertEqual(self.inter.navigator.status.session, "activo")
+        self.inter.manejarTexto("pausa por favor")
+        self.assertEqual(self.inter.navigator.status.session, "pausado")
+        self.inter.manejarTexto("sigue con la ruta")
+        self.assertEqual(self.inter.navigator.status.session, "activo")
+        self.inter.manejarTexto("ya quiero parar")
         self.assertEqual(self.inter.navigator.status.session, "en_espera")
+
+    def test_sin_amigable_quedan_las_frases_del_documento(self):
+        nav = Navigator(_pickModel(), repeat_s=0.0, decide_every_s=0.0)
+        inter = Interaccion(nav, amigable=False)
+        frame, _ = _frame(landmarks=PUERTA)
+        msgs = inter.manejarTexto("llevame a la salida", frame)
+        self.assertEqual(msgs[0].text, "Ruta calculada. Iniciando navegación.")
+        self.assertEqual(inter.manejarTexto("pausa")[0].text,
+                         "Navegación pausada.")
 
     def test_aclaracion_de_destino(self):
         frame, _ = _frame(landmarks=PUERTA)
         msgs = self.inter.manejarTexto("quiero ir", frame)
         self.assertTrue(self.inter.pendienteDestino)
-        self.assertIn("lugar", msgs[0].text.lower())
-        msgs = self.inter.manejarTexto("la salida", frame)
+        self.assertIn("?", msgs[0].text)
+        self.inter.manejarTexto("la salida", frame)
         self.assertFalse(self.inter.pendienteDestino)
         self.assertEqual(self.inter.navigator.status.session, "activo")
 
@@ -86,11 +96,12 @@ class TestInteraccionFlujos(unittest.TestCase):
         self.assertEqual(msgs[0].priority, 0)
         self.assertEqual(self.inter.navigator.status.session, "pausado")
 
-    def test_ruta_alternativa(self):
+    def test_ruta_alternativa_mantiene_sesion(self):
         frame, _ = _frame(landmarks=PUERTA)
         self.inter.manejarTexto("ve a la salida", frame)
         msgs = self.inter.manejarTexto("busca otra ruta", frame)
-        self.assertEqual(msgs[0].text, "Calculando ruta alternativa.")
+        self.assertTrue(msgs and msgs[0].text)
+        self.assertEqual(self.inter.navigator.status.session, "activo")
 
     def test_describir_entorno(self):
         from interfaces import VisionDetection
@@ -102,7 +113,6 @@ class TestInteraccionFlujos(unittest.TestCase):
         texto = msgs[0].text
         self.assertIn("chair", texto)
         self.assertIn("peligro de piso", texto)
-        self.assertIn("derecha", texto.lower())
 
     def test_repetir_ultima_instruccion(self):
         frame, mgr = _frame(landmarks=PUERTA)
@@ -110,6 +120,33 @@ class TestInteraccionFlujos(unittest.TestCase):
         self.inter.ciclo(frame, mgr)
         msgs = self.inter.manejarTexto("repite", frame)
         self.assertEqual(msgs[0].text, self.inter.ultimaInstruccion)
+
+    def test_instrucciones_amigables_y_signos(self):
+        # phi>0 = goal a la IZQUIERDA; dialogo debe decir izquierda
+        frame, mgr = _frame(landmarks=PUERTA)
+        self.inter.manejarTexto("ve a la salida", frame)
+        st = self.inter.navigator.status
+        st.phi_goal = math.radians(60)
+        txt_izq = self.inter._instruccionAmigable(1, frame)
+        self.assertIn("izquierda", txt_izq)
+        txt_der = self.inter._instruccionAmigable(2, frame)
+        self.assertIn("derecha", txt_der)
+        txt_avanza = self.inter._instruccionAmigable(0, frame)
+        self.assertTrue("paso" in txt_avanza or "derech" in txt_avanza
+                        or "frente" in txt_avanza)
+
+    def test_llegada_con_dialogo(self):
+        frame, mgr = _frame(x=2.8, y=0.0, landmarks=PUERTA)
+        self.inter.manejarTexto("ve a la puerta", frame)
+        msgs = self.inter.ciclo(frame, mgr)
+        self.assertTrue(msgs)
+        t = msgs[0].text.lower()
+        self.assertTrue("llega" in t or "lograste" in t, t)
+        self.assertEqual(self.inter.navigator.status.session, "en_espera")
+
+    def test_apagar_sistema(self):
+        msgs = self.inter.manejarTexto("apagar sistema")
+        self.assertEqual(msgs[0].kind, "despedida")
 
     def test_desconocido_pide_repeticion(self):
         msgs = self.inter.manejarTexto("xyzzy foo bar")
@@ -121,7 +158,7 @@ class TestColaVoz(unittest.TestCase):
 
     def test_sin_tts_solo_imprime(self):
         voz = ColaVoz(hablar=False, echo=False)
-        voz.decir("hola", prioridad=1)   # no debe tronar
+        voz.decir("hola", prioridad=1)
         self.assertIsNone(voz.engine)
 
     def test_cadaS_no_repite(self):
@@ -154,6 +191,35 @@ class TestOidoVoz(unittest.TestCase):
         self.assertTrue(oido.razon)
 
 
+class TestDialogo(unittest.TestCase):
+    # el modulo del equipo, probado directo
+
+    def setUp(self):
+        import sys, os
+        ruta = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "VozYPLN")
+        if ruta not in sys.path:
+            sys.path.insert(0, ruta)
+        import dialogo
+        self.dialogo = dialogo
+
+    def test_describe_turn_buckets(self):
+        self.assertIsNone(self.dialogo.describe_turn(5))
+        self.assertIn("derecha", self.dialogo.describe_turn(45))
+        self.assertIn("izquierda", self.dialogo.describe_turn(-45))
+        self.assertIn("vuelta", self.dialogo.describe_turn(170))
+
+    def test_distancias_en_pasos(self):
+        self.assertIn("pasos", self.dialogo.describe_distance(5.0))
+        self.assertIn("metros", self.dialogo.describe_distance(30.0))
+
+    def test_friendly_cubre_todas_las_intenciones(self):
+        from PLN_oneimport import INTENTS
+        for intent in list(INTENTS) + ["DESCONOCIDO"]:
+            r = {"intencion": intent, "destino": "salida"}
+            self.assertTrue(self.dialogo.friendly_response(r))
+
+
 @unittest.skipUnless(_pickModel(), "falta el modelo entrenado")
 class TestArmado(unittest.TestCase):
 
@@ -162,7 +228,7 @@ class TestArmado(unittest.TestCase):
         inter, voz, oido = armarInteraccion(nav, usarVoz=True, usarTts=False,
                                             voskModel="/no/existe")
         self.assertIsNotNone(inter)
-        self.assertIsNone(oido)      # sin vosk: teclado y ya
+        self.assertIsNone(oido)
         msgs = inter.manejarTexto("ayuda")
         self.assertTrue(msgs)
 

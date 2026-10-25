@@ -1,8 +1,10 @@
 """
-interaccion.py — une el modulo de voz/pln del equipo (VozYPLN) con el
-navegador: mic -> vosk -> NavigationNLP -> NavCommand/acciones -> tts
-con cola de prioridades (0 alerta interrumpe, 1 navegacion, 2 respuesta).
-todo es opcional: sin mic o sin tts el sistema sigue con texto/consola.
+interaccion.py — une VozYPLN (pln + dialogo + Tts + vosk) con el
+navegador: mic -> NavigationNLP -> NavCommand/acciones -> Speaker con
+cola de prioridades (0 alerta interrumpe, 1 navegacion, 2 respuesta).
+el Navigator habla con las frases literales del documento; aqui dialogo
+las "traduce" al tono amigable del equipo. todo con fallbacks: sin mic
+o sin tts el sistema sigue por teclado/consola.
 """
 import math
 import queue
@@ -12,8 +14,17 @@ import time
 from navigation.navigator import NavCommand, NavMessage
 
 
+def _vozypln():
+    import sys, os
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "VozYPLN")
+    if ruta not in sys.path:
+        sys.path.insert(0, ruta)
+
+
 class ColaVoz:
-    # tts con prioridades; si no hay pyttsx3 solo imprime
+    # cola con prioridades sobre el Speaker del equipo (edge-tts ->
+    # pyttsx3 -> consola, lo que haya)
     def __init__(self, hablar=True, rate=165, echo=True):
         self.echo = echo
         self.engine = None
@@ -23,9 +34,9 @@ class ColaVoz:
         self._ultima = {}
         if hablar:
             try:
-                import pyttsx3
-                self.engine = pyttsx3.init()
-                self.engine.setProperty("rate", rate)
+                _vozypln()
+                from Tts import Speaker
+                self.engine = Speaker()
                 threading.Thread(target=self._worker, daemon=True).start()
             except Exception as e:
                 print(f"[VOZ] tts no disponible ({e}), solo consola")
@@ -42,10 +53,7 @@ class ColaVoz:
         if self.engine is None:
             return
         if prioridad == 0:
-            try:
-                self.engine.stop()   # p0 interrumpe lo que se este diciendo
-            except Exception:
-                pass
+            self._interrumpir()
         self._n += 1
         self._cola.put((prioridad, self._n, texto))
 
@@ -53,13 +61,25 @@ class ColaVoz:
         for m in msgs:
             self.decir(m.text, m.priority)
 
+    def _interrumpir(self):
+        # p0 corta lo que se este reproduciendo (edge usa pygame)
+        try:
+            import pygame
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+        try:
+            if getattr(self.engine, "_fallback", None):
+                self.engine._fallback.stop()
+        except Exception:
+            pass
+
     def _worker(self):
         while True:
             _p, _n, texto = self._cola.get()
             self.hablando = True
             try:
-                self.engine.say(texto)
-                self.engine.runAndWait()
+                self.engine.say(texto)    # Speaker.say bloquea hasta acabar
             except Exception:
                 pass
             self.hablando = False
@@ -127,28 +147,45 @@ def _limpiarDestino(destino):
     return d
 
 
+# confirmaciones literales del navigator que dialogo sabe decir bonito
+_LITERALES_AMIGABLES = {"Ruta calculada. Iniciando navegación.",
+                        "Navegación pausada.", "Reanudando navegación.",
+                        "Navegación detenida.",
+                        "Calculando ruta alternativa."}
+_SALIR = {"apagar sistema", "terminar programa"}
+
+
 class Interaccion:
     """recibe texto (de voz o teclado), lo pasa por el pln del equipo y
     ejecuta: lo de sesion va al Navigator, lo demas (entorno, repetir,
-    emergencia, ayuda...) se resuelve aqui."""
+    emergencia, ayuda...) se resuelve aqui. con amigable=True las frases
+    al usuario salen con el tono de dialogo.py (la "Guía" del equipo);
+    el Navigator por dentro sigue con las literales del documento."""
 
-    def __init__(self, navigator, nlp=None):
+    def __init__(self, navigator, nlp=None, amigable=True):
+        _vozypln()
         if nlp is None:
-            import sys, os
-            ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "VozYPLN")
-            if ruta not in sys.path:
-                sys.path.insert(0, ruta)
             from PLN_oneimport import NavigationNLP
             nlp = NavigationNLP()
+        import dialogo
+        self.dialogo = dialogo
         self.nlp = nlp
         self.navigator = navigator
+        self.amigable = amigable
         self.pendienteDestino = False
         self.ultimaInstruccion = None
+
+    def _bonito(self, r):
+        return self.dialogo.friendly_response(r) if self.amigable else None
 
     def manejarTexto(self, texto, navFrame=None):
         if not texto or not texto.strip():
             return []
+
+        from PLN_oneimport import normalize_text
+        if normalize_text(texto) in _SALIR:
+            return [NavMessage(self.dialogo.goodbye(), priority=2,
+                               kind="despedida")]
 
         # atajo de desarrollo: "punto 5 3" va directo, sin pasar por pln
         from navigation.navigator import parse_command
@@ -170,11 +207,12 @@ class Interaccion:
         if accion == "navegar":
             if r["requiere_aclaracion"]:
                 self.pendienteDestino = True
-                return [NavMessage(r["respuesta_sugerida"], priority=2,
-                                   kind="respuesta")]
+                pregunta = (self.dialogo.ask_destination() if self.amigable
+                            else r["respuesta_sugerida"])
+                return [NavMessage(pregunta, priority=2, kind="respuesta")]
             cmd = NavCommand("navegar", destino=_limpiarDestino(r["destino"]),
                              texto_original=texto)
-            return self.navigator.handle_command(cmd, navFrame)
+            return self._alNavigator(cmd, navFrame, r)
 
         simple = {"pausar_navegacion": "pausar",
                   "reanudar_navegacion": "reanudar",
@@ -185,7 +223,7 @@ class Interaccion:
                   "consultar_estado_ruta": "estado"}
         if accion in simple:
             cmd = NavCommand(simple[accion], texto_original=texto)
-            return self.navigator.handle_command(cmd, navFrame)
+            return self._alNavigator(cmd, navFrame, r)
 
         if accion == "describir_entorno":
             return [NavMessage(self.describirEntorno(navFrame),
@@ -197,33 +235,67 @@ class Interaccion:
             return [NavMessage("No hay ninguna instrucción reciente.",
                                priority=2, kind="respuesta")]
         if accion == "notificar_emergencia":
-            msgs = [NavMessage("Emergencia activada. Deteniéndome.",
-                               priority=0, kind="alerta")]
+            aviso = self._bonito(r) or "Emergencia activada. Deteniéndome."
+            msgs = [NavMessage(aviso, priority=0, kind="alerta")]
             if self.navigator.status.session == "activo":
                 msgs += self.navigator.handle_command(
                     NavCommand("pausar"), navFrame)
-            # TODO: aqui va el aviso real a contactos/servicios cuando
-            # el equipo defina ese modulo
+            # TODO: aqui va el aviso real a contactos cuando ese modulo exista
             return msgs
         if accion == "mostrar_ayuda":
-            return [NavMessage(AYUDA_VOZ, priority=2, kind="respuesta")]
+            return [NavMessage(self._bonito(r) or AYUDA_VOZ, priority=2,
+                               kind="respuesta")]
         if accion == "confirmar":
-            return [NavMessage("De acuerdo.", priority=2, kind="respuesta")]
+            return [NavMessage(self._bonito(r) or "De acuerdo.",
+                               priority=2, kind="respuesta")]
         if accion == "denegar":
             self.pendienteDestino = False
-            return [NavMessage("Entendido, cancelado.", priority=2,
-                               kind="respuesta")]
+            return [NavMessage(self._bonito(r) or "Entendido, cancelado.",
+                               priority=2, kind="respuesta")]
 
         # DESCONOCIDO
-        return [NavMessage(r["respuesta_sugerida"], priority=2,
-                           kind="respuesta")]
+        return [NavMessage(self._bonito(r) or r["respuesta_sugerida"],
+                           priority=2, kind="respuesta")]
+
+    def _alNavigator(self, cmd, navFrame, r):
+        # las confirmaciones exitosas se dicen con el tono de dialogo;
+        # los errores ("No conozco...") se quedan tal cual, son informativos
+        msgs = self.navigator.handle_command(cmd, navFrame)
+        if self.amigable:
+            for m in msgs:
+                if m.text in _LITERALES_AMIGABLES:
+                    m.text = self.dialogo.friendly_response(r)
+        return msgs
 
     def ciclo(self, navFrame, mgr, alertas=None):
+        label = self.navigator.status.goal_label
         msgs = self.navigator.update(navFrame, mgr, alertas)
         for m in msgs:
+            if self.amigable:
+                if m.kind == "instruccion" and m.action is not None:
+                    amigo = self._instruccionAmigable(m.action, navFrame)
+                    if amigo:
+                        m.text = amigo
+                elif m.text == "Ha llegado a su destino.":
+                    m.text = self.dialogo.arrival_message(label)
             if m.kind == "instruccion":
                 self.ultimaInstruccion = m.text
         return msgs
+
+    def _instruccionAmigable(self, action, navFrame):
+        # ojo signos: dialogo usa grados>0 = derecha; nuestro phi>0 = izq
+        st = self.navigator.status
+        if action == 3 or st.phi_goal is None:
+            return None                       # "Deténgase" se queda literal
+        grados = max(20, round(abs(math.degrees(st.phi_goal))))
+        if action == 0:
+            dist = st.d_goal
+            if navFrame is not None and dist is not None:
+                dist = min(dist, max(0.5, navFrame.d_front))
+            return self.dialogo.navigation_instruction(0, dist)
+        if action == 1:
+            return self.dialogo.navigation_instruction(-grados)
+        return self.dialogo.navigation_instruction(grados)
 
     def describirEntorno(self, frame):
         if frame is None:

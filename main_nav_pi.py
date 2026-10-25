@@ -60,7 +60,10 @@ def main():
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=not args.no_voz, usarTts=not args.no_tts,
         voskModel=args.vosk_model, micDevice=args.mic_device)
-    voz.decir("Sistema listo. Diga su destino.", prioridad=2)
+    if oido is not None:
+        voz.decir(inter.dialogo.introduction(), prioridad=2)
+    else:
+        voz.decir("Sistema listo. Diga su destino.", prioridad=2)
 
     bridge = VisionBridge(modelPath=args.model, cameraProfile="picam3wide")
     detPeligros = GroundHazardDetector(cameraProfile="picam3wide") \
@@ -108,8 +111,10 @@ def main():
 
             try:
                 while True:
-                    voz.decirMsgs(inter.manejarTexto(colaCmd.get_nowait(),
-                                                     navFrame))
+                    msgs = inter.manejarTexto(colaCmd.get_nowait(), navFrame)
+                    voz.decirMsgs(msgs)
+                    if any(m.kind == "despedida" for m in msgs):
+                        raise KeyboardInterrupt
             except queue.Empty:
                 pass
 

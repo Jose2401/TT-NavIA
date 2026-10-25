@@ -1,77 +1,8 @@
-"""
-Módulo de Procesamiento de Lenguaje Natural (PLN).
-Proyecto Terminal IPN ESCOM — TT 2026-B045.
-
-  1. Recibir el texto que entrega el reconocimiento de voz.
-  2. Normaliza ese texto (minúsculas, tokenización, lematización/stemmingm y
-     elimina de palabras sin información) para que en caso de que el usuario tenga
-     distintas formas de decir lo mismo se traten de manera equivalente.
-  3. Determina la intención del usuario dentro de un conjunto cerrado y
-     predecible de acciones de navegación.
-  4. Extrae la información relevante de la frase (el destino, cuando la
-     intención lo requiere).
-  5. Convierte esa interpretación en una acción estructurada
-     (intención - entidad - acción) que se entrega al módulo de navegación.
-
-Este módulo PLN no ejecuta funciones físicas del sistema, es decir que  
-no mueve nada, no calcula nada de navegacion, no controla cámara, no detecta obstáculos, 
-no calcula la ruta. 
-Produce la instrucción estructurada. Por eso `process()` siempre
-entrega como resultado principal de un proceso donde se impliecan 3 partes 
-(intención, destino/entidad, acción); el texto de respuesta hablada que también 
-se incluye es solo una sugerencia de conveniencia para pruebas por consola, 
-ya que el "módulo de salida" (audio) todavía no existe como módulo independiente.
-
-Intenciones que el usuario puede manejar:
-    DESTINO, PAUSA, REANUDAR, DETENER, RUTA_ALTERNATIVA, DESCONOCIDO, EMERGENCIA
-Más algunas intenciones de utilidad que EXTIENDEN el diseño base (el
-documento aclara que no hace falta reconocer "cualquier intención
-imaginable", pero no prohíbe funciones adicionales útiles para la
-accesibilidad): UBICACION, ENTORNO, REPETIR, CANCELAR, AYUDA, CONFIRMAR,
-NEGAR, ESTADO. Estas están claramente separadas del conjunto núcleo en el
-código de abajo.
-
-Aprendizaje: el documento plantea usar TF-IDF para representar el comando
-antes de clasificar la intención. Aquí se implementa TF-IDF real (término-
-frecuencia por inverso-de-frecuencia-de-documento) desde cero, y además se
-añade una red neuronal feedforward (perceptrón multicapa con retro-
-propagación) también implementada desde cero — sin numpy ni ninguna
-librería externa, solo la biblioteca estándar de Python — que aprende con
-esos vectores TF-IDF y se sigue entrenando con la retroalimentación del
-usuario.
-
-Nota sobre "sin librerías": ningún `import` de este archivo instala nada
-con pip — todos son módulos incluidos con el propio intérprete de Python.
-Aun así, se sustituyó cada uno por código propio salvo el único caso en el
-que hacerlo tiene un costo real:
-
-  - `unicodedata` -> reemplazado por una tabla de acentos escrita a mano.
-  - `os`          -> reemplazado por try/except al abrir el archivo.
-  - `collections` -> reemplazado por diccionarios normales con .get()/.setdefault().
-  - `random`      -> reemplazado por un generador congruencial lineal (LCG) propio.
-  - `re`          -> reemplazado por recorrido manual de caracteres y
-                     búsqueda de subcadenas (sin expresiones regulares).
-  - `json`        -> reemplazado por un serializador propio, estilo
-                     "bencode" (cadenas con longitud explícita + repr()
-                     para los flotantes), que guarda/lee la memoria sin
-                     depender del módulo json.
-  - `math`        -> se conserva. Se midió: reimplementar tanh/exp a mano
-                     en Python puro es ~7 veces más lento, y la red
-                     neuronal los invoca decenas de millones de veces
-                     durante el entrenamiento (una vez por cada neurona,
-                     en cada ejemplo, en cada época). Eso convertiría un
-                     entrenamiento inicial de ~1 segundo en más de un
-                     minuto, e incluso peor en la Raspberry Pi. Ahí sí
-                     hay un impacto negativo real, así que se mantiene.
-"""
-
 import math
 
 
 
-# Manejo de acentos mediante tabla (unicodedata)
-
-
+# Manejo de acentos mediante tabla 
 _ACCENT_TABLE = str.maketrans(
     "áéíóúüñÁÉÍÓÚÜÑ",
     "aeiouunAEIOUUN",
@@ -82,39 +13,28 @@ def strip_accents_manual(text):
     return text.translate(_ACCENT_TABLE)
 
 
-# ============================================================
-# REEMPLAZO DE `random` — generador congruencial lineal (LCG)
-# ============================================================
-# No se necesita calidad criptográfica aquí: el LCG solo se usa para
-# romper la simetría al inicializar los pesos de la red y para mezclar
-# el orden de los ejemplos de entrenamiento (SGD). Parámetros del LCG de
-# 48 bits que usa glibc/POSIX drand48 (bien documentados y con buen
-# comportamiento estadístico para este tipo de uso).
-
 class SimpleRandom:
 
     def __init__(self, seed=None):
         if seed is None:
-            # semilla a partir del reloj, sin usar el módulo random/time:
-            # se toma de id() de un objeto recién creado, que en CPython
-            # depende de la dirección de memoria (cambia entre corridas)
+            # semilla a partir del reloj, sin usar el módulo random/time)
             seed = id(object()) ^ id([])
         self._state = seed & ((1 << 48) - 1)
 
     def _next_raw(self):
-        # constantes del LCG de 48 bits (mismas que POSIX drand48)
+        # constantes del LCG de 48 bits 
         self._state = (25214903917 * self._state + 11) & ((1 << 48) - 1)
         return self._state
 
     def random(self):
-        """Flotante uniforme en [0, 1)."""
+        #Flotante uniforme en [0, 1)
         return self._next_raw() / (1 << 48)
 
     def uniform(self, low, high):
         return low + (high - low) * self.random()
 
     def shuffle(self, sequence):
-        """Baraja `sequence` en su lugar (algoritmo de Fisher-Yates)."""
+        # algoritmo de Fisher-Yates
         for i in range(len(sequence) - 1, 0, -1):
             j = int(self.random() * (i + 1))
             if j > i:
@@ -122,7 +42,7 @@ class SimpleRandom:
             sequence[i], sequence[j] = sequence[j], sequence[i]
 
     def sample(self, population, k):
-        """Selecciona k elementos distintos de population, sin reemplazo."""
+        #Selecciona k elementos distintos de populationa 
         pool = list(population)
         k = min(k, len(pool))
         result = []
@@ -137,10 +57,7 @@ class SimpleRandom:
 _rng = SimpleRandom(seed=20260829)  # semilla fija: corridas reproducibles
 
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
+#config
 LEARNING_FILE = "navigation_nlp_memory.json"
 
 MIN_CONFIDENCE = 0.42
@@ -148,40 +65,30 @@ LEARNING_CONFIDENCE = 0.75
 
 MAX_LEARNED_PHRASES = 5000
 
-DESCONOCIDO = "DESCONOCIDO"  # tal como lo nombra el documento
-
-# --- hiperparámetros de la red neuronal ---
+DESCONOCIDO = "DESCONOCIDO"
+# hiperparámetros de la red 
 HIDDEN_SIZE = 24
 LEARNING_RATE = 0.08
 L2_REGULARIZATION = 1e-4
 
 BOOTSTRAP_EPOCHS = 80          # entrenamiento inicial (una sola vez)
 FEEDBACK_EPOCHS = 25           # entrenamiento al recibir retroalimentación
-REPLAY_SAMPLE_SIZE = 30        # ejemplos de "repaso" para no olvidar lo aprendido
-NN_TRUST_SATURATION = 400      # ejemplos vistos a partir de los cuales confiamos casi al máximo en la red
+REPLAY_SAMPLE_SIZE = 30        
+NN_TRUST_SATURATION = 400     
 
-
-# ============================================================
-# UTILIDADES DE TEXTO  (normalización / tokenización — responsabilidad #2)
-# ============================================================
-
+# NORMALIZACIOMN Y TOKENIZACIÓN
 def remove_accents(text):
-    """Elimina acentos manteniendo el significado textual (tabla manual,
-    sin unicodedata)."""
+   
     return strip_accents_manual(text)
 
 
 def normalize_text(text):
-    """Normalización general del texto: minúsculas, sin acentos, sin signos.
-    Recorre los caracteres a mano en vez de usar expresiones regulares."""
+   # Normaliza texto: minúsculas, acentos, caracteres no alfanuméricos, espacios múltiples
     if not text:
         return ""
     text = str(text).lower().strip()
     text = remove_accents(text)
 
-    # sustituye todo lo que no sea letra/dígito/espacio por un espacio
-    # (equivalente a re.sub(r"[^a-z0-9\s]", " ", text), pero carácter por
-    # carácter en vez de con una expresión regular)
     characters = []
     for char in text:
         if ("a" <= char <= "z") or ("0" <= char <= "9") or char.isspace():
@@ -190,14 +97,12 @@ def normalize_text(text):
             characters.append(" ")
     text = "".join(characters)
 
-    # colapsa espacios múltiples: separar por espacios en blanco ya
-    # descarta cualquier cantidad de espacios repetidos, así que unir con
-    # un solo espacio logra lo mismo que re.sub(r"\s+", " ", text)
+    # colapsa espacios múltiples
     return " ".join(text.split())
 
 
 def tokenize(text):
-    """Convierte texto en tokens (palabras)."""
+    #Convierte texto en tokens 
     text = normalize_text(text)
     if not text:
         return []
@@ -205,19 +110,17 @@ def tokenize(text):
 
 
 def _count_occurrences(tokens):
-    """Cuenta ocurrencias de cada elemento (reemplazo de collections.Counter)."""
+    #Cuenta ocurrencias de cada elemento (reemplazo de collections.Counter)
     counts = {}
     for token in tokens:
         counts[token] = counts.get(token, 0) + 1
     return counts
 
 
-# ============================================================
-# DISTANCIA LEVENSHTEIN (tolerancia a errores del reconocimiento de voz)
-# ============================================================
+# DISTANCIA LEVENSHTEIN tolerancia a errores del reconocimiento de voz
 
 def levenshtein(a, b):
-    """Distancia de Levenshtein implementada desde cero (sin librerías)."""
+    #Distancia de Levenshtein implementada desde cero (sin librerías).
     if a == b:
         return 0
     if not a:
@@ -238,7 +141,7 @@ def levenshtein(a, b):
 
 
 def similarity(a, b):
-    """Similaridad entre 0 y 1 basada en Levenshtein."""
+    #Similaridad entre 0 y 1 basada en Levenshtein
     a = normalize_text(a)
     b = normalize_text(b)
     if not a or not b:
@@ -248,9 +151,8 @@ def similarity(a, b):
     return 1.0 - (distance / maximum)
 
 
-# ============================================================
-# STEMMING SIMPLE (lematización aproximada que pide el documento)
-# ============================================================
+
+#lematización aproximada 
 
 class SimpleStemmer:
 
@@ -273,9 +175,9 @@ class SimpleStemmer:
         return word
 
 
-# ============================================================
+
 # STOPWORDS (palabras sin información relevante que se descartan)
-# ============================================================
+
 
 STOPWORDS = {
     "a", "al", "el", "la", "los", "las", "de", "del", "en", "por", "para",
@@ -285,13 +187,10 @@ STOPWORDS = {
 }
 
 
-# ============================================================
-# INTENCIONES  (responsabilidad #3: conjunto cerrado y predecible)
-# ============================================================
-
+# INTENCIONES 
 INTENTS = {
 
-    # -------- conjunto núcleo exigido por el documento del TT --------
+    #  conjunto núcleo 
 
     "DESTINO": [
         "ir", "llegar", "llevar", "navegar", "dirigir", "caminar", "mover",
@@ -322,14 +221,14 @@ INTENTS = {
         "cambiame la ruta", "recalcula", "busca otro camino",
     ],
 
-    # -------- intención adicional recomendada por el documento --------
+    #  intención adicional 
 
     "EMERGENCIA": [
         "necesito ayuda", "hay una emergencia", "auxilio", "emergencia",
         "necesito salir", "estoy en peligro", "ayuda urgente", "socorro",
     ],
 
-    # -------- extensiones fuera del mínimo del documento (accesibilidad) --------
+    #  extensiones fuera del mínimo (accesibilidad) 
 
     "UBICACION": [
         "donde estoy", "ubicacion", "posicion", "localizacion",
@@ -373,37 +272,15 @@ INTENTS = {
 
 INTENT_LABELS = list(INTENTS.keys())
 
-# Intenciones críticas de seguridad: si el usuario dice literalmente una
-# de estas palabras, se respetan sin pasar por el modelo (ni por reglas
-# difusas ni por la red, que puede equivocarse mientras aprende). Esto es
-# importante porque el sistema guía a una persona con discapacidad visual,
-# y el documento dedica una sección aparte a las situaciones de
-# emergencia: no queremos que "emergencia" o "detente" dependan de qué
-# tan entrenada esté la red en un momento dado.
 SAFETY_KEYWORDS = {
-    # ojo: "para" queda fuera a propósito — es a la vez el comando de
-    # detener y la preposición más común del español ("para estudiar",
-    # "para llegar"...), así que forzarla por coincidencia exacta
-    # generaba falsos "detener" en frases que no tenían nada que ver.
-    # Sigue reconociéndose como DETENER a través del motor por reglas,
-    # que sí considera el resto del contexto de la frase.
+
     "DETENER": {"detente", "detener", "parar", "alto", "parate", "deten", "frenar", "stop"},
     "EMERGENCIA": {"auxilio", "emergencia", "peligro", "socorro"},
     "CANCELAR": {"cancela", "cancelar", "olvidalo"},
 }
 
-# La intención de emergencia se marca aquí, pero -tal como aclara el
-# documento- el PLN NO decide qué hacer con ella: solo la reporta como
-# "accion": "notificar_emergencia" para que el módulo correspondiente de
-# la arquitectura del sistema (todavía por definir) tome el control.
 
-
-# ============================================================
 # ACCIÓN ESTRUCTURADA  (responsabilidad #5)
-# ============================================================
-# Mapeo intención -> acción tal como lo ejemplifica el documento:
-# "intención: destino, destino: Metro Politécnico, acción: navegar"
-# "genera una acción como 'detener sistema'" / "genera 'reanudar navegación'"
 
 ACTION_MAP = {
     "DESTINO": "navegar",
@@ -425,14 +302,7 @@ ACTION_MAP = {
 
 
 def build_structured_action(intent, destination):
-    """
-    Construye la ÚNICA salida que, según el documento, el PLN le debe
-    a los demás módulos del sistema: intención + entidad (destino) +
-    acción. El PLN no ejecuta nada por sí mismo (no mueve al usuario, no
-    consulta el GPS, no calcula la ruta, no controla la cámara): solo
-    entrega esta instrucción estructurada para que el módulo de
-    navegación, el de emergencias, o el de salida por audio actúen.
-    """
+  # Construye la acción estructurada que el sistema debe ejecutar a partir de la intención y el destino extraídos del comando del usuario.
     return {
         "intencion": intent,
         "destino": destination,
@@ -440,9 +310,9 @@ def build_structured_action(intent, destination):
     }
 
 
-# ============================================================
+
 # SINÓNIMOS
-# ============================================================
+
 
 SYNONYMS = {
     "ir": ["marchar", "dirigirse", "desplazarse", "caminar"],
@@ -457,13 +327,8 @@ SYNONYMS = {
 }
 
 
-# ============================================================
-# LUGARES / DESTINOS  (responsabilidad #4: extracción de entidades)
-# ============================================================
-# Incluye los lugares genéricos del diseño original más los ejemplos
-# concretos que usa el propio documento del TT (Metro Politécnico,
-# ESCOM, el "Poli"/IPN, la Alameda, el Ángel de la Independencia), para
-# que esos ejemplos puntuales del documento se resuelvan correctamente.
+
+# LUGARES / DESTINOS  
 
 DEFAULT_DESTINATIONS = {
     "biblioteca": ["biblioteca", "libros", "biblioteca central"],
@@ -482,9 +347,7 @@ DEFAULT_DESTINATIONS = {
 }
 
 # Frases disparadoras para extraer el destino que viene después (reemplazo
-# de la expresión regular original). Se ordenan de la más larga a la más
-# corta para que, si varias calzan en la misma posición del texto, gane
-# la más específica ("quiero que me lleves a" antes que "a" por ejemplo).
+
 DESTINATION_TRIGGER_PHRASES = sorted(
     [
         "ir a", "ir para", "ve a", "llevame a", "llevame para",
@@ -498,18 +361,12 @@ DESTINATION_TRIGGER_PHRASES = sorted(
 )
 
 
-# ============================================================
+
 # CONJUNTO DE ENTRENAMIENTO "SEMILLA" (con aumento de datos)
-# ============================================================
+
 
 def build_seed_dataset():
-    """
-    Construye el conjunto de entrenamiento inicial de la red a partir de
-    INTENTS, generando además variantes sintéticas sustituyendo palabras
-    por sus sinónimos (aumento de datos). Esto le da a la red suficiente
-    variedad para generalizar desde el primer arranque, sin depender
-    todavía de retroalimentación real del usuario.
-    """
+
     dataset = []
     for intent, phrases in INTENTS.items():
         for phrase in phrases:
@@ -524,22 +381,10 @@ def build_seed_dataset():
     return dataset
 
 
-# ============================================================
+
 # VOCABULARIO DINÁMICO + TF-IDF
-# ============================================================
-# El documento plantea explícitamente representar el comando con TF-IDF
-# antes de clasificar la intención. Se implementa aquí desde cero:
-#   - TF (frecuencia de término): qué tan seguido aparece una palabra
-#     DENTRO de la frase.
-#   - IDF (frecuencia inversa de documento): qué tan rara es esa palabra
-#     a lo largo de TODO el conjunto de frases de entrenamiento — con la
-#     fórmula suavizada estándar log((N+1)/(df+1)) + 1, para que ninguna
-#     palabra tenga IDF de cero ni se divida entre cero.
 
 class Vocabulary:
-    """Vocabulario que crece dinámicamente: cada palabra (ya reducida por
-    el stemmer) recibe un índice, y se le lleva la cuenta de en cuántas
-    frases de entrenamiento distintas aparece (para el IDF)."""
 
     def __init__(self):
         self.word_to_index = {}
@@ -595,12 +440,7 @@ class Vocabulary:
 
 
 def vectorize_tokens(tokens, vocabulary, add_if_missing):
-    """
-    Convierte una lista de tokens (ya con stemming) en un vector TF-IDF.
-    Si add_if_missing es True (durante el ajuste/entrenamiento) las
-    palabras nuevas se agregan al vocabulario; si es False (durante la
-    predicción) las palabras desconocidas simplemente se ignoran.
-    """
+# Convierte una lista de tokens en un vector TF-IDF (lista de flotantes) según el vocabulario dado.
     counts = {}
     for token in tokens:
         index = vocabulary.index_of(token, add_if_missing=add_if_missing)
@@ -619,25 +459,10 @@ def vectorize_tokens(tokens, vocabulary, add_if_missing):
     return vector
 
 
-# ============================================================
-# RED NEURONAL (PERCEPTRÓN MULTICAPA) — SIN LIBRERÍAS EXTERNAS
-# ============================================================
-
+#PERCEPTRÓN MULTICAPA
 class NeuralIntentClassifier:
-    """
-    Red neuronal feedforward de una capa oculta:
 
-        entrada (vector TF-IDF, tamaño dinámico)
-            -> capa oculta (tanh)
-            -> capa de salida (softmax sobre las intenciones)
-
-    Entrenada con descenso de gradiente estocástico y retropropagación,
-    implementados a mano con listas de Python y el módulo `math` de la
-    biblioteca estándar (nada de numpy/torch/sklearn). El tamaño de la
-    capa de entrada crece dinámicamente: cuando aparece una palabra que
-    nunca se había visto, se le agrega una fila de pesos nueva
-    inicializada al azar, sin tocar los pesos ya aprendidos.
-    """
+    #1 capa oculta
 
     def __init__(self, hidden_size=HIDDEN_SIZE, learning_rate=LEARNING_RATE,
                  l2=L2_REGULARIZATION, labels=None):
@@ -663,7 +488,7 @@ class NeuralIntentClassifier:
         return [self._random_weight() for _ in range(size)]
 
     def ensure_input_size(self, new_size):
-        """Agrega filas de pesos nuevas para palabras nunca vistas."""
+        #Agrega filas de pesos nuevas para palabras nunca vistas
         while self.input_size < new_size:
             self.w1.append(self._random_row(self.hidden_size))
             self.input_size += 1
@@ -712,7 +537,7 @@ class NeuralIntentClassifier:
         return self.labels[best_index], probabilities[best_index], probabilities
 
     def train_step(self, vector, label):
-        """Un paso de descenso de gradiente estocástico (retropropagación)."""
+        #Un paso de descenso de gradiente estocástico (retropropagación)
         if label not in self.labels:
             return None
 
@@ -776,11 +601,7 @@ class NeuralIntentClassifier:
 
         stored_labels = data.get("labels")
         if stored_labels and stored_labels != self.labels:
-            # El conjunto de intenciones cambió (por ejemplo, se agregó
-            # RUTA_ALTERNATIVA o EMERGENCIA respecto a una versión previa
-            # del módulo). Los pesos guardados ya no son compatibles con
-            # esta arquitectura, así que se reinicia la red — el motor
-            # por reglas conserva de todas formas las frases aprendidas.
+
             print("[NN] El conjunto de intenciones cambió respecto a la memoria "
                   "guardada; se reinicia la red neuronal.")
             return
@@ -798,18 +619,6 @@ class NeuralIntentClassifier:
         self.trained_examples = data.get("trained_examples", 0)
 
 
-# ============================================================
-# REEMPLAZO DE `json` — serializador propio (con longitud explícita)
-# ============================================================
-# Formato inspirado en bencode (el formato de BitTorrent): cada valor se
-# escribe como  <tipo><longitud-del-contenido>:<contenido> . Como la
-# longitud siempre va primero y en dígitos decimales, el lector sabe
-# exactamente cuántos caracteres leer para cada valor — nunca hace falta
-# escapar comillas, dos puntos, ni ningún otro carácter especial, ni
-# siquiera dentro de las frases que el usuario haya escrito. Los números
-# se escriben con repr(), que en Python garantiza una conversión exacta
-# de ida y vuelta (float(repr(x)) == x), así que los pesos de la red
-# neuronal se guardan sin perder precisión.
 
 def _serialize(value):
     if value is None:
@@ -835,10 +644,7 @@ def _serialize(value):
 
 
 class _Deserializer:
-    """Cursor de lectura para el formato propio: parse() consume un
-    valor completo (con todo y sus hijos si es lista/diccionario) y
-    avanza la posición interna."""
-
+# Clase interna para deserializar datos de memoria 
     def __init__(self, text):
         self.text = text
         self.pos = 0
@@ -883,18 +689,17 @@ class _Deserializer:
 
 
 def save_data(value):
-    """Equivalente propio de json.dumps()."""
+
     return _serialize(value)
 
 
 def load_data(text):
-    """Equivalente propio de json.loads()."""
+
     return _Deserializer(text).parse()
 
 
-# ============================================================
 # MEMORIA (frases aprendidas + destinos + vocabulario + red neuronal)
-# ============================================================
+
 
 class NLPMemory:
 
@@ -974,7 +779,7 @@ class NLPMemory:
         return True
 
     def all_learned_examples(self):
-        """Todas las frases (semilla + aprendidas) como pares (texto, intención)."""
+        #Todas las frases (semilla + aprendidas) como pares (texto, intención)
         dataset = build_seed_dataset()
         for intent, phrases in self.learned_phrases.items():
             for phrase in phrases:
@@ -982,9 +787,9 @@ class NLPMemory:
         return dataset
 
 
-# ============================================================
+
 # MOTOR PRINCIPAL
-# ============================================================
+
 
 class NavigationNLP:
 
@@ -1000,20 +805,15 @@ class NavigationNLP:
             "last_response": None,
         }
 
-        # el IDF debe reflejar siempre el corpus actual (semilla + lo
-        # aprendido), incluso si solo se recargó memoria vieja sin
-        # entrenar nada nuevo en esta sesión
+     
         self._fit_tfidf(self.memory.all_learned_examples())
 
-        # si la red nunca se ha entrenado (primer arranque / archivo
-        # nuevo / arquitectura de intenciones cambiada), se entrena una
-        # vez con el conjunto semilla antes de usarse
         if self.memory.classifier.trained_examples == 0:
             self.retrain_full(epochs=BOOTSTRAP_EPOCHS, verbose=False)
 
-    # ========================================================
-    # NORMALIZACIÓN Y TOKENS  (responsabilidad #2)
-    # ========================================================
+    
+    # NORMALIZACIÓN Y TOKENS  
+    
 
     def preprocess(self, text):
         normalized = normalize_text(text)
@@ -1039,15 +839,7 @@ class NavigationNLP:
     # ========================================================
 
     def _fit_tfidf(self, dataset):
-        """
-        Recalcula las frecuencias de documento (IDF) a partir del corpus
-        actual (semilla + frases aprendidas), tal como plantea el
-        documento del TT: representar cada comando con TF-IDF antes de
-        clasificar la intención. Se puede llamar cuantas veces se quiera:
-        nunca reordena ni elimina palabras del vocabulario (así los pesos
-        ya aprendidos de la red neuronal siguen alineados a sus índices),
-        solo actualiza en cuántas frases distintas aparece cada palabra.
-        """
+
         vocabulary = self.memory.vocabulary
         seen_phrases = set()
         tokenized_phrases = []
@@ -1071,9 +863,9 @@ class NavigationNLP:
             if indices:
                 vocabulary.register_document(indices)
 
-    # ========================================================
-    # MOTOR POR REGLAS / SIMILITUD (base robusta ante errores de voz)
-    # ========================================================
+    
+    # MOTOR POR REGLAS / SIMILITUD 
+    
 
     def phrase_similarity(self, text, phrase):
         text = normalize_text(text)
@@ -1139,9 +931,9 @@ class NavigationNLP:
 
         return scores
 
-    # ========================================================
+    
     # VERIFICACIÓN DE SEGURIDAD (no depende del aprendizaje)
-    # ========================================================
+    
 
     def _safety_override(self, tokens):
         token_set = set(tokens)
@@ -1150,33 +942,20 @@ class NavigationNLP:
                 return intent
         return None
 
-    # ========================================================
+    
     # FUSIÓN REGLAS + RED NEURONAL (ensemble)
-    # ========================================================
+    
 
     def _blend(self, rule_score, nn_score, coverage):
-        """
-        Combina la puntuación por reglas y la de la red neuronal.
-        Al principio (pocos ejemplos vistos) se confía más en las reglas;
-        conforme la red acumula ejemplos de entrenamiento, su peso crece.
-
-        `coverage` es la fracción de palabras de la frase que la red
-        reconoce en su vocabulario. Si la frase trae una palabra nunca
-        vista (por ejemplo un error de tipeo), su vector de entrada queda
-        en ceros y la red solo respondería con su sesgo (una "adivinanza"
-        sin fundamento) — en ese caso se reduce su peso en la mezcla y se
-        confía más en el motor por reglas, que sí tolera errores de tipeo
-        mediante Levenshtein.
-        """
+        # Mezcla las puntuaciones de la heurística basada en reglas y la red según la cobertura de tokens conocidos
         examples = self.memory.classifier.trained_examples
         base_weight = min(0.65, 0.15 + examples / NN_TRUST_SATURATION)
         nn_weight = base_weight * coverage
         rule_weight = 1.0 - nn_weight
         return rule_weight * rule_score + nn_weight * nn_score
 
-    # ========================================================
-    # CLASIFICAR INTENCIÓN  (responsabilidad #3)
-    # ========================================================
+    
+    # CLASIFICAR INTENCIÓN 
 
     def classify_intent(self, text, tokens):
         safety_intent = self._safety_override(tokens)
@@ -1227,19 +1006,12 @@ class NavigationNLP:
 
         return best_intent, best_score
 
-    # ========================================================
+
     # EXTRACCIÓN DE DESTINO  (responsabilidad #4)
-    # ========================================================
+
 
     def _find_destination_after_trigger(self, text):
-        """
-        Busca la primera (más a la izquierda) frase disparadora de
-        destino dentro del texto y devuelve lo que queda después de
-        ella. Reemplaza a la expresión regular original mediante
-        búsqueda manual de subcadenas, con el mismo comportamiento:
-        recorre el texto de izquierda a derecha y, en cada posición,
-        prueba primero las frases disparadoras más largas.
-        """
+
         for start in range(len(text)):
             for trigger in DESTINATION_TRIGGER_PHRASES:
                 end = start + len(trigger)
@@ -1258,11 +1030,7 @@ class NavigationNLP:
         for canonical, aliases in self.memory.destinations.items():
             for alias in aliases:
                 score = self.phrase_similarity(text, alias)
-                # ante un empate (por ejemplo "poli" y "metro politecnico"
-                # coinciden igual de bien dentro del texto), se prefiere el
-                # alias más específico/largo — evita que un lugar genérico
-                # (el IPN) le "gane" a uno más preciso (una estación puntual)
-                # solo por aparecer antes en el diccionario.
+                # ante un empate (por ejemplo "poli" y "metro politecnico" coinciden igual de bien dentro del texto)
                 is_better = score > best_score or (
                     score == best_score and len(alias) > best_alias_length
                 )
@@ -1278,8 +1046,7 @@ class NavigationNLP:
         if destination:
             return destination, 0.75
 
-        # respaldo: si no hubo patrón ni alias conocido, se toma lo que
-        # quede del texto tras quitar palabras de navegación y stopwords
+        # respaldo: si no hubo patrón ni alias conocido, se toma lo q quede del texto tras quitar palabras de navegación y stopwords
         navigation_keywords = {"ir", "llegar", "llevar", "navegar", "dirigir",
                                 "caminar", "mover", "destino", "ruta", "llevame",
                                 "vamos", "dirigeme", "navega", "alla", "aca"}
@@ -1292,23 +1059,16 @@ class NavigationNLP:
 
         return None, 0.0
 
-    # ========================================================
+    
     # CONTEXTO
-    # ========================================================
+
 
     def resolve_context(self, intent, text):
-        # Ejemplo:
-        #   Usuario: "llévame a ESCOM"       -> DESTINO, entidad=escom
-        #   Usuario: "¿cuánto falta?"        -> ESTADO
-        #   Usuario: "cancela"               -> CANCELAR
+
         return text
 
-    # ========================================================
+
     # RESPUESTA HABLADA DE CONVENIENCIA
-    # ========================================================
-    # IMPORTANTE: según el documento, esto NO es responsabilidad del PLN
-    # (es del "módulo de salida"). Se incluye solo para poder probar el
-    # módulo por consola mientras ese módulo no exista todavía.
 
     def suggested_spoken_response(self, intent, destination):
         if intent == "DESTINO":
@@ -1342,14 +1102,12 @@ class NavigationNLP:
             return "De acuerdo. No realizaré esa acción."
         return "No estoy seguro de lo que necesitas. ¿Puedes repetir la instrucción?"
 
-    # ========================================================
+    
     # APRENDIZAJE — retroalimentación en línea
-    # ========================================================
+    
 
     def _sample_replay(self, k=REPLAY_SAMPLE_SIZE):
-        """Toma una muestra al azar de ejemplos ya conocidos (semilla +
-        aprendidos) para reforzarlos junto con el ejemplo nuevo y evitar
-        que la red "olvide" lo que ya sabía (repaso / experience replay)."""
+        # Devuelve un subconjunto aleatorio de ejemplos ya aprendidos para repasar durante el aprendizaje en línea
         dataset = self.memory.all_learned_examples()
         if len(dataset) <= k:
             return dataset
@@ -1371,9 +1129,7 @@ class NavigationNLP:
         return total_loss / steps if steps else 0.0
 
     def retrain_full(self, epochs=40, verbose=True):
-        """Reentrena la red con TODO el conjunto conocido (semilla +
-        aprendido). Útil como consolidación periódica, más robusta que
-        un solo paso en línea."""
+        
         dataset = self.memory.all_learned_examples()
         if not dataset:
             return
@@ -1385,14 +1141,7 @@ class NavigationNLP:
                   f"{epochs} épocas, pérdida promedio final ≈ {average_loss:.4f}")
 
     def learn_from_feedback(self, phrase, correct_intent, destination=None):
-        """
-        Aprende de una corrección del usuario/operador:
-          1. Guarda la frase en la memoria de reglas (para el motor por similitud).
-          2. Re-ajusta el IDF con el corpus actualizado.
-          3. Entrena la red neuronal en línea con esa frase repetida unas
-             cuantas veces + un lote de repaso de ejemplos ya conocidos,
-             para que aprenda el caso nuevo sin olvidar los anteriores.
-        """
+
         phrase = normalize_text(phrase)
         correct_intent = (correct_intent or "").strip().upper()
 
@@ -1414,13 +1163,9 @@ class NavigationNLP:
 
         return True
 
-    # ========================================================
+  
     # PROCESAMIENTO COMPLETO
-    # ========================================================
-    # Devuelve, ante todo, la salida estructurada que exige el documento:
-    # intención / destino (entidad) / acción. El resto de los campos son
-    # metadatos útiles (confianza, texto normalizado, aclaración
-    # requerida) y una respuesta hablada de conveniencia para pruebas.
+
 
     def process(self, text):
         normalized, tokens = self.preprocess(text)
@@ -1476,9 +1221,9 @@ class NavigationNLP:
         return result
 
 
-# ============================================================
-# INTERFAZ DE PRUEBA
-# ============================================================
+
+# INTERFAZ DE PRUEBA TEMP
+
 
 def main():
     nlp = NavigationNLP()

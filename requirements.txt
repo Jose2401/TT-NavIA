@@ -18,3 +18,5 @@ stable-baselines3>=2.3    # PPO (solo para ENTRENAR)
 # sounddevice             # micrófono
 # pyttsx3                 # voz de salida
 # smbus2                  # I2C en la Pi: MB1232 + IMU BNO055
+# edge-tts               # voz natural de VozYPLN/Tts.py (requiere internet)
+# pygame                 # reproduce el audio de edge-tts

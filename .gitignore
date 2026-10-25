@@ -10,3 +10,4 @@ videosxd/
 .DS_Store
 navigation_nlp_memory.json
 models/vosk-*
+tts_cache/
