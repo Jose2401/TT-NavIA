@@ -79,6 +79,11 @@ DEST_ALIASES = {
     "planta": "potted plant", "monitor": "monitor", "tele": "monitor",
     "television": "monitor", "escusado": "toilet", "bano": "toilet",
     "baño": "toilet", "lavabo": "sink",
+    "ventana": "window", "escalera": "escalera", "escaleras": "escalera",
+    "basura": "trash can", "bote de basura": "trash can",
+    "arbol": "tree", "árbol": "tree", "banca": "bench",
+    "letrero": "sign", "senal": "sign", "señal": "sign",
+    "fuente": "fountain", "poste": "street light",
 }
 
 

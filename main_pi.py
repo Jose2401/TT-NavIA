@@ -42,6 +42,9 @@ def main():
     p = argparse.ArgumentParser(description="Main Raspberry Pi (headless)")
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--model", default=None, help="pesos YOLOv8-seg")
+    p.add_argument("--sin-extra", action="store_true",
+                   help="apagar el detector extra (puertas/escaleras, oiv7)")
+    p.add_argument("--extra-every", type=int, default=15)
     p.add_argument("--cam-height", type=float, default=1.55)
     p.add_argument("--cam-pitch", type=float, default=10.0)
     p.add_argument("--hazards", action="store_true",
@@ -74,7 +77,9 @@ def main():
     bridge = VisionBridge(modelPath=args.model,
                           cameraProfile="picam3wide",
                           camHeightM=args.cam_height,
-                          camPitchDeg=args.cam_pitch)
+                          camPitchDeg=args.cam_pitch,
+                          extraModelPath=None if args.sin_extra else "auto",
+                          extraEvery=args.extra_every)
     detPeligros = GroundHazardDetector(
         cameraProfile="picam3wide", camHeightM=args.cam_height,
         camPitchDeg=args.cam_pitch) if args.hazards else None

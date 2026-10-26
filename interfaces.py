@@ -18,6 +18,8 @@ class VisionDetection:
     moving: bool = False
     confidence: float = 1.0
     hazard: bool = False
+    # pa puertas: "abierta" / "cerrada" / "" (desconocido)
+    estado: str = ""
 
 
 @dataclass

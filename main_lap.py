@@ -96,6 +96,8 @@ def annotateCamera(frame, detections, hfov, yawOk, fps):
             color = (0, 255, 0)
         cv2.line(frame, (col, int(h * 0.30)), (col, int(h * 0.70)), color, 2)
         tag = det.label
+        if det.estado:
+            tag += f" ({det.estado})"
         if det.range_est is not None:
             tag += f" {det.range_est:.1f}m"
         if det.moving:
@@ -166,7 +168,9 @@ def runCamera(args):
     bridge = VisionBridge(modelPath=args.model,
                           cameraProfile=args.camera_profile,
                           camHeightM=args.cam_height,
-                          camPitchDeg=args.cam_pitch)
+                          camPitchDeg=args.cam_pitch,
+                          extraModelPath=None if args.sin_extra else "auto",
+                          extraEvery=args.extra_every)
     motionEst = makeMotionEstimator(
         useImu=args.imu, imuBus=args.imu_bus, imuAddr=args.imu_addr,
         stepLengthM=args.step_length,
@@ -442,6 +446,9 @@ def buildParser():
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--video", default=None)
     p.add_argument("--model", default=None, help="pesos YOLOv8-seg")
+    p.add_argument("--sin-extra", action="store_true",
+                   help="apagar el detector extra (puertas/escaleras, oiv7)")
+    p.add_argument("--extra-every", type=int, default=5)
     p.add_argument("--camera-profile", default="laptop",
                    choices=["laptop", "picam3wide"])
     p.add_argument("--cam-height", type=float, default=1.55,

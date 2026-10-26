@@ -11,3 +11,5 @@ videosxd/
 navigation_nlp_memory.json
 models/vosk-*
 tts_cache/
+runs_finetune/
+datasets/

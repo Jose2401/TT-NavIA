@@ -168,6 +168,9 @@ def main():
                         "flujo detecta que avanzas; 0 = desactivar "
                         "(ojo: la escala del mapa depende de esto)")
     p.add_argument("--model", default=None, help="pesos YOLOv8-seg")
+    p.add_argument("--sin-extra", action="store_true",
+                   help="apagar el detector extra (puertas/escaleras, oiv7)")
+    p.add_argument("--extra-every", type=int, default=4)
     p.add_argument("--chunk-size", type=float, default=8.0)
     p.add_argument("--resolution", type=float, default=0.05)
     p.add_argument("--max-range", type=float, default=4.0)
@@ -184,7 +187,9 @@ def main():
     print("Cargando módulo de visión (YOLOv8-seg)...")
     bridge = VisionBridge(modelPath=args.model, hfovDeg=args.hfov,
                           vfovDeg=vfov, camHeightM=args.cam_height,
-                          camPitchDeg=args.cam_pitch)
+                          camPitchDeg=args.cam_pitch,
+                          extraModelPath=None if args.sin_extra else "auto",
+                          extraEvery=args.extra_every)
     yawEst = VisualYawEstimator(hfovDeg=args.hfov)
     detPeligros = None
     if args.hazards:

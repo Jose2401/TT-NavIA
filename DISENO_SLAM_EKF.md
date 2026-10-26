@@ -94,7 +94,8 @@ Módulos del paquete:
 | `map_manager.py`       | MAPA GLOBAL POR CHUNKS: divide el plano en bloques fijos anclados al mundo, con persistencia por chunk en disco, eventos de "entré a chunk/cuarto nuevo o conocido", heurística de cruce de puertas y misma interfaz de consulta que `OccupancyGrid` |
 | `navigation_feed.py`   | Arma el `NavigationFrame` por ciclo (costmap egocéntrico, `d_*`/`r_*` por sector según §7.3.1 del TT) y la capa de alertas determinística (<0.80 m crítico, <1.50 m precaución) |
 | `vision/TT-NavIA/`     | Módulo de visión REAL del equipo (YOLOv8-seg + SegFormer ADE20K; `scene_segmentation.py` extendido con clases transitables/agua/escaleras) |
-| `vision_bridge.py`     | Conecta la visión real al SLAM: bbox → bearing + distancia monocular (refinada por plano de piso), filtro de objetos móviles, fusión con ultrasonido, `GroundHazardDetector` (hoyos/coladeras/agua/escaleras) y `detection_risk` |
+| `vision_bridge.py`     | Conecta la visión real al SLAM: bbox → bearing + distancia monocular (sin distorsión de aspecto, refinada por plano de piso), filtro de objetos móviles, fusión con ultrasonido, DETECTOR EXTRA Open Images (600 clases: puertas, escaleras, ventanas, botes, postes... cada N frames), `GroundHazardDetector` (hoyos/coladeras/agua/escaleras + PUERTAS por ADE20K con estado abierta/cerrada) y `detectionRisk` |
+| `vision/finetune.py`   | Fine-tune de YOLO con dataset propio en formato YOLO (p.ej. puertas de ESCOM etiquetadas); un comando, copia el mejor peso a vision/ |
 | `sim_world.py`         | Cuarto simulado (paredes + obstáculos): ultrasonido por ray casting, visión sintética y movimiento por waypoints |
 | `tests/simulation.py`  | Simulación end-to-end sin hardware (valida el comportamiento requerido, reporta métricas) |
 | `tests/test_ekf_slam.py` | Pruebas unitarias/funcionales del EKF, la fusión y la simulación |
@@ -337,6 +338,35 @@ sistema opera de verdad (interiores + exteriores, `main_lap.py` /
   voz; los cuartos pueden etiquetarse (`set_room_label`).
 - El Ray Casting es el MISMO núcleo de `occupancy_grid.py`; los rayos
   cruzan fronteras de chunk sin recortes.
+
+### 12.1.1 Salidas y clases ampliadas de visión (2026-10-26)
+
+El cuello de botella era la cobertura de clases: COCO no tiene PUERTA,
+así que "llévame a la salida" no podía resolverse con cámara real. Se
+amplió con dos fuentes complementarias, medidas sobre los videos reales
+del equipo:
+
+- **Puertas por segmentación** (ADE20K clase 14, dentro del
+  `GroundHazardDetector` que ya corría): componentes de puerta →
+  detección etiquetada `door` con distancia por contacto con el piso y
+  ESTADO: si dentro del vano se ve piso transitable → `abierta`
+  (riesgo bajo según la tabla 7.1), si no → `cerrada` (riesgo medio).
+- **Detector extra Open Images V7** (`vision/yolov8s-oiv7.pt`, 600
+  clases, corre cada N frames y solo aporta clases que COCO no tiene:
+  door, escalera→hazard, window, trash can, street light, sign,
+  ladder, shelf, tree, fountain). Se de-duplica contra COCO por IoU y
+  contra las puertas de segmentación por bearing. Flags: `--sin-extra`
+  / `--extra-every` (lap: 5, Pi: 15 por costo).
+- **Corrección de geometría**: el resize fijo a 640x480 estiraba los
+  frames 16:9 e inflaba las alturas de bbox (~25 % de error en la
+  distancia monocular). Ahora el resize conserva el aspecto y toda la
+  geometría (distancia por altura y plano de piso) se deriva de UNA
+  focal calculada del hfov (pixeles cuadrados).
+
+Resultado medido (videos reales): el mapa del pasillo de oficina pasó
+de 0 a 12 landmarks `door`, y "llévame a la salida" resuelve e inicia
+guía. Los destinos nuevos ya tienen alias de voz (ventana, escaleras,
+basura, árbol, banca, letrero, fuente, poste).
 
 ### 12.2 Capa de peligros de piso (hoyos, coladeras, agua, escaleras)
 
