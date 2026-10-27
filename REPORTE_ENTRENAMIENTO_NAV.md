@@ -96,3 +96,40 @@ python -m navigation.train --eval models/nav_ppo.zip --real-maps maps/real/v04_p
 2. Los mapas de video tienen escala aproximada (velocidad de caminata asumida); con la IMU los nuevos videos/recorridos tendrán traslación real por conteo de pasos.
 3. `phi_goal`/`d_goal` de rutas globales (módulo MAPS/waypoints) aún no existen; el agente navega a metas locales (landmark o punto). La interfaz `set_route()` ya está lista.
 4. El peor caso actual es el pasillo largo real (90 %): más videos de pasillos (2–3 pasadas por zona) lo subirían.
+
+---
+
+## 6. Reentrenamiento con mapas enriquecidos (2026-10-26)
+
+Tras ampliar visión (puertas ADE20K + detector Open Images + fix de
+aspecto), los 10 mapas reales se regeneraron mucho más ricos (75
+landmarks de puerta, escaleras como peligro, más obstáculos). Se
+intentó reentrenar con ellos dos veces (6M pasos seed 3 y 8M pasos
+seed 4, 45-50 % de episodios reales) y **ninguna superó al modelo
+vigente evaluado sobre los mismos mapas nuevos**:
+
+| Modelo | Global | Peor mapa (v09 oficina densa) |
+|---|---|---|
+| **nav_ppo vigente** | **95.4 %** | **77.5 %** |
+| intento v3 (6M, s3) | 94.2 % | 60.0 % |
+| intento v4 (8M, s4) | 95.0 % | 60.0 % |
+
+Conclusión: se mantiene `models/nav_ppo`. El caso débil (v09: pasillo
+estrecho con 12 puertas + muebles muy denso) se arregla mejor con
+mapas más limpios (recorrer esa zona más veces/lento para ensanchar el
+corredor libre) que con más entrenamiento.
+
+## 7. Nuevo en esta fase (consumidores del modelo)
+
+- `navigation/route_planner.py`: simula la política sobre el mapa
+  actual y entrega la RUTA completa inicio→fin (~15 ms por plan); la
+  GUI de `main_nav_lap.py` la dibuja (cian = llega, rojo = bloqueada)
+  y se replanifica sola cuando un obstáculo nuevo bloquea el camino
+  (validado: 15 pasos directos → 22 pasos con 0.9 m de desvío al caer
+  una caja). Demo en `--sim`: tecla `b` (caja adelante), `m` (persona
+  cruzando).
+- `alertas.py`: módulo de alertas del Alg. 7, SIEMPRE activo (haya
+  ruta o no), con avisos específicos (persona en movimiento cerca,
+  hoyo/escalera/agua adelante en pasos), dosificación por tipo y
+  apagado/encendido: tecla `x` en lap, doble click de botón GPIO en la
+  Pi (gancho listo).

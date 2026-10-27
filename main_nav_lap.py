@@ -9,8 +9,10 @@ import numpy as np
 
 from interfaces import MotionEstimate
 from vision_bridge import fuseObservations, freeSpaceRays
-from navigation_feed import buildNavigationFrame, safetyAlerts
+from navigation_feed import buildNavigationFrame
+from alertas import ModuloAlertas
 from navigation.navigator import Navigator, FORWARD_STEP, TURN_STEP
+from navigation.route_planner import PlanificadorRuta
 from main_lap import (drawChunkMapPanel, drawNavBar, annotateCamera,
                       describeEvents, _armarSlamYMapa, _hudLine,
                       _hstackPad)
@@ -29,7 +31,10 @@ comandos (teclado, o mic con --voz): ve a la silla | punto 3.5 2.0 |
 pausa | reanuda | detener | otra ruta | donde estoy | que hay enfrente
 
 en --sim el usuario "obedece" las indicaciones (así validamos que, una
-a una, sí te llevan al destino sin chocar xd); 'o' cambia a wasd manual.
+a una, sí te llevan al destino sin chocar xd). teclas en --sim:
+'o' wasd manual | 'b' suelta una caja adelante (mira la ruta
+replanificarse) | 'm' persona cruzando | 'x' alertas on/off | 'q' salir.
+la ruta planeada se dibuja en el mapa (cian = llega, rojo = bloqueada).
 """
 
 
@@ -46,7 +51,7 @@ def startCommandThread(q):
     return t
 
 
-def drawNavOverlay(view, navigator, mgr):
+def drawNavOverlay(view, navigator, mgr, ruta=None):
     import cv2
     st = navigator.status
     if st.goal is None:
@@ -58,8 +63,20 @@ def drawNavOverlay(view, navigator, mgr):
 
     def aPx(wx, wy):
         gx = wx / mgr.resolution - ox
-        gy =wy / mgr.resolution - oy
+        gy = wy / mgr.resolution - oy
         return int(gx * escala), int(vh - 1 - gy * escala)
+
+    # la ruta planeada de inicio a fin (cian; roja si esta bloqueada)
+    if ruta and len(ruta.get("points", [])) > 1:
+        color = (255, 220, 0) if ruta["estado"] == "llega" else (0, 0, 255)
+        pts = [aPx(px, py) for (px, py) in ruta["points"]]
+        for p1, p2 in zip(pts, pts[1:]):
+            cv2.line(view, p1, p2, color, 2, cv2.LINE_AA)
+        tag = {"llega": f"ruta: {ruta['pasos']} pasos",
+               "bloqueada": "RUTA BLOQUEADA: buscando paso",
+               "larga": "ruta larga..."}[ruta["estado"]]
+        cv2.putText(view, tag, (8, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    color, 1, cv2.LINE_AA)
 
     gx, gy = aPx(*st.goal)
     cv2.drawMarker(view, (gx, gy), (255, 0, 200), cv2.MARKER_STAR, 18, 2)
@@ -94,6 +111,8 @@ def runSim(args):
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=args.voz, usarTts=args.tts,
         voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
+    modAlertas = ModuloAlertas()
+    planner = PlanificadorRuta(navigator.policy)
 
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
@@ -104,6 +123,7 @@ def runSim(args):
           "(ej: 've a la silla', 'punto 5 3')")
 
     obedecer = True
+    demoPersona = None
     eventsLog = []
     trayectoria = []
     output = slam.getOutput()
@@ -135,6 +155,25 @@ def runSim(args):
             key = cv2.waitKey(40) & 0xFF
         if key == ord('q'):
             break
+        elif key == ord('x'):
+            estado = "activadas" if modAlertas.alternar() else "desactivadas"
+            print(f"[alertas] {estado}")
+        elif key == ord('b'):
+            # demo: caja nueva 1.2 m adelante -> la ruta se replanifica
+            ux, uy, uth = user.truePose
+            world.obstacles.append((ux + 1.2 * math.cos(uth),
+                                    uy + 1.2 * math.sin(uth), 0.25, "box"))
+            print("[demo] caja agregada adelante, mira la ruta")
+        elif key == ord('m'):
+            # demo: persona que cruza enfrente durante unos segundos
+            ux, uy, uth = user.truePose
+            px = ux + 2.2 * math.cos(uth) - 1.6 * math.sin(uth)
+            py = uy + 2.2 * math.sin(uth) + 1.6 * math.cos(uth)
+            demoPersona = {"x": px, "y": py,
+                           "vx": 0.022 * math.sin(uth),
+                           "vy": -0.022 * math.cos(uth),
+                           "vida": 180}
+            print("[demo] persona cruzando")
         elif key == ord('o'):
             obedecer = not obedecer
             print(f"[modo] {'obedecer navegador' if obedecer else 'manual wasd'}")
@@ -159,8 +198,23 @@ def runSim(args):
         motion = user.command(forward, rot)
 
         truePose = tuple(user.truePose)
+
+        # persona demo: avanza, los sensores la ven y luego se quita
+        if demoPersona is not None:
+            demoPersona["x"] += demoPersona["vx"]
+            demoPersona["y"] += demoPersona["vy"]
+            demoPersona["vida"] -= 1
+            world.obstacles.append((demoPersona["x"], demoPersona["y"],
+                                    0.28, "person"))
         usLecturas = usArray.read(truePose)
         detections = simulatedVision(world, truePose)
+        if demoPersona is not None:
+            world.obstacles.pop()
+            for d in detections:
+                if d.label == "person":
+                    d.moving = True
+            if demoPersona["vida"] <= 0:
+                demoPersona = None
         observaciones = fuseObservations(detections, usLecturas)
         output = slam.step(motion, observaciones)
         pose = (output.x, output.y, output.theta)
@@ -176,11 +230,17 @@ def runSim(args):
             chunk=mgr.currentChunk, room=mgr.currentRoom,
             ultrasonic=usLecturas)
 
-        alertas = safetyAlerts(navFrame)
+        alertas, _recalc = modAlertas.evaluar(navFrame)
         for prio, msg in alertas:
             if prio == 0:
                 print(f"[ALERTA p0] {msg}")
-                voz.decir(msg, prioridad=0, cadaS=2.0)
+            voz.decir(msg, prioridad=prio)
+        st = navigator.status
+        if st.session == "activo" and st.goal is not None:
+            planner.solicitar(mgr, (output.x, output.y, output.theta),
+                              st.goal, urgente=_recalc)
+        else:
+            planner.limpiar()
         msgs = inter.ciclo(navFrame, mgr, alertas)
         printMsgs(msgs)
         voz.decirMsgs(msgs)
@@ -189,7 +249,7 @@ def runSim(args):
             import cv2
             vista = drawChunkMapPanel(mgr, slam, output, eventsLog,
                                       size=560, truePose=truePose)
-            vista = drawNavOverlay(vista, navigator, mgr)
+            vista = drawNavOverlay(vista, navigator, mgr, planner.ruta)
             st = navigator.status
             estado = f"sesion={st.session}"
             if st.goal_label:
@@ -234,6 +294,8 @@ def runCamera(args):
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=args.voz, usarTts=args.tts,
         voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
+    modAlertas = ModuloAlertas()
+    planner = PlanificadorRuta(navigator.policy)
 
     cap = cv2.VideoCapture(args.video if args.video else args.camera)
     if not cap.isOpened():
@@ -291,11 +353,17 @@ def runCamera(args):
             navFrame = buildNavigationFrame(
                 slam, mgr, detections, maxRange=args.max_range,
                 chunk=mgr.currentChunk, room=mgr.currentRoom)
-            alertas = safetyAlerts(navFrame)
+            alertas, _recalc = modAlertas.evaluar(navFrame)
             for prio, msg in alertas:
                 if prio == 0:
                     print(f"[ALERTA p0] {msg}")
-                    voz.decir(msg, prioridad=0, cadaS=2.0)
+                voz.decir(msg, prioridad=prio)
+            st = navigator.status
+            if st.session == "activo" and st.goal is not None:
+                planner.solicitar(mgr, (output.x, output.y, output.theta),
+                                  st.goal, urgente=_recalc)
+            else:
+                planner.limpiar()
             msgs = inter.ciclo(navFrame, mgr, alertas)
             printMsgs(msgs)
             voz.decirMsgs(msgs)
@@ -305,13 +373,18 @@ def runCamera(args):
                                       bridge.hfov, yawOk, 1.0 / dt)
                 mapV = drawChunkMapPanel(mgr, slam, output, eventsLog,
                                          size=camV.shape[0])
-                mapV = drawNavOverlay(mapV, navigator, mgr)
+                mapV = drawNavOverlay(mapV, navigator, mgr, planner.ruta)
                 arriba = _hstackPad(camV, mapV)
                 barra = drawNavBar(navFrame, alertas, arriba.shape[1])
                 cv2.imshow("NavIA - navegacion DRL (camara)",
                            np.vstack([arriba, barra]))
-                if (cv2.waitKey(1) & 0xFF) == ord('q'):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
                     break
+                elif key == ord('x'):
+                    estado = ("activadas" if modAlertas.alternar()
+                              else "desactivadas")
+                    print(f"[alertas] {estado}")
     finally:
         cap.release()
         if not args.headless:

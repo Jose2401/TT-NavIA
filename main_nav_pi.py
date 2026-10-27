@@ -8,7 +8,8 @@ import time
 from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
 from vision_bridge import fuseObservations
-from navigation_feed import buildNavigationFrame, safetyAlerts
+from navigation_feed import buildNavigationFrame
+from alertas import ModuloAlertas, BotonPullUp
 from navigation.navigator import Navigator
 from main_pi import Mb1232Array
 from odometry import makeMotionEstimator
@@ -60,6 +61,7 @@ def main():
     from vision_bridge import VisionBridge, GroundHazardDetector
 
     navigator = Navigator(args.model_nav)
+    modAlertas = ModuloAlertas()
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=not args.no_voz, usarTts=not args.no_tts,
         voskModel=args.vosk_model, micDevice=args.mic_device)
@@ -79,6 +81,11 @@ def main():
         hfovDeg=math.degrees(bridge.hfov),
         say=lambda m: voz.decir(m, prioridad=2))
     ultrasonico = Mb1232Array()
+
+    def _toggleAlertas():
+        est = "activadas" if modAlertas.alternar() else "desactivadas"
+        voz.decir(f"Alertas {est}.", prioridad=2)
+    boton = BotonPullUp(alCambiar=_toggleAlertas)   # doble click la alterna
 
     mgr = ChunkedMapManager(mapDir=args.map_dir,
                             chunkSizeM=args.chunk_size,
@@ -153,10 +160,9 @@ def main():
                 chunk=mgr.currentChunk, room=mgr.currentRoom,
                 ultrasonic=usLecturas)
 
-            alertas = safetyAlerts(navFrame)
+            alertas, _recalc = modAlertas.evaluar(navFrame)
             for prio, msg in alertas:
-                voz.decir(msg, prioridad=prio,
-                          cadaS=2.0 if prio == 0 else 5.0)
+                voz.decir(msg, prioridad=prio)
             voz.decirMsgs(inter.ciclo(navFrame, mgr, alertas))
 
             if ahora - lastSave > args.save_every:
