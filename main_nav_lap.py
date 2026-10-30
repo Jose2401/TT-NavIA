@@ -86,6 +86,114 @@ def drawNavOverlay(view, navigator, mgr, ruta=None):
     return view
 
 
+def drawRutaViva(mgr, slam, navigator, ruta, output, navFrame=None,
+                 sizePx=860, ventanaM=10.0):
+    """ventana grande con zoom alrededor del usuario: mapa local, ruta
+    gruesa, landmarks con letra legible, moviles y HUD. el mapa global
+    chiquito se queda en su panel de siempre; esta es pa VER la ruta."""
+    import cv2
+    cm = mgr.localCostmap((output.x, output.y), sizeM=ventanaM)
+    lado = cm.shape[1]
+    res = mgr.resolution
+    half = lado // 2
+
+    # fondo: blanco libre, gris desconocido, negro ocupado, rojo peligro
+    occ = cm[0]
+    img = np.full((lado, lado, 3), 190, np.uint8)
+    img[occ < 0.35] = (255, 255, 255)
+    img[occ > 0.65] = (30, 30, 30)
+    img[cm[1] > 0.5] = (0, 0, 220)
+    esc = sizePx / float(lado)
+    vista = cv2.resize(img, (sizePx, sizePx),
+                       interpolation=cv2.INTER_NEAREST)
+    vista = cv2.flip(vista, 0)
+
+    def aPx(wx, wy):
+        cx = (wx - output.x) / res + half
+        cy = (wy - output.y) / res + half
+        return int(cx * esc), int(sizePx - 1 - cy * esc)
+
+    # ruta planeada, gruesota
+    if ruta and len(ruta.get("points", [])) > 1:
+        color = (255, 210, 0) if ruta["estado"] == "llega" else (0, 0, 255)
+        pts = [aPx(px, py) for (px, py) in ruta["points"]]
+        for p1, p2 in zip(pts, pts[1:]):
+            cv2.line(vista, p1, p2, color, 4, cv2.LINE_AA)
+        for p in pts[::3]:
+            cv2.circle(vista, p, 5, color, -1)
+
+    # landmarks con letra que si se lea (contorno blanco)
+    mitad = ventanaM / 2.0 + 0.5
+    for lm in slam.getLandmarks():
+        if abs(lm["x"] - output.x) > mitad or abs(lm["y"] - output.y) > mitad:
+            continue
+        px, py = aPx(lm["x"], lm["y"])
+        cv2.drawMarker(vista, (px, py), (0, 140, 255),
+                       cv2.MARKER_TILTED_CROSS, 16, 3)
+        if lm["label"] not in ("eco_us", "obstaculo"):
+            for grosor, col in ((4, (255, 255, 255)), (1, (0, 90, 200))):
+                cv2.putText(vista, lm["label"], (px + 10, py + 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.62, col, grosor,
+                            cv2.LINE_AA)
+
+    # detecciones del ciclo: moviles en magenta, peligros en rojo
+    if navFrame is not None:
+        for d in navFrame.detections:
+            if d.range_est is None:
+                continue
+            ang = output.theta + d.bearing
+            px, py = aPx(output.x + d.range_est * math.cos(ang),
+                         output.y + d.range_est * math.sin(ang))
+            if d.moving:
+                cv2.circle(vista, (px, py), 12, (255, 0, 255), 3)
+                cv2.putText(vista, d.label, (px + 14, py),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255),
+                            2, cv2.LINE_AA)
+            elif d.hazard:
+                cv2.circle(vista, (px, py), 10, (0, 0, 255), 3)
+
+    # destino
+    st = navigator.status
+    if st.goal is not None:
+        gx, gy = aPx(*st.goal)
+        cv2.drawMarker(vista, (gx, gy), (255, 0, 200), cv2.MARKER_STAR,
+                       30, 3)
+        cv2.putText(vista, st.goal_label or "destino", (gx + 16, gy + 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 0, 200), 2,
+                    cv2.LINE_AA)
+
+    # usuario al centro con su flecha de hacia donde ve
+    cx, cy = aPx(output.x, output.y)
+    cv2.circle(vista, (cx, cy), 11, (0, 0, 255), -1)
+    cv2.circle(vista, (cx, cy), 13, (255, 255, 255), 2)
+    cv2.arrowedLine(vista, (cx, cy),
+                    (int(cx + 42 * math.cos(output.theta)),
+                     int(cy - 42 * math.sin(output.theta))),
+                    (0, 0, 255), 4, cv2.LINE_AA, tipLength=0.35)
+
+    # hud grande
+    lineas = [f"pos ({output.x:+.1f}, {output.y:+.1f})  "
+              f"mira {math.degrees(output.theta):+.0f} grados  "
+              f"conf {output.confidence:.2f}"]
+    if st.session == "activo" and st.d_goal is not None:
+        l2 = f"-> {st.goal_label or 'destino'}: faltan {st.d_goal:.1f} m"
+        if ruta:
+            l2 += {"llega": f"  (ruta: {ruta['pasos']} pasos)",
+                   "bloqueada": "  RUTA BLOQUEADA",
+                   "larga": "  (ruta larga)"}[ruta["estado"]]
+        lineas.append(l2)
+    else:
+        lineas.append("sin ruta activa: di/escribe a donde vamos")
+    for i, txt in enumerate(lineas):
+        cv2.putText(vista, txt, (14, 32 + 30 * i),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (0, 0, 0), 4,
+                    cv2.LINE_AA)
+        cv2.putText(vista, txt, (14, 32 + 30 * i),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.72, (60, 160, 255), 2,
+                    cv2.LINE_AA)
+    return vista
+
+
 # imprime lo que diria la voz
 def printMsgs(msgs):
     for m in msgs:
@@ -223,6 +331,8 @@ def runSim(args):
                            maxRange=args.max_range)
         describeEvents(mgr.updatePosition(pose, slam.getLandmarks()),
                        eventsLog)
+        if mgr.checarReloc(slam):
+            voz.decir("Ubicación confirmada en el mapa conocido.", prioridad=2)
         trayectoria.append((output.x, output.y))
 
         navFrame = buildNavigationFrame(
@@ -265,6 +375,9 @@ def runSim(args):
             barra = drawNavBar(navFrame, alertas, vista.shape[1])
             cv2.imshow("NavIA - navegacion DRL (sim)",
                        np.vstack([vista, barra]))
+            viva = drawRutaViva(mgr, slam, navigator, planner.ruta,
+                                output, navFrame)
+            cv2.imshow("NavIA - ruta en vivo", viva)
 
     if not args.headless:
         import cv2
@@ -349,6 +462,8 @@ def runCamera(args):
             mgr.clearFootprint(output.x, output.y)
             describeEvents(mgr.updatePosition(pose, slam.getLandmarks()),
                            eventsLog)
+            if mgr.checarReloc(slam):
+                voz.decir("Ubicación confirmada en el mapa conocido.", prioridad=2)
 
             navFrame = buildNavigationFrame(
                 slam, mgr, detections, maxRange=args.max_range,
@@ -378,6 +493,9 @@ def runCamera(args):
                 barra = drawNavBar(navFrame, alertas, arriba.shape[1])
                 cv2.imshow("NavIA - navegacion DRL (camara)",
                            np.vstack([arriba, barra]))
+                viva = drawRutaViva(mgr, slam, navigator, planner.ruta,
+                                    output, navFrame)
+                cv2.imshow("NavIA - ruta en vivo", viva)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break

@@ -94,6 +94,7 @@ def main():
     guardados = mgr.loadLandmarks()
     if guardados:
         slam.importLandmarks(guardados)
+        mgr.marcarRelocPendiente()
         voz.decir("Mapa conocido cargado.", prioridad=2)
 
     # el mic y el teclado meten frases a la misma cola
@@ -148,6 +149,8 @@ def main():
                                maxRange=args.max_range)
             mgr.clearFootprint(output.x, output.y)
             eventos = mgr.updatePosition(pose, slam.getLandmarks())
+            if mgr.checarReloc(slam):
+                voz.decir("Ubicación confirmada en el mapa conocido.", prioridad=2)
             for ev in eventos:
                 if ev["type"] == "chunk_change" and not ev["known"]:
                     voz.decir("Zona nueva.", prioridad=2, cadaS=5.0)

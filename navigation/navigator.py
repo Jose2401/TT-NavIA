@@ -269,7 +269,7 @@ class Navigator:
         msgs += navigator.update(nav_frame, grid, alerts)
     """
 
-    def __init__(self, model_base="models/nav_ppo", repeat_s=2.5,
+    def __init__(self, model_base="models/nav_ppo", repeat_s=3.5,
                  decide_every_s=1.0):
         self.policy, self.obs_mode = load_policy(model_base)
         self.status = NavStatus()

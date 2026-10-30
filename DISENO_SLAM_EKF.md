@@ -368,6 +368,18 @@ de 0 a 12 landmarks `door`, y "llévame a la salida" resuelve e inicia
 guía. Los destinos nuevos ya tienen alias de voz (ventana, escaleras,
 basura, árbol, banca, letrero, fuente, poste).
 
+### 12.1.2 Re-localización honesta al abrir mapas guardados (2026-10-29)
+
+Al abrir un mapa guardado, la pose arranca en el origen aunque el
+usuario esté en otro lugar; antes eso hacía que chunks del disco se
+anunciaran como "CONOCIDO" sin serlo (y `visits` persistido agravaba
+el engaño). Ahora: `marcarRelocPendiente()` al restaurar landmarks →
+los chunks de disco se reportan NUEVO y no se adoptan cuartos hasta
+que `checarReloc(slam)` confirme la re-localización (≥3 correcciones
+del EKF contra los landmarks importados; con la IMU esto será aún más
+rápido). El entrenamiento no se ve afectado: los mundos reales se
+cargan de solo-lectura sin eventos de chunk.
+
 ### 12.2 Capa de peligros de piso (hoyos, coladeras, agua, escaleras)
 
 Un peligro a nivel de piso no produce eco ultrasónico ni bloquea el

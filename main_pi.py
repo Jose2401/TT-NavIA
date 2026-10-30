@@ -97,6 +97,7 @@ def main():
     guardados = mgr.loadLandmarks()
     if guardados:
         slam.importLandmarks(guardados)
+        mgr.marcarRelocPendiente()
         voz.say("Mapa conocido cargado", priority=2)
 
     cap = cv2.VideoCapture(args.camera)
@@ -137,6 +138,8 @@ def main():
                                maxRange=args.max_range)
             mgr.clearFootprint(output.x, output.y)
             eventos = mgr.updatePosition(pose, slam.getLandmarks())
+            if mgr.checarReloc(slam):
+                voz.say("Ubicacion confirmada en el mapa conocido.", priority=2)
 
             for ev in eventos:
                 if ev["type"] == "chunk_change" and not ev["known"]:

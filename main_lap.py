@@ -233,6 +233,8 @@ def runCamera(args):
             mgr.clearFootprint(output.x, output.y)
             eventos = mgr.updatePosition(pose, slam.getLandmarks())
             describeEvents(eventos, eventsLog)
+            if mgr.checarReloc(slam):
+                print("[mapa] re-localizacion confirmada en el mapa conocido")
             trayectoria.append((output.x, output.y))
 
             nav = buildNavigationFrame(
@@ -341,6 +343,8 @@ def runSim(args):
                            maxRange=args.max_range)
         eventos = mgr.updatePosition(pose, slam.getLandmarks())
         describeEvents(eventos, eventsLog)
+        if mgr.checarReloc(slam):
+            print("[mapa] re-localizacion confirmada en el mapa conocido")
         trayectoria.append((output.x, output.y))
         gtTraj.append((truePose[0], truePose[1]))
 
@@ -391,6 +395,7 @@ def _armarSlamYMapa(args, x0=0.0, y0=0.0):
     guardados = mgr.loadLandmarks()
     if guardados:
         slam.importLandmarks(guardados)
+        mgr.marcarRelocPendiente()
         print(f"[mapa] {len(guardados)} landmarks restaurados de {mapDir} "
               "(re-localización activa)")
     if mgr.knownChunkIndices():

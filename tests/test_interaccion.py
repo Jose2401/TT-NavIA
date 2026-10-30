@@ -235,3 +235,34 @@ class TestArmado(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCanalInstrucciones(unittest.TestCase):
+    """el tts lento no debe decir indicaciones viejas: por canal solo
+    se habla la mas reciente (fix del desfase de voz)."""
+
+    def test_salta_las_viejas_y_dice_la_ultima(self):
+        import time, threading
+        voz = ColaVoz(hablar=False, echo=False)
+
+        class MotorLento:
+            def __init__(self):
+                self.dichas = []
+            def say(self, t):
+                self.dichas.append(t)
+                time.sleep(0.2)
+
+        voz.engine = MotorLento()
+        threading.Thread(target=voz._worker, daemon=True).start()
+        for i in range(8):
+            voz.decir(f"gira {i}", prioridad=1, canal="instruccion")
+            time.sleep(0.04)
+        time.sleep(1.2)
+        dichas = voz.engine.dichas
+        self.assertIn("gira 7", dichas)
+        self.assertLessEqual(len(dichas), 4)
+
+    def test_sin_canal_no_se_pierde_nada(self):
+        voz = ColaVoz(hablar=False, echo=False)
+        voz.decir("hola", prioridad=2)      # sin motor: solo no truena
+        self.assertIsNone(voz.engine)

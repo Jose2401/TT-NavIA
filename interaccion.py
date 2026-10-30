@@ -32,6 +32,8 @@ class ColaVoz:
         self._cola = queue.PriorityQueue()
         self._n = 0
         self._ultima = {}
+        self._canalN = {}
+        self.caducaS = 6.0      # una frase de canal mas vieja que esto ya no se dice
         if hablar:
             try:
                 _vozypln()
@@ -41,8 +43,11 @@ class ColaVoz:
             except Exception as e:
                 print(f"[VOZ] tts no disponible ({e}), solo consola")
 
-    def decir(self, texto, prioridad=2, cadaS=0.0):
-        # cadaS > 0: no repetir la misma frase antes de ese tiempo
+    def decir(self, texto, prioridad=2, cadaS=0.0, canal=None):
+        # cadaS > 0: no repetir la misma frase antes de ese tiempo.
+        # canal: las frases de un canal se pisan entre si — solo se habla
+        # la MAS RECIENTE (una indicacion vieja de "gira" ya no sirve y
+        # era lo que desfasaba la voz cuando el tts no alcanzaba)
         if cadaS > 0:
             ahora = time.time()
             if ahora - self._ultima.get(texto, 0.0) < cadaS:
@@ -55,11 +60,14 @@ class ColaVoz:
         if prioridad == 0:
             self._interrumpir()
         self._n += 1
-        self._cola.put((prioridad, self._n, texto))
+        if canal:
+            self._canalN[canal] = self._n
+        self._cola.put((prioridad, self._n, texto, canal, time.time()))
 
     def decirMsgs(self, msgs):
         for m in msgs:
-            self.decir(m.text, m.priority)
+            canal = "instruccion" if m.kind == "instruccion" else None
+            self.decir(m.text, m.priority, canal=canal)
 
     def _interrumpir(self):
         # p0 corta lo que se este reproduciendo (edge usa pygame)
@@ -76,7 +84,13 @@ class ColaVoz:
 
     def _worker(self):
         while True:
-            _p, _n, texto = self._cola.get()
+            _p, n, texto, canal, t0 = self._cola.get()
+            if canal:
+                # si ya llego una mas nueva del mismo canal, esta se tira
+                if n < self._canalN.get(canal, 0):
+                    continue
+                if time.time() - t0 > self.caducaS:
+                    continue
             self.hablando = True
             try:
                 self.engine.say(texto)    # Speaker.say bloquea hasta acabar

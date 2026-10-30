@@ -3,23 +3,23 @@
  "obs_dim": 24,
  "n_actions": 4,
  "algo": "PPO",
- "timesteps": 6000000,
- "seed": 2,
+ "timesteps": 8000000,
+ "seed": 6,
  "eval": {
-  "success_rate": 0.9807692307692307,
-  "collision_rate": 0.019230769230769232,
+  "success_rate": 0.9723684210526315,
+  "collision_rate": 0.02631578947368421,
   "fall_rate": 0.0,
-  "timeout_rate": 0.0,
-  "avg_steps_success": 29.015686274509804,
-  "episodes": 520,
+  "timeout_rate": 0.0013157894736842105,
+  "avg_steps_success": 29.964817320703652,
+  "episodes": 760,
   "by_world": {
    "gen_room": {
     "success_rate": 1.0,
     "collision_rate": 0.0
    },
    "gen_two_rooms": {
-    "success_rate": 0.95,
-    "collision_rate": 0.05
+    "success_rate": 0.975,
+    "collision_rate": 0.025
    },
    "gen_outdoor": {
     "success_rate": 1.0,
@@ -34,7 +34,7 @@
     "collision_rate": 0.0
    },
    "real:maps/real/v03_casa": {
-    "success_rate": 1.0,
+    "success_rate": 0.975,
     "collision_rate": 0.0
    },
    "real:maps/real/v04_pasillo": {
@@ -46,26 +46,50 @@
     "collision_rate": 0.0
    },
    "real:maps/real/v06_oficina1": {
-    "success_rate": 1.0,
-    "collision_rate": 0.0
+    "success_rate": 0.975,
+    "collision_rate": 0.025
    },
    "real:maps/real/v07_oficina2": {
+    "success_rate": 0.925,
+    "collision_rate": 0.075
+   },
+   "real:maps/real/v08_vertical": {
     "success_rate": 1.0,
     "collision_rate": 0.0
    },
-   "real:maps/real/v08_vertical": {
-    "success_rate": 0.95,
-    "collision_rate": 0.05
-   },
    "real:maps/real/v09_oficina3": {
-    "success_rate": 0.95,
-    "collision_rate": 0.05
+    "success_rate": 0.775,
+    "collision_rate": 0.225
    },
    "real:maps/real/v10_oficina4": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v11_puesto": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v12_banqueta1": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "real:maps/real/v13_avenida1": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v14_avenida2": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v15_banqueta2": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "real:maps/real/v16_esquina": {
     "success_rate": 1.0,
     "collision_rate": 0.0
    }
   }
  },
- "created": "2026-10-15 11:08:45"
+ "created": "2026-10-29 13:47:19"
 }

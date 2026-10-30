@@ -402,3 +402,46 @@ class TestGroundGeometryAndHazardFusion(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRelocalizacion(unittest.TestCase):
+    """al abrir un mapa guardado, los chunks de disco no se anuncian
+    como conocidos hasta que el slam confirma re-localizacion."""
+
+    def _mapaGuardado(self, tmpdir):
+        mgr = ChunkedMapManager(mapDir=tmpdir, chunkSizeM=2.0)
+        mgr.updatePosition((0.5, 0.5, 0.0))
+        mgr.updatePosition((2.5, 0.5, 0.0))
+        mgr.setRoomLabel("pasillo")
+        mgr.saveAll()
+
+    def test_pendiente_no_presume_conocido(self):
+        import tempfile, shutil
+        tmpdir = tempfile.mkdtemp(prefix="reloc_")
+        try:
+            self._mapaGuardado(tmpdir)
+            mgr2 = ChunkedMapManager(mapDir=tmpdir, chunkSizeM=2.0)
+            mgr2.marcarRelocPendiente()
+            evs = mgr2.updatePosition((0.5, 0.5, 0.0))
+            cambio = [e for e in evs if e["type"] == "chunk_change"][0]
+            self.assertFalse(cambio["known"])          # honesto: no sabemos
+            self.assertFalse(any(e["type"] == "room_recognized"
+                                 for e in evs))
+            # confirmando (slam falso con correcciones) ya si es conocido
+            class SlamFalso:
+                correccionesTotales = 5
+            self.assertTrue(mgr2.checarReloc(SlamFalso()))
+            self.assertFalse(mgr2.checarReloc(SlamFalso()))  # solo una vez
+            evs = mgr2.updatePosition((2.5, 0.5, 0.0))
+            cambio = [e for e in evs if e["type"] == "chunk_change"][0]
+            self.assertTrue(cambio["known"])
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_sin_mapa_guardado_no_cambia_nada(self):
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=2.0)
+        evs = mgr.updatePosition((0.5, 0.5, 0.0))
+        self.assertFalse(evs[0]["known"])
+        class SlamFalso:
+            correccionesTotales = 99
+        self.assertFalse(mgr.checarReloc(SlamFalso()))   # nada pendiente

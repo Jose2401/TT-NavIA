@@ -92,6 +92,12 @@ class ChunkedMapManager:
                         continue
 
         self.events = []
+        # al abrir un mapa guardado la pose arranca en el origen aunque
+        # estes en otro lado: hasta que el slam confirme re-localizacion
+        # (correcciones contra los landmarks importados) los chunks de
+        # disco NO se anuncian como conocidos
+        self.relocPendiente = False
+        self._visitadosSesion = set()   # visits se persiste; esto es solo de esta corrida
 
     @classmethod
     def openExisting(cls, mapDir, **kw):
@@ -178,15 +184,20 @@ class ChunkedMapManager:
 
         if index != self.currentChunk:
             yaExiste = self.chunks.get(index)
-            known = (index in self.diskIndex
+            visitadoAhora = index in self._visitadosSesion
+            known = (index in self.diskIndex or visitadoAhora
                      or (yaExiste is not None and yaExiste.visits > 0))
+            if self.relocPendiente and not visitadoAhora:
+                known = False
             chunk = self.getChunk(index)
             chunk.visits += 1
+            self._visitadosSesion.add(index)
             chunk.lastSeenAt = time.time()
             chunk.dirty = True
             self.currentChunk = index
 
-            if chunk.room is not None and chunk.room != self.currentRoom:
+            if (chunk.room is not None and chunk.room != self.currentRoom
+                    and not self.relocPendiente):
                 self.currentRoom = chunk.room
                 self.events.append({"type": "room_recognized",
                                     "room": chunk.room})
@@ -200,6 +211,19 @@ class ChunkedMapManager:
         if landmarks:
             self._checarPuerta(x, y, landmarks)
         return self.events
+
+    def marcarRelocPendiente(self):
+        self.relocPendiente = True
+
+    def checarReloc(self, slam, minCorrecciones=3):
+        """llamar cada ciclo; True SOLO en el ciclo en que la
+        re-localizacion queda confirmada (pal anuncio por voz)."""
+        if not self.relocPendiente:
+            return False
+        if getattr(slam, "correccionesTotales", 0) >= minCorrecciones:
+            self.relocPendiente = False
+            return True
+        return False
 
     def _checarPuerta(self, x, y, landmarks):
         if self._step - self._lastDoorStep < self.doorCooldownSteps:

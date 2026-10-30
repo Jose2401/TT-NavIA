@@ -65,6 +65,7 @@ class EKFSlam:
         self.lastUpdateTime = time.time()
         self.confidence = 1.0
         self.cyclesWithoutCorrection = 0
+        self.correccionesTotales = 0
 
     # prediccion con modelo de arco
     def predict(self, motion: MotionEstimate):
@@ -170,6 +171,7 @@ class EKFSlam:
         return self.mu.copy(), self.P.copy()
 
     def _aplicarUpdate(self, obs: Observation, match):
+        self.correccionesTotales += 1
         lm, H, S, innov = match
         rEff = S - H @ self.P @ H.T
         K = self.P @ H.T @ np.linalg.inv(S)
