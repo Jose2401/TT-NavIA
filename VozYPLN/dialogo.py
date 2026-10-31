@@ -174,6 +174,44 @@ def arrival_message(destination):
                  f"Lo lograste, esta es {place}." if place.startswith("la ") else f"¡Listo, llegamos a {place}!"])
 
 
-def obstacle_warning(description="un obstáculo"):
-    return pick([f"Cuidado, hay {description} justo enfrente. Frena despacito.",
-                 f"Atento, tienes {description} adelante. Avanza con calma."])
+# ---------------------------------------------------------------
+# Avisos de obstáculo (se dicen DESPUÉS del pitido de alerta)
+# ---------------------------------------------------------------
+OBSTACLE_NAMES = {
+    "carro": "un carro",
+    "moto": "una moto",
+    "camion": "un camión",
+    "autobus": "un autobús",
+    "bicicleta": "una bicicleta",
+    "vehiculo": "un vehículo",
+    "persona": "una persona",
+    "perro": "un perro",
+    "obstaculo": "un obstáculo",
+}
+
+DIRECTION_PHRASES = {
+    "frente": "enfrente",
+    "izquierda": "a tu izquierda",
+    "derecha": "a tu derecha",
+    "atras": "detrás de ti",
+}
+
+
+def obstacle_warning(tipo="obstaculo", direccion="frente", distancia_m=None, nivel=2):
+    """nivel: 1 info, 2 atención, 3 crítico (mismos valores que alertas.py).
+    Frases cortas: en una alerta importa más la rapidez que la amabilidad."""
+    name = OBSTACLE_NAMES.get(tipo, f"un {tipo}")
+    where = DIRECTION_PHRASES.get(direccion, "enfrente")
+
+    if nivel >= 3:
+        if direccion == "atras":
+            return f"¡Cuidado, {name} {where}! Hazte a un lado."
+        return pick([f"¡Cuidado, {name} {where}! Detente.",
+                     f"¡Alto! {_capitalize(name)} {where}. No avances."])
+
+    if nivel == 2:
+        dist = f", a {describe_distance(distancia_m)}" if distancia_m is not None else ""
+        return pick([f"Atento, hay {name} {where}{dist}. Avanza con calma.",
+                     f"Ojo, {name} {where}{dist}. Ve despacito."])
+
+    return f"Hay {name} {where}. Ve con cuidado."
