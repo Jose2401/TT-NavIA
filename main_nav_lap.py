@@ -219,7 +219,10 @@ def runSim(args):
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=args.voz, usarTts=args.tts,
         voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
-    modAlertas = ModuloAlertas()
+    modAlertas = ModuloAlertas(
+        hablarFn=lambda t: voz.decir(t, prioridad=0),
+        interrumpirFn=voz._interrumpir)
+    voz.esperarSi = modAlertas.sonando
     planner = PlanificadorRuta(navigator.policy)
 
     colaCmd = queue.Queue()
@@ -342,9 +345,7 @@ def runSim(args):
 
         alertas, _recalc = modAlertas.evaluar(navFrame)
         for prio, msg in alertas:
-            if prio == 0:
-                print(f"[ALERTA p0] {msg}")
-            voz.decir(msg, prioridad=prio)
+            print(f"[ALERTA p{prio}] {msg}")
         st = navigator.status
         if st.session == "activo" and st.goal is not None:
             planner.solicitar(mgr, (output.x, output.y, output.theta),
@@ -407,7 +408,10 @@ def runCamera(args):
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=args.voz, usarTts=args.tts,
         voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
-    modAlertas = ModuloAlertas()
+    modAlertas = ModuloAlertas(
+        hablarFn=lambda t: voz.decir(t, prioridad=0),
+        interrumpirFn=voz._interrumpir)
+    voz.esperarSi = modAlertas.sonando
     planner = PlanificadorRuta(navigator.policy)
 
     cap = cv2.VideoCapture(args.video if args.video else args.camera)
@@ -470,9 +474,7 @@ def runCamera(args):
                 chunk=mgr.currentChunk, room=mgr.currentRoom)
             alertas, _recalc = modAlertas.evaluar(navFrame)
             for prio, msg in alertas:
-                if prio == 0:
-                    print(f"[ALERTA p0] {msg}")
-                voz.decir(msg, prioridad=prio)
+                print(f"[ALERTA p{prio}] {msg}")
             st = navigator.status
             if st.session == "activo" and st.goal is not None:
                 planner.solicitar(mgr, (output.x, output.y, output.theta),

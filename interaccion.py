@@ -33,7 +33,8 @@ class ColaVoz:
         self._n = 0
         self._ultima = {}
         self._canalN = {}
-        self.caducaS = 6.0      # una frase de canal mas vieja que esto ya no se dice
+        self.caducaS = 6.0
+        self.esperarSi = None   # callable: True mientras suene una alerta      # una frase de canal mas vieja que esto ya no se dice
         if hablar:
             try:
                 _vozypln()
@@ -91,6 +92,8 @@ class ColaVoz:
                     continue
                 if time.time() - t0 > self.caducaS:
                     continue
+            while self.esperarSi and self.esperarSi():
+                time.sleep(0.05)
             self.hablando = True
             try:
                 self.engine.say(texto)    # Speaker.say bloquea hasta acabar

@@ -25,7 +25,7 @@ class TestModuloAlertas(unittest.TestCase):
     def test_persona_movil_cerca_es_critica_y_recalcula(self):
         f = _frame([VisionDetection(bearing=0.0, label="person",
                                     range_est=0.8, moving=True)])
-        als, rec = ModuloAlertas().evaluar(f)
+        als, rec = ModuloAlertas(conPip=False).evaluar(f)
         self.assertTrue(rec)
         self.assertEqual(als[0][0], 0)
         self.assertIn("persona", als[0][1])
@@ -33,33 +33,33 @@ class TestModuloAlertas(unittest.TestCase):
     def test_movil_sustituye_la_alerta_generica_del_sector(self):
         f = _frame([VisionDetection(bearing=0.0, label="person",
                                     range_est=0.8, moving=True)])
-        als, _ = ModuloAlertas().evaluar(f)
+        als, _ = ModuloAlertas(conPip=False).evaluar(f)
         textos = [t for _p, t in als]
         self.assertFalse(any("person cerca" in t for t in textos))
 
     def test_hoyo_adelante_avisa_en_pasos(self):
         f = _frame([VisionDetection(bearing=0.1, label="hoyo",
                                     range_est=2.0, hazard=True)])
-        als, rec = ModuloAlertas().evaluar(f)
+        als, rec = ModuloAlertas(conPip=False).evaluar(f)
         self.assertTrue(any("hoyo" in t and "pasos" in t for _p, t in als))
         self.assertFalse(rec)          # a 2 m aun no es critica
 
     def test_hoyo_pegado_es_critico(self):
         f = _frame([VisionDetection(bearing=0.0, label="hoyo",
                                     range_est=1.0, hazard=True)])
-        als, rec = ModuloAlertas().evaluar(f)
+        als, rec = ModuloAlertas(conPip=False).evaluar(f)
         self.assertTrue(rec)
         self.assertTrue(any(p == 0 and "hoyo" in t for p, t in als))
 
     def test_cooldown_por_tipo(self):
-        mod = ModuloAlertas()
+        mod = ModuloAlertas(conPip=False)
         f = _frame([VisionDetection(bearing=0.0, label="hoyo",
                                     range_est=2.0, hazard=True)])
         self.assertTrue(mod.evaluar(f)[0])
         self.assertEqual(mod.evaluar(f)[0], [])     # misma alerta, calla
 
     def test_apagado_y_toggle(self):
-        mod = ModuloAlertas()
+        mod = ModuloAlertas(conPip=False)
         f = _frame([VisionDetection(bearing=0.0, label="person",
                                     range_est=0.5, moving=True)])
         self.assertFalse(mod.alternar())            # queda apagado
@@ -68,7 +68,7 @@ class TestModuloAlertas(unittest.TestCase):
         self.assertTrue(mod.evaluar(f)[0])
 
     def test_sin_frame_no_truena(self):
-        self.assertEqual(ModuloAlertas().evaluar(None), ([], False))
+        self.assertEqual(ModuloAlertas(conPip=False).evaluar(None), ([], False))
 
 
 class TestBoton(unittest.TestCase):
@@ -161,3 +161,95 @@ class TestPlanificador(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SalidaFalsa:
+    CRITICAL, WARNING = 3, 2
+    def __init__(self):
+        self.pips = []
+    def pip(self, nivel, direccion="frente", tipo="obstaculo",
+            distanciaM=None):
+        self.pips.append((nivel, direccion, tipo))
+    def recently_active(self, s=0.5):
+        return False
+
+
+class TestPips(unittest.TestCase):
+    """la entrega nueva: precaucion = pip, critica = pip (+voz aparte)."""
+
+    def _mod(self):
+        dichas = []
+        mod = ModuloAlertas(conPip=False,
+                            hablarFn=lambda t: dichas.append(t))
+        mod.salida = SalidaFalsa()
+        return mod, dichas
+
+    def test_precaucion_suena_warning(self):
+        mod, dichas = self._mod()
+        f = _frame([VisionDetection(bearing=0.1, label="hoyo",
+                                    range_est=2.0, hazard=True)])
+        mod.evaluar(f)
+        self.assertEqual(mod.salida.pips[0][0], SalidaFalsa.WARNING)
+        self.assertEqual(mod.salida.pips[0][1], "frente")
+
+    def test_critica_suena_critical(self):
+        mod, _ = self._mod()
+        f = _frame([VisionDetection(bearing=0.0, label="person",
+                                    range_est=0.5, moving=True)])
+        mod.evaluar(f)
+        niveles = [p[0] for p in mod.salida.pips]
+        self.assertIn(SalidaFalsa.CRITICAL, niveles)
+
+    def test_sin_pips_critica_se_habla(self):
+        dichas = []
+        mod = ModuloAlertas(conPip=False,
+                            hablarFn=lambda t: dichas.append(t))
+        f = _frame([VisionDetection(bearing=0.0, label="person",
+                                    range_est=0.5, moving=True)])
+        mod.evaluar(f)
+        self.assertTrue(dichas)          # fallback: voz como antes
+
+    def test_sector_izquierda_panea_izquierda(self):
+        mod, _ = self._mod()
+        f = _frame([VisionDetection(bearing=math.radians(60),
+                                    label="person", range_est=0.8,
+                                    moving=True)])
+        mod.evaluar(f)
+        self.assertEqual(mod.salida.pips[0][1], "izquierda")
+
+
+class TestUltrasonido(unittest.TestCase):
+
+    def test_reporte_directo_pip_y_pendiente(self):
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        mod.reportarSensor("derecha", 0.6)
+        self.assertEqual(mod.salida.pips[0][0], SalidaFalsa.CRITICAL)
+        self.assertEqual(mod.salida.pips[0][1], "derecha")
+        als, rec = mod.evaluar(_frame([])[0] if False else None)
+        # evaluar(None) con activo entrega lo pendiente del sensor
+        self.assertTrue(rec)
+        self.assertIn("Ultrasonido", als[0][1])
+        # y ya no se repite
+        self.assertEqual(mod.evaluar(None), ([], False))
+
+    def test_conectar_ultrasonido_mapea_direcciones(self):
+        from alertas import conectarUltrasonido
+        from interfaces import UltrasonicReading
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        lecturas = [UltrasonicReading(range_m=0.9,
+                                      sensor_bearing=math.radians(90)),
+                    UltrasonicReading(range_m=0.8,
+                                      sensor_bearing=math.radians(-90)),
+                    UltrasonicReading(range_m=3.0, sensor_bearing=0.0)]
+        conectarUltrasonido(mod, lecturas, umbralM=1.5)
+        dirs = [p[1] for p in mod.salida.pips]
+        self.assertEqual(dirs, ["izquierda", "derecha"])   # el de 3m no
+
+    def test_apagado_ignora_sensor(self):
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        mod.alternar()
+        mod.reportarSensor("frente", 0.5)
+        self.assertEqual(mod.salida.pips, [])

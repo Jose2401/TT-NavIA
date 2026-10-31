@@ -6,7 +6,8 @@ import time
 from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
 from vision_bridge import fuseObservations
-from navigation_feed import buildNavigationFrame, safetyAlerts
+from navigation_feed import buildNavigationFrame
+from alertas import ModuloAlertas, conectarUltrasonido
 
 
 class Mb1232Array:
@@ -89,6 +90,8 @@ def main():
         hfovDeg=math.degrees(bridge.hfov),
         say=lambda m: voz.say(m, priority=2))
     ultrasonico = Mb1232Array()
+    modAlertas = ModuloAlertas(
+        hablarFn=lambda t: voz.say(t, priority=0))
 
     mgr = ChunkedMapManager(mapDir=args.map_dir,
                             chunkSizeM=args.chunk_size,
@@ -131,6 +134,7 @@ def main():
             detections = detections + ultimosPeligros
 
             usLecturas = ultrasonico.read()
+            conectarUltrasonido(modAlertas, usLecturas)
             observaciones = fuseObservations(detections, usLecturas)
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
@@ -154,9 +158,9 @@ def main():
                 chunk=mgr.currentChunk, room=mgr.currentRoom,
                 ultrasonic=usLecturas)
 
-            for prio, msg in safetyAlerts(nav):
-                voz.say(msg, priority=prio,
-                        repeatAfterS=2.0 if prio == 0 else 5.0)
+            alertas, _recalc = modAlertas.evaluar(nav)
+            for prio, msg in alertas:
+                print(f"[ALERTA p{prio}] {msg}")
 
             if ahora - lastSave > args.save_every:
                 mgr.saveAll()

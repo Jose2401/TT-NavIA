@@ -9,7 +9,7 @@ from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
 from vision_bridge import fuseObservations
 from navigation_feed import buildNavigationFrame
-from alertas import ModuloAlertas, BotonPullUp
+from alertas import ModuloAlertas, BotonPullUp, conectarUltrasonido
 from navigation.navigator import Navigator
 from main_pi import Mb1232Array
 from odometry import makeMotionEstimator
@@ -61,10 +61,13 @@ def main():
     from vision_bridge import VisionBridge, GroundHazardDetector
 
     navigator = Navigator(args.model_nav)
-    modAlertas = ModuloAlertas()
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=not args.no_voz, usarTts=not args.no_tts,
         voskModel=args.vosk_model, micDevice=args.mic_device)
+    modAlertas = ModuloAlertas(
+        hablarFn=lambda t: voz.decir(t, prioridad=0),
+        interrumpirFn=lambda: voz._interrumpir())
+    voz.esperarSi = modAlertas.sonando
     if oido is not None:
         voz.decir(inter.dialogo.introduction(), prioridad=2)
     else:
@@ -142,6 +145,7 @@ def main():
             detections = detections + ultimosPeligros
 
             usLecturas = ultrasonico.read()
+            conectarUltrasonido(modAlertas, usLecturas)
             observaciones = fuseObservations(detections, usLecturas)
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
@@ -165,7 +169,7 @@ def main():
 
             alertas, _recalc = modAlertas.evaluar(navFrame)
             for prio, msg in alertas:
-                voz.decir(msg, prioridad=prio)
+                print(f"[ALERTA p{prio}] {msg}")
             voz.decirMsgs(inter.ciclo(navFrame, mgr, alertas))
 
             if ahora - lastSave > args.save_every:
