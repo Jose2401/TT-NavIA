@@ -84,6 +84,9 @@ DEST_ALIASES = {
     "arbol": "tree", "árbol": "tree", "banca": "bench",
     "letrero": "sign", "senal": "sign", "señal": "sign",
     "fuente": "fountain", "poste": "street light",
+    "escritorio": "desk", "archivero": "cabinet", "gabinete": "cabinet",
+    "mostrador": "counter", "pizarron": "whiteboard",
+    "pizarrón": "whiteboard", "estante": "shelf",
 }
 
 
@@ -368,7 +371,16 @@ class Navigator:
             target = st.waypoints[0] if st.waypoints else st.goal
 
         d_final = math.hypot(st.goal[0] - pose[0], st.goal[1] - pose[1])
-        if d_final < ARRIVAL_RADIUS:
+        # llegada por PERCEPCION: si la camara VE el objeto destino a
+        # menos de un metro enfrente, llegamos — aunque la pose del
+        # mapa diga otra cosa (sin odometria el (x,y) deriva y sin esto
+        # te quedabas dando vueltas junto al objeto)
+        vistoCerca = (st.goal_label is not None and any(
+            d.label == st.goal_label and not d.moving
+            and d.range_est is not None and d.range_est < 1.0
+            and abs(d.bearing) < math.radians(60)
+            for d in frame.detections))
+        if d_final < ARRIVAL_RADIUS or vistoCerca:
             st.session = "en_espera"
             st.goal = st.goal_label = None
             st.waypoints = []

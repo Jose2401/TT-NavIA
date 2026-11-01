@@ -22,6 +22,8 @@ TYPICAL_HEIGHTS_M = {
     "window": 1.30, "trash can": 0.95, "street light": 4.0,
     "sign": 0.70, "ladder": 2.00, "shelf": 1.70, "tree": 4.0,
     "fountain": 1.20, "bench": 0.80, "fire hydrant": 0.75,
+    "desk": 0.75, "cabinet": 1.40, "counter": 0.90,
+    "whiteboard": 1.20,
 }
 
 # clases EXTRA del detector open images v7 (600 clases): solo las que
@@ -32,6 +34,11 @@ EXTRA_OIV7 = {
     "Waste container": "trash can", "Street light": "street light",
     "Traffic sign": "sign", "Ladder": "ladder", "Shelf": "shelf",
     "Tree": "tree", "Fountain": "fountain",
+    # muebles de oficina/salas (coco no los trae y en la sala de
+    # maestros el sistema quedaba ciego)
+    "Desk": "desk", "Cabinetry": "cabinet", "Filing cabinet": "cabinet",
+    "Countertop": "counter", "Whiteboard": "whiteboard",
+    "Wardrobe": "cabinet",
 }
 EXTRA_HAZARD = {"escalera"}
 
@@ -67,7 +74,7 @@ class VisionBridge:
                  camHeightM=DEFAULT_CAM_HEIGHT_M,
                  camPitchDeg=DEFAULT_CAM_PITCH_DEG,
                  useGroundPlane=True,
-                 extraModelPath="auto", extraEvery=5, extraConf=0.30):
+                 extraModelPath="auto", extraEvery=5, extraConf=0.25):
         """extraModelPath: segundo yolo (open images, 600 clases) pa
         puertas/escaleras/ventanas etc que coco no tiene. "auto" = usa
         vision/yolov8s-oiv7.pt si existe; None = apagado. corre cada

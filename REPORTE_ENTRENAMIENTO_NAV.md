@@ -133,3 +133,38 @@ corredor libre) que con más entrenamiento.
   hoyo/escalera/agua adelante en pasos), dosificación por tipo y
   apagado/encendido: tecla `x` en lap, doble click de botón GPIO en la
   Pi (gancho listo).
+
+---
+
+## 9. Sala de maestros + campaña de 19 mapas (2026-10-31)
+
+Caso reportado: en la sala de maestros de la uni el sistema casi no
+detectaba (sobre todo la entrada). Causas y arreglos (medidos sobre los
+videos del lugar):
+1. `main_nav_lap` en modo cámara no corría el segmentador (puertas
+   ADE20K): ya va encendido por defecto (`--sin-hazards` lo apaga). La
+   entrada de vidrio esmerilado SÍ la detecta ADE20K ("door cerrada").
+2. Muebles de oficina fuera del filtro del detector extra: se agregaron
+   Desk/Cabinetry/Filing cabinet/Countertop/Whiteboard/Wardrobe →
+   `desk`, `cabinet`, `counter`, `whiteboard` (umbral extra 0.30→0.25).
+3. Las mamparas azules no existen en ningún modelo preentrenado:
+   limitación conocida; las cubren los MB1232 o un fine-tune propio.
+
+Además: **llegada por percepción** — si la cámara ve el objeto destino
+a <1 m al frente, la navegación se detiene aunque la pose derive (clave
+en modo solo-cámara).
+
+Campaña (los 16 mapas previos fueron borrados externamente y se
+regeneraron desde los videos con la visión mejorada + v17-v19 de la
+sala; 19 mapas en total):
+
+| Corrida | Global | Prom. reales | Peor mapa |
+|---|---|---|---|
+| **nav_ppo vigente** | **96.9 %** | **96.6 %** | **82.5 %** |
+| s8 (8M, prob .50) | 96.2 % | 96.4 % | 67.5 % |
+| s9 (8M, prob .45) | 96.5 % | 96.2 % | 70.0 % |
+
+**Se mantiene el modelo vigente** (tercera vez que los reintentos
+colapsan en v09 mientras el vigente aguanta — el patrón es consistente:
+más entrenamiento no arregla ese pasillo denso, regrabarlo sí). La sala
+de maestros: 100 % en sus 3 mapas.

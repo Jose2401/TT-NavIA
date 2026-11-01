@@ -391,7 +391,7 @@ def runSim(args):
 # lo mismo pero con camara
 def runCamera(args):
     import cv2
-    from vision_bridge import VisionBridge
+    from vision_bridge import VisionBridge, GroundHazardDetector
     from odometry import makeMotionEstimator
 
     print("Cargando módulo de visión (YOLOv8-seg)...")
@@ -399,6 +399,12 @@ def runCamera(args):
                           cameraProfile=args.camera_profile,
                           extraModelPath=None if args.sin_extra else "auto",
                           extraEvery=args.extra_every)
+    # puertas (entrada/salida) + hoyos vienen del segmentador: sin esto
+    # en la sala de maestros no se veia ni la entrada
+    detPeligros = None
+    if not args.sin_hazards:
+        print("Cargando segmentación de escena (puertas y peligros)...")
+        detPeligros = GroundHazardDetector(cameraProfile=args.camera_profile)
     motionEst = makeMotionEstimator(
         useImu=args.imu, imuBus=args.imu_bus, imuAddr=args.imu_addr,
         stepLengthM=args.step_length,
@@ -425,6 +431,7 @@ def runCamera(args):
     print("[NAV p2] Sistema listo. Diga su destino.")
 
     eventsLog = []
+    ultimosPeligros = []
     output = slam.getOutput()
     navFrame = None
     lastT = time.time()
@@ -458,6 +465,9 @@ def runCamera(args):
             if odo["pitch_deg"] is not None:
                 bridge.camPitchDeg = odo["pitch_deg"]
             detections = bridge.process(frame, egoYaw=motion.delta_rot)
+            if detPeligros is not None and frames % args.hazard_every == 0:
+                ultimosPeligros = detPeligros.process(frame, detections)
+            detections = detections + ultimosPeligros
             observaciones = fuseObservations(detections, [])
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
@@ -520,6 +530,9 @@ def buildParser():
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--video", default=None)
     p.add_argument("--model", default=None, help="pesos YOLOv8-seg")
+    p.add_argument("--sin-hazards", action="store_true",
+                   help="apagar segmentacion (puertas/hoyos) en camara")
+    p.add_argument("--hazard-every", type=int, default=4)
     p.add_argument("--sin-extra", action="store_true",
                    help="apagar el detector extra (puertas/escaleras, oiv7)")
     p.add_argument("--extra-every", type=int, default=5)

@@ -463,3 +463,47 @@ class TestClosedLoopIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(_elegirModelo(), "falta el modelo entrenado")
+class TestLlegadaPorPercepcion(unittest.TestCase):
+    """si la camara ve el objeto destino a <1m enfrente, se llega
+    aunque la pose del mapa ande desviada."""
+
+    def _armar(self):
+        from ekf_slam import EKFSlam
+        from map_manager import ChunkedMapManager
+        from navigation_feed import buildNavigationFrame
+        nav = Navigator(_elegirModelo(), repeat_s=0.0, decide_every_s=0.0)
+        slam = EKFSlam(0, 0, 0)
+        slam.importLandmarks([{"x": 5.0, "y": 0.0, "label": "door",
+                               "seen_count": 5, "required_hits": 2}])
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=4.0)
+        return nav, slam, mgr, buildNavigationFrame
+
+    def test_ver_el_destino_cerca_detiene(self):
+        from interfaces import VisionDetection
+        nav, slam, mgr, bnf = self._armar()
+        frame = bnf(slam, mgr, [])
+        nav.handle_command("ve a la puerta", frame)
+        self.assertEqual(nav.status.session, "activo")
+        # el mapa cree que faltan 5m, pero la camara la VE a 70cm
+        dets = [VisionDetection(bearing=0.2, label="door",
+                                range_est=0.7, estado="cerrada")]
+        frame2 = bnf(slam, mgr, dets)
+        msgs = nav.update(frame2, mgr)
+        self.assertTrue(any("llegado" in m.text.lower()
+                            or "lleg" in m.text.lower() for m in msgs))
+        self.assertEqual(nav.status.session, "en_espera")
+
+    def test_objeto_lejano_o_movil_no_detiene(self):
+        from interfaces import VisionDetection
+        nav, slam, mgr, bnf = self._armar()
+        frame = bnf(slam, mgr, [])
+        nav.handle_command("ve a la puerta", frame)
+        dets = [VisionDetection(bearing=0.1, label="door", range_est=2.5),
+                VisionDetection(bearing=0.0, label="person",
+                                range_est=0.5, moving=True)]
+        frame2 = bnf(slam, mgr, dets)
+        nav.update(frame2, mgr)
+        self.assertEqual(nav.status.session, "activo")

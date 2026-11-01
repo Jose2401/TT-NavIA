@@ -101,9 +101,22 @@ class RealMapWorldFactory:
         span = math.hypot(self.free_x.max() - self.free_x.min(),
                           self.free_y.max() - self.free_y.min())
         target = min(_MIN_GOAL_DIST_M, 0.6 * max(span, 0.5))
+        # ojo: el area "libre" sale del log-odds, pero los discos de
+        # obstaculo se montan encima y pueden invadirla: sin checar
+        # holgura contra los discos, en mapas densos (v09) los
+        # episodios NACIAN casi chocando y envenenaban el aprendizaje
+        holg = max(0.30, 0.22 + 0.08)
+        def _conEspacio(idx):
+            x, y = float(self.free_x[idx]), float(self.free_y[idx])
+            if not len(self.statics):
+                return True
+            dd = np.hypot(self.statics[:, 0] - x, self.statics[:, 1] - y)
+            return float((dd - self.statics[:, 2]).min()) >= holg
         best = (0, 1, -1.0)
-        for _ in range(100):
+        for _ in range(140):
             i, j = rng.integers(0, n, size=2)
+            if not (_conEspacio(i) and _conEspacio(j)):
+                continue
             d = math.hypot(self.free_x[i] - self.free_x[j],
                            self.free_y[i] - self.free_y[j])
             if d > best[2]:
