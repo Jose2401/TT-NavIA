@@ -168,3 +168,35 @@ sala; 19 mapas en total):
 colapsan en v09 mientras el vigente aguanta — el patrón es consistente:
 más entrenamiento no arregla ese pasillo denso, regrabarlo sí). La sala
 de maestros: 100 % en sus 3 mapas.
+
+---
+
+## 10. El caso v09 resuelto: muestreo justo y veredicto (2026-11-01)
+
+El "mapa problemático" (v09, video de un tercero, no regrabable)
+destapó un bug del entrenador: en mapas densos, inicio/meta podían
+NACER encima de un obstáculo (el área libre se calcula del log-odds y
+los discos de obstáculos la invadían) → colisiones imposibles que
+envenenaban el entrenamiento Y deflactaban la evaluación. Corregido:
+el muestreo ahora exige ≥30 cm de holgura (0/50 episodios nacen
+chocando; antes varios).
+
+Experimento con muestreo justo (¿dejar v09 en la mezcla de
+entrenamiento?):
+
+| Corrida | Global (19) | v09 | Peor |
+|---|---|---|---|
+| **nav_ppo vigente** | **97.8 %** | **85.0 %** | **85.0 %** |
+| entrenado CON v09 (8M, s10) | 96.6 % | 82.5 % | 77.5 % |
+| entrenado SIN v09 (8M, s10) | 97.0 % | **65.0 %** ✗ | 65.0 % |
+
+Conclusiones:
+1. Parte del "problema v09" era el muestreo injusto: el vigente sube
+   de 82.5 → 85.0 % solo con episodios justos.
+2. **v09 SÍ debe quedarse en la mezcla de entrenamiento**: excluirlo
+   hace que el modelo pierda justo la habilidad de pasillos densos
+   (65 % vs 82.5 % del gemelo entrenado con él). Y como mapa de
+   evaluación es el caso de estrés más valioso del banco.
+3. Se mantiene `models/nav_ppo` (ningún candidato lo supera; 4ª
+   campaña consecutiva — el modelo está en una meseta sólida de ~97-98 %
+   que probablemente solo moverá la odometría real de la IMU).
