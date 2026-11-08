@@ -112,10 +112,10 @@ def safetyAlerts(frame: NavigationFrame):
 
         if eff < crit:
             cm =int(round(eff * 10.0)) * 10
-            alertas.append((0, f"Atencion: {label} a {cm} centimetros "
-                               f"{donde}. Detengase."))
+            alertas.append((0, f"Atención: {label} a {cm} centímetros "
+                               f"{donde}. Deténgase."))
         elif eff < caut:
-            alertas.append((1, f"Precaucion: {label} cerca {donde}."))
+            alertas.append((1, f"Precaución: {label} cerca {donde}."))
     return alertas
 
 

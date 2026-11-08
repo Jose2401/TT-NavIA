@@ -20,6 +20,9 @@ class VisionDetection:
     hazard: bool = False
     # pa puertas: "abierta" / "cerrada" / "" (desconocido)
     estado: str = ""
+    # validacion cruzada con ultrasonido: "ambos" / "solo_vision" /
+    # "contradicho" / "" (fuera del cono de los sensores)
+    confirmado: str = ""
 
 
 @dataclass
@@ -28,6 +31,9 @@ class UltrasonicReading:
     sensor_bearing: float = 0.0
     max_range: float = 4.0
     valid: bool = True
+    # donde va el sensor en el armazon (montaje.py): y + = izquierda
+    offset_y: float = 0.0
+    lado: str = ""             # "izq" / "der" (los dos van al frente)
 
 
 @dataclass

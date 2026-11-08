@@ -380,6 +380,60 @@ del EKF contra los landmarks importados; con la IMU esto será aún más
 rápido). El entrenamiento no se ve afectado: los mundos reales se
 cargan de solo-lectura sin eventos de chunk.
 
+### 12.1.3 Montaje físico real de los sensores (CAD, 2026-11-07)
+
+Según el CAD (`docs/Render.jpeg`, `VistaPrincipal.jpeg`,
+`VistaReal.jpeg`) los dos MB1232 van en el **frente, uno sobre cada
+lente, apuntando hacia adelante** (paralelos a la cámara, ~10 cm entre
+ellos), no laterales como se había leído del documento; la IMU va
+**plana arriba al centro** del mismo frente rígido. `montaje.py` es la
+fuente única de esa geometría (medir y ajustar en el prototipo).
+
+Consecuencias implementadas:
+- Las lecturas llevan `offset_y`/`lado` y se pasan a polares desde la
+  cámara antes de fusionar; la diferencia de rango entre los dos
+  frontales da el **lado del obstáculo** (estéreo, con zona muerta de
+  5 cm para el ruido).
+- **Validación cruzada** (`validarConUltrasonido`, Alg. 2 del TT):
+  detección en el cono + eco compatible → `ambos` (rango del
+  ultrasonido y confianza α·vis+(1−α)·consistencia); objeto que el haz
+  sí alcanza pero el sensor ve más lejos → `contradicho`; objetos bajos
+  y cercanos quedan debajo del haz y no se juzgan. **Puertas**: eco que
+  pasa por el vano = abierta, eco a la distancia de la puerta =
+  cerrada (corrige puertas de vidrio que la segmentación daba por
+  abiertas).
+- **Eco de piso**: con la cabeza agachada los frontales rebotan en el
+  suelo; con el pitch de la IMU se calcula dónde pega el haz y esas
+  lecturas pasan a "corredor libre", no a pared.
+- **Alertas**: eco sin explicación visual → "pared/obstáculo" (vidrio,
+  mamparas: lo que la cámara no ve); contradicha → solo "posible…" en
+  precaución; el refuerzo rápido por pip usa estéreo y rechazo de piso.
+- Driver real de los MB1232 con **disparo alternado** en hilo propio
+  (paralelos, si disparan juntos se oyen entre sí).
+- IMU: placement P0–P7 del BNO055 + `python odometry.py --calibrar`
+  (3 pasos con los lentes puestos) que mide qué campo es el cabeceo,
+  sus signos y el cero; se guarda en `imu_montaje.json`.
+- El simulador usa el mismo montaje. Banco SLAM (6 semillas): ATE
+  0.27 → 0.21 m (máx 0.44 → 0.30), precisión de mapa 0.50 → 0.61,
+  recall 0.41 → 0.30 (ya no hay sensores laterales pintando paredes).
+
+#### Características del MB1232 (datasheet PD11848)
+
+El MB1232 (I2CXL-MaxSonar-EZ3) es de **haz angosto**: el fabricante lo
+describe con "narrow beam", "excellent side object rejection" y
+"detecting only large targets … filtering out smaller targets"; el de
+haz ancho de la familia es el MB1202 (EZ0). De la gráfica del patrón:
+medio ángulo útil ~±14°; alcance según tamaño (a 3.3 V, como en la
+Pi): objetos delgados ~1.2 m, personas ~1.8 m, medianos ~2.7 m, pared
+~6 m. Por eso **no cubre laterales** y el montaje frontal del CAD es el
+adecuado; para el mapeo el haz angosto es ventaja (cuñas precisas).
+Implementado: `alcanceUS(label)` (la validación cruzada solo
+contradice objetos que el sensor podía ver por tamaño y distancia),
+100 ms entre medición y lectura, y la lectura mínima de 20 cm se trata
+como "20 cm o menos" (crítica), no como inválida. Si se quisiera algo
+de cobertura lateral: abrir cada sensor ~15° (`US_APERTURA_DEG`) o
+usar el MB1202 (mismo precio, tamaño y protocolo).
+
 ### 12.2 Capa de peligros de piso (hoyos, coladeras, agua, escaleras)
 
 Un peligro a nivel de piso no produce eco ultrasónico ni bloquea el

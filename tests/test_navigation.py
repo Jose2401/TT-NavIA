@@ -491,9 +491,40 @@ class TestLlegadaPorPercepcion(unittest.TestCase):
         dets = [VisionDetection(bearing=0.2, label="door",
                                 range_est=0.7, estado="cerrada")]
         frame2 = bnf(slam, mgr, dets)
+        nav.update(frame2, mgr)
+        nav.update(frame2, mgr)
+        self.assertEqual(nav.status.session, "activo")   # 2 cuadros: aun no
         msgs = nav.update(frame2, mgr)
         self.assertTrue(any("llegado" in m.text.lower()
                             or "lleg" in m.text.lower() for m in msgs))
+        self.assertEqual(nav.status.session, "en_espera")
+
+    def test_parpadeo_reinicia_la_cuenta(self):
+        from interfaces import VisionDetection
+        nav, slam, mgr, bnf = self._armar()
+        nav.handle_command("ve a la puerta", bnf(slam, mgr, []))
+        cerca = bnf(slam, mgr, [VisionDetection(bearing=0.6, label="door",
+                                                range_est=0.7)])
+        vacio = bnf(slam, mgr, [])
+        for f in (cerca, cerca, vacio, cerca, cerca):
+            nav.update(f, mgr)
+        self.assertEqual(nav.status.session, "activo")
+
+    def test_en_el_cono_con_ultrasonido_pide_confirmacion(self):
+        from interfaces import VisionDetection, UltrasonicReading
+        nav, slam, mgr, bnf = self._armar()
+        nav.handle_command("ve a la puerta", bnf(slam, mgr, []))
+        us = [UltrasonicReading(range_m=3.0, sensor_bearing=0.0)]
+        sinConf = VisionDetection(bearing=0.0, label="door", range_est=0.7)
+        f = bnf(slam, mgr, [sinConf], ultrasonic=us)
+        for _ in range(4):
+            nav.update(f, mgr)
+        self.assertEqual(nav.status.session, "activo")   # el sensor no la ve
+        conf = VisionDetection(bearing=0.0, label="door", range_est=0.7,
+                               confirmado="ambos")
+        f2 = bnf(slam, mgr, [conf], ultrasonic=us)
+        for _ in range(3):
+            nav.update(f2, mgr)
         self.assertEqual(nav.status.session, "en_espera")
 
     def test_objeto_lejano_o_movil_no_detiene(self):

@@ -342,7 +342,7 @@ class TestNavigationFeed(unittest.TestCase):
         b = safetyAlerts(buildNavigationFrame(
             slam, mgr, [VisionDetection(0.0, "chair", range_est=0.63)]))
         self.assertEqual(a, b)
-        self.assertIn("60 centimetros", a[0][1])
+        self.assertIn("60 centímetros", a[0][1])
 
 
 class TestGroundGeometryAndHazardFusion(unittest.TestCase):

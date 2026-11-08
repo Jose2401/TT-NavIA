@@ -1,28 +1,91 @@
 import argparse
 import math
 import os
+import threading
 import time
+
+from interfaces import UltrasonicReading
 
 from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
-from vision_bridge import fuseObservations
+from vision_bridge import fuseObservations, validarConUltrasonido
 from navigation_feed import buildNavigationFrame
 from alertas import ModuloAlertas, conectarUltrasonido
 
 
 class Mb1232Array:
-    LEFT_BEARING = math.radians(90)
-    RIGHT_BEARING = math.radians(-90)
+    """los 2 MB1232 del frente (montaje.py: uno sobre cada lente,
+    apuntando AL FRENTE, no a los lados). como ven lo mismo, si
+    disparan juntos uno oye el eco del otro: se disparan ALTERNADOS en
+    un hilo (~80 ms cada uno -> ~6 Hz por sensor) y read() regresa lo
+    ultimo sin bloquear el loop de la camara. protocolo i2cxl: escribir
+    0x51 = medir, esperar, leer 2 bytes = cm. direcciones segun el
+    diseño (cambiarlas con el comando de re-direccion del fabricante)."""
     MAX_RANGE_M = 7.65
+    CMD_MEDIR = 0x51
+    # datasheet: sin monitorear el pin 2 (status) hay que dejar 100 ms
+    # entre ordenar la medicion y leer
+    ESPERA_S = 0.10
+    VIEJA_S = 0.5
+    # direccion de fabrica: 224 (8 bits) = 0x70 en 7 bits. pa tener dos
+    # en el mismo bus hay que re-direccionar uno con la secuencia del
+    # fabricante (0xAA, 0xA5, nueva_dir) — el diseño usa 0x20/0x21
 
     def __init__(self, addrLeft=0x20, addrRight=0x21, bus=1):
-        self.addrLeft = addrLeft
-        self.addrRight= addrRight
+        from montaje import usPosicion
+        self.sensores = {"izq": (addrLeft, *usPosicion("izq")),
+                         "der": (addrRight, *usPosicion("der"))}
         self.available = False
+        self.razon = ""
+        self._ultimo = {}
+        self._lock = threading.Lock()
+        try:
+            from smbus2 import SMBus
+            self._bus = SMBus(bus)
+            for addr, _oy, _b in self.sensores.values():
+                self._bus.write_byte(addr, self.CMD_MEDIR)
+            self.available = True
+            threading.Thread(target=self._loop, daemon=True).start()
+        except ImportError:
+            self.razon = "smbus2 no instalado"
+        except OSError as e:
+            self.razon = f"sin respuesta i2c ({e})"
 
-    # TODO hardware, por ahora nada
+    def _medir(self, addr):
+        self._bus.write_byte(addr, self.CMD_MEDIR)
+        time.sleep(self.ESPERA_S)
+        alto, bajo = self._bus.read_i2c_block_data(addr, 0, 2)
+        return ((alto << 8) | bajo) / 100.0
+
+    def _loop(self):
+        while True:
+            for lado, (addr, _oy, _b) in self.sensores.items():
+                try:
+                    r = self._medir(addr)
+                except OSError:
+                    continue
+                with self._lock:
+                    self._ultimo[lado] = (r, time.time())
+
     def read(self):
-        return []
+        if not self.available:
+            return []
+        ahora = time.time()
+        out = []
+        with self._lock:
+            ultimo = dict(self._ultimo)
+        for lado, (addr, oy, b) in self.sensores.items():
+            if lado not in ultimo or ahora - ultimo[lado][1] > self.VIEJA_S:
+                continue
+            r = ultimo[lado][0]
+            # 7.65 = no hubo eco. OJO: 20 cm NO es invalido, el sensor
+            # reporta 20 pa todo lo que este a 20 cm o MAS CERCA (lo mas
+            # peligroso); se pasa tal cual pa que pite critico
+            valido = r < self.MAX_RANGE_M - 0.05
+            out.append(UltrasonicReading(
+                range_m=r, sensor_bearing=b, max_range=self.MAX_RANGE_M,
+                valid=valido, offset_y=oy, lado=lado))
+        return out
 
 
 class VoiceOutput:
@@ -133,8 +196,12 @@ def main():
                 ultimosPeligros = detPeligros.process(frame, detections)
             detections = detections + ultimosPeligros
 
-            usLecturas = ultrasonico.read()
-            conectarUltrasonido(modAlertas, usLecturas)
+            # los frontales validan a la camara (y la imu quita el
+            # rebote en el piso cuando agachas la cabeza)
+            usLecturas = validarConUltrasonido(
+                detections, ultrasonico.read(), odo["pitch_deg"])
+            conectarUltrasonido(modAlertas, usLecturas,
+                                pitchDeg=odo["pitch_deg"])
             observaciones = fuseObservations(detections, usLecturas)
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)

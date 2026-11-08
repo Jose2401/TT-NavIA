@@ -8,7 +8,8 @@ import time
 import numpy as np
 
 from interfaces import MotionEstimate
-from vision_bridge import fuseObservations, freeSpaceRays
+from vision_bridge import (fuseObservations, freeSpaceRays,
+                           validarConUltrasonido)
 from navigation_feed import buildNavigationFrame
 from alertas import ModuloAlertas
 from navigation.navigator import Navigator, FORWARD_STEP, TURN_STEP
@@ -326,6 +327,7 @@ def runSim(args):
                     d.moving = True
             if demoPersona["vida"] <= 0:
                 demoPersona = None
+        usLecturas = validarConUltrasonido(detections, usLecturas)
         observaciones = fuseObservations(detections, usLecturas)
         output = slam.step(motion, observaciones)
         pose = (output.x, output.y, output.theta)

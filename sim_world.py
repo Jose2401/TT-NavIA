@@ -74,27 +74,41 @@ class SimulatedWorld:
 
 
 class SimulatedUltrasonicArray:
-    def __init__(self, world: SimulatedWorld,
-                 bearings=(0.0, math.radians(40), math.radians(-40)),
+    """por default imita el montaje REAL de los lentes (montaje.py): 2
+    sensores al frente, uno sobre cada lente, desplazados ±sep/2. con
+    bearings=(...) se puede pedir un arreglo a mano (legado/pruebas)."""
+
+    def __init__(self, world: SimulatedWorld, bearings=None,
                  maxRange=4.0, sigmaR=0.02):
+        from montaje import usPosicion
         self.world = world
-        self.bearings = list(bearings)
-        self.maxRange =maxRange
+        if bearings is None:
+            self.sensores = [(lado, *usPosicion(lado))
+                             for lado in ("izq", "der")]
+        else:
+            self.sensores = [("", 0.0, b) for b in bearings]
+        self.bearings = [b for _l, _oy, b in self.sensores]
+        self.maxRange = maxRange
         self.sigmaR = sigmaR
 
     def read(self, truePose):
         x, y, theta = truePose
         lecturas = []
-        for b in self.bearings:
-            d = self.world.rayDistance(x, y, theta + b, self.maxRange)
+        for lado, oy, b in self.sensores:
+            ox = x - oy * math.sin(theta)
+            oyMundo = y + oy * math.cos(theta)
+            d = self.world.rayDistance(ox, oyMundo, theta + b,
+                                       self.maxRange)
             if math.isinf(d):
                 lecturas.append(UltrasonicReading(
                     range_m=self.maxRange, sensor_bearing=b,
-                    max_range=self.maxRange, valid=False))
+                    max_range=self.maxRange, valid=False,
+                    offset_y=oy, lado=lado))
             else:
                 lecturas.append(UltrasonicReading(
                     range_m=max(0.05, d + random.gauss(0.0, self.sigmaR)),
-                    sensor_bearing=b, max_range=self.maxRange, valid=True))
+                    sensor_bearing=b, max_range=self.maxRange, valid=True,
+                    offset_y=oy, lado=lado))
         return lecturas
 
 

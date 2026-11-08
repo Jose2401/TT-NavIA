@@ -18,6 +18,7 @@ from navigation_feed import (CRITICAL_DISTANCE_M, effectiveFrontDistance,
                              needsReplan)
 
 ARRIVAL_RADIUS = 0.6
+CUADROS_LLEGADA = 3     # cuadros seguidos viendo el destino cerca
 WAYPOINT_RADIUS = 1.0
 ACTION_NAMES = ("avanzar", "girar_izquierda", "girar_derecha", "detenerse")
 # con pose poco fiable el "Avance N metros" se acota a 1 m
@@ -287,6 +288,7 @@ class Navigator:
         self._progress_ref = None
         self._route = []
         self._near_announced = False
+        self._cuadrosLlegada = 0
 
     def handle_command(self, command, frame=None) -> List[NavMessage]:
         """command: NavCommand o texto; frame opcional pa resolver
@@ -300,6 +302,7 @@ class Navigator:
             if goal is None:
                 return [NavMessage(err, priority=2, kind="respuesta")]
             st.goal, st.goal_label = goal, label
+            self._cuadrosLlegada = 0
             st.waypoints = list(self._route)
             st.session = "activo"
             self._progress_ref = None
@@ -375,11 +378,10 @@ class Navigator:
         # menos de un metro enfrente, llegamos — aunque la pose del
         # mapa diga otra cosa (sin odometria el (x,y) deriva y sin esto
         # te quedabas dando vueltas junto al objeto)
-        vistoCerca = (st.goal_label is not None and any(
-            d.label == st.goal_label and not d.moving
-            and d.range_est is not None and d.range_est < 1.0
-            and abs(d.bearing) < math.radians(60)
-            for d in frame.detections))
+        if self._llegadaPorPercepcion(frame):
+            vistoCerca = True
+        else:
+            vistoCerca = False
         if d_final < ARRIVAL_RADIUS or vistoCerca:
             st.session = "en_espera"
             st.goal = st.goal_label = None
@@ -447,6 +449,30 @@ class Navigator:
                 "Puede pedir una ruta alternativa o detener la navegación.",
                 priority=1, kind="evento"))
         return msgs
+
+    def _llegadaPorPercepcion(self, frame):
+        """la camara ve el destino a <1 m durante VARIOS cuadros seguidos
+        (un parpadeo del detector no detiene la navegacion). si el objeto
+        cae dentro del cono de los ultrasonicos y hay lecturas, ademas
+        tiene que estar confirmado por ambos: ahi si se puede verificar
+        la distancia con el sensor preciso."""
+        from montaje import US_MEDIO_CONO_DEG
+        st = self.status
+        hayUS = bool(getattr(frame, "ultrasonic", None))
+        cono = math.radians(US_MEDIO_CONO_DEG + 5)
+        ok = False
+        for d in frame.detections:
+            if (st.goal_label is None or d.label != st.goal_label
+                    or d.moving or d.range_est is None
+                    or d.range_est >= 1.0
+                    or abs(d.bearing) >= math.radians(60)):
+                continue
+            if hayUS and abs(d.bearing) <= cono and d.confirmado != "ambos":
+                continue
+            ok = True
+            break
+        self._cuadrosLlegada = self._cuadrosLlegada + 1 if ok else 0
+        return self._cuadrosLlegada >= CUADROS_LLEGADA
 
     def _forced_turn(self, frame, phi_goal):
         """sentido del giro forzado: seguir el giro en curso (hasta

@@ -9,7 +9,8 @@ from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
 from occupancy_grid import OCC_THRESHOLD, HAZARD_MIN_HITS
 from interfaces import MotionEstimate
-from vision_bridge import fuseObservations, freeSpaceRays
+from vision_bridge import (fuseObservations, freeSpaceRays,
+                           validarConUltrasonido)
 from navigation_feed import buildNavigationFrame, safetyAlerts
 
 
@@ -332,8 +333,8 @@ def runSim(args):
             motion = user.command(forward, rot)
 
         truePose = tuple(user.truePose)
-        usLecturas = usArray.read(truePose)
         detections = simulatedVision(world, truePose)
+        usLecturas = validarConUltrasonido(detections, usArray.read(truePose))
         observaciones = fuseObservations(detections, usLecturas)
 
         output = slam.step(motion, observaciones)

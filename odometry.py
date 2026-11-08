@@ -21,14 +21,32 @@ class Bno055:
     MODE_CONFIG = 0x00
     MODE_NDOF = 0x0C
 
+    REG_AXIS_MAP_CONFIG = 0x41
+    REG_AXIS_MAP_SIGN = 0x42
+    # placements P0-P7 del datasheet del bno055 (config, signo)
+    PLACEMENTS = {"P0": (0x21, 0x04), "P1": (0x24, 0x00),
+                  "P2": (0x24, 0x06), "P3": (0x21, 0x02),
+                  "P4": (0x24, 0x03), "P5": (0x21, 0x01),
+                  "P6": (0x21, 0x07), "P7": (0x24, 0x05)}
+    MONTAJE_JSON = "imu_montaje.json"
+
+    # va plana arriba al centro del armazon (montaje.py). cual campo es
+    # el cabeceo y con que signo depende de como se atornille la placa:
+    # eso lo mide `python odometry.py --calibrar` y lo guarda en el json
     HEADING_SIGN = -1.0
     PITCH_SIGN = 1.0
+    PITCH_DESDE = "pitch"        # "pitch" o "roll" del bno055
+    PITCH_OFFSET_DEG = 0.0       # lectura con la cabeza derecha = 0
 
-    def __init__(self, bus=1, address=0x28):
+    def __init__(self, bus=1, address=0x28, placement=None,
+                 montajePath=None):
         self.address = address
         self.available= False
         self.reason = ""
         self._bus = None
+        self._cargarMontaje(montajePath or self.MONTAJE_JSON)
+        if placement:
+            self.placement = placement
         try:
             from smbus2 import SMBus
         except ImportError:
@@ -46,6 +64,12 @@ class Bno055:
             time.sleep(0.025)
             self._bus.write_byte_data(address, self.REG_PWR_MODE, 0x00)
             self._bus.write_byte_data(address, self.REG_UNIT_SEL, 0x00)
+            if self.placement in self.PLACEMENTS:
+                cfg, sgn = self.PLACEMENTS[self.placement]
+                self._bus.write_byte_data(address,
+                                          self.REG_AXIS_MAP_CONFIG, cfg)
+                self._bus.write_byte_data(address,
+                                          self.REG_AXIS_MAP_SIGN, sgn)
             self._bus.write_byte_data(address, self.REG_OPR_MODE,
                                       self.MODE_NDOF)
             time.sleep(0.03)
@@ -61,14 +85,42 @@ class Bno055:
             out.append(v - 65536 if v > 32767 else v)
         return out
 
-    def readEuler(self):
+    def _cargarMontaje(self, ruta):
+        self.placement = None
+        self.montajeDesde = "default"
+        try:
+            import json
+            with open(ruta, encoding="utf-8") as fh:
+                m = json.load(fh)
+        except (OSError, ValueError):
+            return
+        self.placement = m.get("placement")
+        self.HEADING_SIGN = float(m.get("headingSigno", self.HEADING_SIGN))
+        self.PITCH_SIGN = float(m.get("pitchSigno", self.PITCH_SIGN))
+        self.PITCH_DESDE = m.get("pitchDesde", self.PITCH_DESDE)
+        self.PITCH_OFFSET_DEG = float(m.get("pitchOffsetDeg", 0.0))
+        self.montajeDesde = ruta
+
+    def readEulerCrudo(self):
         try:
             h, r, p = self._readS16(self.REG_EULER_H, 3)
         except OSError:
             return None
-        aRad = math.radians(1.0 / 16.0)
-        return (self.HEADING_SIGN * h * aRad, r * aRad,
-                self.PITCH_SIGN * p * aRad)
+        return h / 16.0, r / 16.0, p / 16.0
+
+    def readEuler(self):
+        """(heading, roll, pitch) en rad ya en la convencion del
+        sistema: heading + = giro a la izquierda, pitch + = cabeza hacia
+        abajo (camara y ultrasonicos viendo al piso)."""
+        crudo = self.readEulerCrudo()
+        if crudo is None:
+            return None
+        h, r, p = crudo
+        cabeceo = p if self.PITCH_DESDE == "pitch" else r
+        otro = r if self.PITCH_DESDE == "pitch" else p
+        pitchDeg = self.PITCH_SIGN * cabeceo - self.PITCH_OFFSET_DEG
+        return (math.radians(self.HEADING_SIGN * h), math.radians(otro),
+                math.radians(pitchDeg))
 
     def readLinearAccel(self):
         try:
@@ -187,3 +239,74 @@ def makeMotionEstimator(useImu=True, imuBus=1, imuAddr=0x28,
                            yawEstimator=VisualYawEstimator(
                                hfovDeg=hfovDeg),
                            stepLengthM=stepLengthM)
+
+
+def _promedio(imu, segundos=1.5):
+    vals = []
+    t0 = time.time()
+    while time.time() - t0 < segundos:
+        c = imu.readEulerCrudo()
+        if c is not None:
+            vals.append(c)
+        time.sleep(0.05)
+    n = max(1, len(vals))
+    return tuple(sum(v[i] for v in vals) / n for i in range(3))
+
+
+def _difAng(a, b):
+    return (a - b + 180.0) % 360.0 - 180.0
+
+
+def calibrarMontaje(imu, ruta=Bno055.MONTAJE_JSON, entrada=input):
+    """guia de 3 pasos con los lentes puestos: mide que campo del
+    bno055 es el cabeceo, sus signos y el cero. guarda el json que
+    Bno055 carga solo al arrancar."""
+    import json
+    entrada("1) cabeza DERECHA viendo al horizonte, quieto. Enter...")
+    base = _promedio(imu)
+    entrada("2) inclina la cabeza hacia ABAJO (~30 grados) y Enter...")
+    abajo = _promedio(imu)
+    entrada("3) regresa al frente y GIRA la cabeza a la IZQUIERDA "
+            "(~45 grados). Enter...")
+    izq = _promedio(imu)
+
+    dRoll, dPitch = _difAng(abajo[1], base[1]), _difAng(abajo[2], base[2])
+    desde = "pitch" if abs(dPitch) >= abs(dRoll) else "roll"
+    delta = dPitch if desde == "pitch" else dRoll
+    if abs(delta) < 8:
+        raise RuntimeError("casi no cambio al agachar la cabeza: "
+                           "revisa que la imu este bien fija")
+    signo = 1.0 if delta > 0 else -1.0
+    offset = signo * (base[2] if desde == "pitch" else base[1])
+    dHead = _difAng(izq[0], base[0])
+    headingSigno = 1.0 if dHead > 0 else -1.0
+    m = {"placement": imu.placement, "pitchDesde": desde,
+         "pitchSigno": signo, "pitchOffsetDeg": round(offset, 2),
+         "headingSigno": headingSigno}
+    with open(ruta, "w", encoding="utf-8") as fh:
+        json.dump(m, fh, indent=1)
+    print(f"listo: {m} -> {ruta}")
+    return m
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser(description="utilidades de la imu bno055")
+    p.add_argument("--calibrar", action="store_true",
+                   help="calibracion guiada del montaje en los lentes")
+    p.add_argument("--placement", default=None,
+                   choices=sorted(Bno055.PLACEMENTS))
+    p.add_argument("--addr", type=lambda s: int(s, 0), default=0x28)
+    a = p.parse_args()
+    imu = Bno055(address=a.addr, placement=a.placement)
+    if not imu.available:
+        raise SystemExit(f"imu no disponible: {imu.reason}")
+    if a.calibrar:
+        calibrarMontaje(imu)
+    else:
+        while True:
+            e = imu.readEuler()
+            if e:
+                print("heading %+6.1f  pitch %+5.1f (+ = abajo)"
+                      % (math.degrees(e[0]), math.degrees(e[2])), end="\r")
+            time.sleep(0.1)

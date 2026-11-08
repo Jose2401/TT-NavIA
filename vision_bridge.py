@@ -3,7 +3,7 @@ import os
 
 import numpy as np
 
-from interfaces import VisionDetection, Observation
+from interfaces import VisionDetection, Observation, UltrasonicReading
 
 VISION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "vision")
@@ -457,10 +457,108 @@ def detectionRisk(det: VisionDetection):
 
 
 # junta vision + ultrasonido en obs pal ekf
+def _usPolarCentro(u):
+    from montaje import usAlCentro
+    return usAlCentro(u.range_m, u.sensor_bearing, u.offset_y)
+
+
+def _alcanzaHaz(det, pitchDeg):
+    """el haz frontal va a la altura de los ojos: un objeto bajo y
+    cercano queda DEBAJO del cono y no puede hacer eco. True si la
+    punta del objeto entra al cono a esa distancia."""
+    from montaje import CAM_ALTURA_M, US_MEDIO_CONO_DEG
+    if det.range_est is None:
+        return False
+    alto = TYPICAL_HEIGHTS_M.get(det.label, 1.0)
+    p = DEFAULT_CAM_PITCH_DEG if pitchDeg is None else pitchDeg
+    bordeAbajo = CAM_ALTURA_M - det.range_est * math.tan(
+        math.radians(p + US_MEDIO_CONO_DEG))
+    return alto >= bordeAbajo
+
+
+def validarConUltrasonido(detecciones, lecturas, pitchDeg=None,
+                          alfa=0.6):
+    """validacion cruzada (alg. 2 del TT) con los 2 frontales:
+      - quita ecos de piso (cabeza agachada) -> quedan como corredor
+        libre hasta donde pega el haz
+      - deteccion en el cono + eco compatible -> "ambos": rango preciso
+        del ultrasonido y confianza = alfa*conf_vis + (1-alfa)*consist.
+      - deteccion que el haz SI alcanza pero el sensor ve mas lejos o
+        nada -> "contradicho" (la camara exagero o es un reflejo)
+      - puertas: eco mucho mas lejos que la puerta = se ve a traves =
+        abierta; eco a la distancia de la puerta = cerrada. corrige a
+        la segmentacion con puertas de VIDRIO (la camara ve piso a
+        traves, el ultrasonido rebota).
+    modifica las detecciones in-place y regresa las lecturas limpias."""
+    from montaje import (esEcoDePiso, bearingEstereo, US_MEDIO_CONO_DEG,
+                         US_MAX_M)
+    limpias = []
+    for u in lecturas:
+        if u.valid and esEcoDePiso(u.range_m, pitchDeg):
+            horiz = u.range_m * math.cos(math.radians(pitchDeg or 0.0))
+            limpias.append(UltrasonicReading(
+                range_m=horiz, sensor_bearing=u.sensor_bearing,
+                max_range=horiz, valid=False, offset_y=u.offset_y,
+                lado=u.lado))
+        else:
+            limpias.append(u)
+
+    validas = [u for u in limpias if u.valid]
+    ecos = []                                  # (rango, bearing, tol)
+    cono = math.radians(US_MEDIO_CONO_DEG)
+    porLado = {u.lado: u for u in validas if u.lado}
+    if ("izq" in porLado and "der" in porLado
+            and abs(porLado["izq"].range_m - porLado["der"].range_m) < 0.3):
+        rI, rD = porLado["izq"].range_m, porLado["der"].range_m
+        ecos.append((min(rI, rD), bearingEstereo(rI, rD),
+                     cono + math.radians(5)))
+    else:
+        for u in validas:
+            r, b = _usPolarCentro(u)
+            ecos.append((r, b, cono + math.radians(5)))
+    hayCobertura = bool(limpias)
+
+    for det in detecciones:
+        if det.moving or det.hazard or det.range_est is None:
+            continue
+        if not hayCobertura or abs(det.bearing) > cono + math.radians(5):
+            continue
+        cand = [e for e in ecos if abs(e[1] - det.bearing) <= e[2]]
+        tolR = max(0.6, 0.35 * det.range_est)
+        compat = [e for e in cand if abs(e[0] - det.range_est) <= tolR]
+        if compat:
+            r = min(compat, key=lambda e: abs(e[0] - det.range_est))[0]
+            consist = max(0.0, 1.0 - abs(r - det.range_est) / US_MAX_M)
+            det.confidence = alfa * det.confidence + (1 - alfa) * consist
+            det.range_est = r
+            det.confirmado = "ambos"
+            if det.label == "door":
+                det.estado = "cerrada"
+            continue
+        if not _alcanzaHaz(det, pitchDeg):
+            continue                   # bajo el haz: no se puede validar
+        from montaje import alcanceUS
+        if det.range_est > alcanceUS(det.label):
+            continue                   # muy chico/lejos pal ez3: no juzga
+        masLejos = (not cand) or all(e[0] > det.range_est + tolR
+                                     for e in cand)
+        if masLejos:
+            if det.label == "door":
+                det.estado = "abierta"   # el haz paso por el vano
+                det.confirmado = "ambos"
+            else:
+                det.confirmado = "contradicho"
+    return limpias
+
+
 def fuseObservations(visionDets, ultrasonicReadings,
-                     bearingTol=math.radians(20)):
+                     bearingTol=None):
+    from montaje import US_MEDIO_CONO_DEG
+    if bearingTol is None:
+        bearingTol = math.radians(US_MEDIO_CONO_DEG + 5)
     observaciones = []
     usValidos = [u for u in ultrasonicReadings if u.valid]
+    usPolar = [_usPolarCentro(u) for u in usValidos]
     usUsados = set()
 
     for det in visionDets:
@@ -476,15 +574,15 @@ def fuseObservations(visionDets, ultrasonicReadings,
                     min_confirm_hits=4, is_hazard=True))
             continue
         mejorI, mejorDiff = None, bearingTol
-        for i, u in enumerate(usValidos):
-            diff = abs(u.sensor_bearing - det.bearing)
-            if diff < mejorDiff and _rangosCompatibles(u.range_m, det.range_est):
+        for i, (rC, bC) in enumerate(usPolar):
+            diff = abs(bC - det.bearing)
+            if diff < mejorDiff and _rangosCompatibles(rC, det.range_est):
                 mejorI, mejorDiff = i, diff
         if mejorI is not None:
-            u = usValidos[mejorI]
             usUsados.add(mejorI)
             observaciones.append(Observation(
-                range_m=u.range_m, bearing=det.bearing, label=det.label,
+                range_m=usPolar[mejorI][0], bearing=det.bearing,
+                label=det.label,
                 sigma_r=SIGMA_R_ULTRASONIC, sigma_phi=SIGMA_PHI_VISION))
         elif det.range_est is not None:
             observaciones.append(Observation(
@@ -496,7 +594,8 @@ def fuseObservations(visionDets, ultrasonicReadings,
     for i, u in enumerate(usValidos):
         if i not in usUsados:
             observaciones.append(Observation(
-                range_m=u.range_m, bearing=u.sensor_bearing, label="eco_us",
+                range_m=usPolar[i][0], bearing=usPolar[i][1],
+                label="eco_us",
                 sigma_r=SIGMA_R_ULTRASONIC, sigma_phi=SIGMA_PHI_ULTRASONIC,
                 can_init_landmark=False, can_correct=False))
 

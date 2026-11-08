@@ -7,7 +7,7 @@ import time
 
 from ekf_slam import EKFSlam
 from map_manager import ChunkedMapManager
-from vision_bridge import fuseObservations
+from vision_bridge import fuseObservations, validarConUltrasonido
 from navigation_feed import buildNavigationFrame
 from alertas import ModuloAlertas, BotonPullUp, conectarUltrasonido
 from navigation.navigator import Navigator
@@ -144,8 +144,12 @@ def main():
                 ultimosPeligros = detPeligros.process(frame, detections)
             detections = detections + ultimosPeligros
 
-            usLecturas = ultrasonico.read()
-            conectarUltrasonido(modAlertas, usLecturas)
+            # los frontales validan a la camara (y la imu quita el
+            # rebote en el piso cuando agachas la cabeza)
+            usLecturas = validarConUltrasonido(
+                detections, ultrasonico.read(), odo["pitch_deg"])
+            conectarUltrasonido(modAlertas, usLecturas,
+                                pitchDeg=odo["pitch_deg"])
             observaciones = fuseObservations(detections, usLecturas)
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)

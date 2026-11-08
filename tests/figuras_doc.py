@@ -203,9 +203,11 @@ def experimentoDeriva(out):
 
 # banco usa 3 US al frente, el prototipo 2 MB1232 laterales
 def experimentoUltrasonido(out):
-    casos = (("3 virtuales (0°, ±40°)", None),
-             ("2 laterales (±90°), como el prototipo",
-              (math.radians(90), math.radians(-90))),
+    # None = montaje real del CAD (montaje.py): 2 frontales paralelos
+    casos = (("2 frontales, como el prototipo", None),
+             ("3 virtuales (0°, ±40°)",
+              (0.0, math.radians(40), math.radians(-40))),
+             ("2 laterales (±90°)", (math.radians(90), math.radians(-90))),
              ("sin ultrasonido", ()))
     filas = []
     for nombre, b in casos:
@@ -532,7 +534,7 @@ def figCostmap(r, out, paso=200):
     plt.close(fig)
 
 
-COLORES_LM = {"door": "tab:green", "hoyo": "tab:red", "escalera": "tab:red",
+COLORES_LM = {"door": "tab:green", "hoyo": "tab:red", "escalera": "tab:brown",
               "chair": "tab:orange", "monitor": "tab:purple"}
 
 

@@ -233,19 +233,55 @@ class TestUltrasonido(unittest.TestCase):
         # y ya no se repite
         self.assertEqual(mod.evaluar(None), ([], False))
 
-    def test_conectar_ultrasonido_mapea_direcciones(self):
-        from alertas import conectarUltrasonido
+    def _par(self, rI, rD, validos=(True, True)):
         from interfaces import UltrasonicReading
+        from montaje import usPosicion
+        (oyI, bI), (oyD, bD) = usPosicion("izq"), usPosicion("der")
+        return [UltrasonicReading(rI, bI, 7.65, validos[0], oyI, "izq"),
+                UltrasonicReading(rD, bD, 7.65, validos[1], oyD, "der")]
+
+    def test_frontales_parejos_son_pared_al_frente(self):
+        from alertas import conectarUltrasonido
         mod = ModuloAlertas(conPip=False)
         mod.salida = SalidaFalsa()
-        lecturas = [UltrasonicReading(range_m=0.9,
-                                      sensor_bearing=math.radians(90)),
-                    UltrasonicReading(range_m=0.8,
-                                      sensor_bearing=math.radians(-90)),
-                    UltrasonicReading(range_m=3.0, sensor_bearing=0.0)]
-        conectarUltrasonido(mod, lecturas, umbralM=1.5)
-        dirs = [p[1] for p in mod.salida.pips]
-        self.assertEqual(dirs, ["izquierda", "derecha"])   # el de 3m no
+        conectarUltrasonido(mod, self._par(0.9, 0.92))
+        self.assertEqual(mod.salida.pips[0][1], "frente")
+        self.assertEqual(mod.salida.pips[0][2], "pared")
+
+    def test_solo_uno_cerca_se_carga_a_su_lado(self):
+        from alertas import conectarUltrasonido
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        conectarUltrasonido(mod, self._par(0.7, 3.0))
+        self.assertEqual(mod.salida.pips[0][1], "izquierda")
+        mod2 = ModuloAlertas(conPip=False)
+        mod2.salida = SalidaFalsa()
+        conectarUltrasonido(mod2, self._par(3.0, 0.7))
+        self.assertEqual(mod2.salida.pips[0][1], "derecha")
+
+    def test_lejos_no_pita(self):
+        from alertas import conectarUltrasonido
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        conectarUltrasonido(mod, self._par(3.0, 3.1), umbralM=1.5)
+        self.assertEqual(mod.salida.pips, [])
+
+    def test_eco_de_piso_con_cabeza_agachada_no_pita(self):
+        from alertas import conectarUltrasonido
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        # agachado 40 grados el haz pega al piso a ~1.9 m: eco a 1.8 = piso
+        conectarUltrasonido(mod, self._par(1.80, 1.81), umbralM=2.0,
+                            pitchDeg=40)
+        self.assertEqual(mod.salida.pips, [])
+        # lo que esta ANTES del piso si es obstaculo real
+        conectarUltrasonido(mod, self._par(1.20, 1.21), umbralM=2.0,
+                            pitchDeg=40)
+        self.assertEqual(len(mod.salida.pips), 1)
+        # cabeza derecha: el mismo 1.8 ya no puede ser piso
+        conectarUltrasonido(mod, self._par(1.80, 1.81), umbralM=2.0,
+                            pitchDeg=0)
+        self.assertEqual(len(mod.salida.pips), 2)
 
     def test_apagado_ignora_sensor(self):
         mod = ModuloAlertas(conPip=False)
@@ -253,3 +289,47 @@ class TestUltrasonido(unittest.TestCase):
         mod.alternar()
         mod.reportarSensor("frente", 0.5)
         self.assertEqual(mod.salida.pips, [])
+
+
+class TestHallazgosDoc(unittest.TestCase):
+    """hallazgos de las pruebas del documento: alertas por mapa
+    desalineado y dosificacion de la misma pared."""
+
+    def _frame(self, conf, dets=None, lect=None, dLeft=0.4):
+        from dataclasses import replace
+        f = _frame(dets or [])
+        f = replace(f, d_left=dLeft, ultrasonic=lect or [])
+        return replace(f, slam=replace(f.slam, confidence=conf))
+
+    def test_pose_poco_confiable_el_mapa_no_dispara(self):
+        mod = ModuloAlertas(conPip=False)
+        als, rec = mod.evaluar(self._frame(conf=0.2))
+        self.assertEqual(als, [])          # la "pared" a 40 cm era del mapa
+        self.assertFalse(rec)
+
+    def test_pose_confiable_el_mapa_si_dispara(self):
+        mod = ModuloAlertas(conPip=False)
+        als, rec = mod.evaluar(self._frame(conf=0.9))
+        self.assertTrue(rec)
+
+    def test_sensor_en_vivo_alerta_aunque_la_pose_sea_mala(self):
+        mod = ModuloAlertas(conPip=False)
+        det = VisionDetection(bearing=math.radians(60), label="chair",
+                              range_est=0.3)
+        als, rec = mod.evaluar(self._frame(conf=0.1, dets=[det],
+                                           dLeft=float("inf")))
+        self.assertTrue(rec)
+
+    def test_misma_pared_suena_una_vez(self):
+        from interfaces import UltrasonicReading
+        from montaje import usPosicion
+        (oyI, bI), (oyD, bD) = usPosicion("izq"), usPosicion("der")
+        lect = [UltrasonicReading(1.2, bI, 7.65, True, oyI, "izq"),
+                UltrasonicReading(1.21, bD, 7.65, True, oyD, "der")]
+        from dataclasses import replace
+        f = _frame([])
+        f = replace(f, d_front=1.25, ultrasonic=lect)   # mapa + eco: misma pared
+        f = replace(f, slam=replace(f.slam, confidence=0.9))
+        als, _ = ModuloAlertas(conPip=False).evaluar(f)
+        frente = [t for p, t in als if "frente" in t]
+        self.assertEqual(len(frente), 1, als)

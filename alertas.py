@@ -13,10 +13,12 @@ conectan los INFRARROJOS de la pi pa lo muy cercano entre frames.
 import math
 import threading
 import time
+from dataclasses import replace
 
 from navigation_feed import safetyAlerts, _sectorOf as _sectorDe
 
 _COOLDOWN = {0: 2.5, 1: 8.0}
+CONF_MIN_MAPA = 0.35    # debajo de esto el mapa no dispara alertas
 _NOMBRE_SECTOR = {"front": "al frente", "left": "a la izquierda",
                   "right": "a la derecha"}
 _SECTOR_A_DIR = {"front": "frente", "left": "izquierda",
@@ -124,14 +126,32 @@ class ModuloAlertas:
         crudas = []        # dicts con estructura pa poder sonar bien
 
         if navFrame is not None:
-            for prio, texto in safetyAlerts(navFrame):
+            # validacion cruzada: lo que el ultrasonido CONTRADIJO no
+            # dispara critica con la distancia de la camara; queda como
+            # "posible" (rnf-09: avisar, pero sin gritar)
+            contradichas = [d for d in navFrame.detections
+                            if d.confirmado == "contradicho"]
+            frameAl = navFrame
+            if contradichas:
+                frameAl = replace(navFrame, detections=[
+                    d for d in navFrame.detections
+                    if d.confirmado != "contradicho"])
+            # con la pose poco confiable el mapa esta desalineado (la
+            # pared del fondo aparece donde no es): ahi solo cuentan los
+            # sensores EN VIVO, el mapa no dispara alertas
+            if navFrame.slam.confidence < CONF_MIN_MAPA:
+                frameAl = replace(frameAl, d_front=float("inf"),
+                                  d_left=float("inf"),
+                                  d_right=float("inf"))
+            ecoUS = _alertaEcoUltrasonico(navFrame)
+            for prio, texto in safetyAlerts(frameAl):
                 direccion = "frente"
                 for sec, frase in _NOMBRE_SECTOR.items():
                     if frase in texto:
                         direccion = _SECTOR_A_DIR[sec]
                 crudas.append({"prio": prio, "texto": texto,
                                "tipo": "obstaculo", "dir": direccion,
-                               "dist": None})
+                               "dist": None, "grupo": "obstaculo"})
 
             sectoresMovil = set()
             moviles = []
@@ -151,10 +171,28 @@ class ModuloAlertas:
                 moviles.append({"prio": prio, "texto": txt,
                                 "tipo": det.label,
                                 "dir": _SECTOR_A_DIR[sector],
-                                "dist": det.range_est})
+                                "dist": det.range_est, "grupo": "movil"})
             crudas = [c for c in crudas
                       if not any(d in c["texto"] for d in sectoresMovil)]
             crudas += moviles
+
+            if ecoUS is not None:
+                # el ultrasonido mide mas fino que el mapa: su aviso
+                # sustituye al generico de ese lado
+                crudas = [c for c in crudas if c["dir"] != ecoUS["dir"]
+                          or c["tipo"] not in ("obstaculo",)]
+                crudas.append(ecoUS)
+
+            for det in contradichas:
+                if det.range_est is None or det.range_est > 1.5:
+                    continue
+                if _sectorDe(det.bearing) != "front":
+                    continue
+                crudas.append({"prio": 1,
+                               "texto": f"Posible {det.label} al frente "
+                                        "(solo cámara).",
+                               "tipo": det.label, "dir": "frente",
+                               "dist": det.range_est})
 
             for det in navFrame.detections:
                 if not det.hazard or det.range_est is None:
@@ -171,12 +209,15 @@ class ModuloAlertas:
                        f"Atención: {nombre} adelante, a unos {pasos} pasos.")
                 crudas.append({"prio": prio, "texto": txt,
                                "tipo": det.label, "dir": "frente",
-                               "dist": det.range_est})
+                               "dist": det.range_est, "grupo": "peligro"})
 
         salida = []
         recalcular = False
         for c in sorted(crudas, key=lambda c: c["prio"]):
-            tipo = (c["prio"], c["texto"].split(":")[0].split(".")[0])
+            # la llave NO sale del texto (acentos, cm que cambian, frases
+            # distintas pa la misma pared): es que tan grave, de que lado
+            # y que clase de cosa
+            tipo = (c["prio"], c["dir"], c.get("grupo", "obstaculo"))
             if self._pasa(tipo, c["prio"], ahora):
                 salida.append((c["prio"], c["texto"]))
                 if self.salida is not None:
@@ -197,23 +238,75 @@ class ModuloAlertas:
         return salida, recalcular
 
 
-def conectarUltrasonido(modAlertas, lecturas, umbralM=1.5):
-    """refuerzo con los ULTRASONICOS MB1232 de la pi: una lectura
-    valida mas cerca que umbralM dispara pip de inmediato (los MB1232
-    van a 40 Hz, mucho mas rapido que la camara). llamar en el loop
-    del main de la pi con lo que devuelva Mb1232Array.read(); en
-    cuanto el hardware exista esto queda andando solo."""
-    for u in lecturas:
-        if not getattr(u, "valid", False) or u.range_m > umbralM:
-            continue
-        if u.sensor_bearing > 0.3:
-            direccion = "izquierda"
-        elif u.sensor_bearing < -0.3:
-            direccion = "derecha"
-        else:
-            direccion = "frente"
-        modAlertas.reportarSensor(direccion, u.range_m,
-                                  tipo="obstaculo")
+def _ladoYTipo(lecturas):
+    """con los 2 frontales: (rango, direccion, tipo) del eco mas
+    cercano. ambos parejos = superficie de frente (pared/puerta/vidrio);
+    solo uno = algo cargado a ese lado."""
+    from montaje import bearingEstereo
+    porLado = {u.lado: u for u in lecturas
+               if getattr(u, "valid", False) and u.lado}
+    if not porLado:
+        sueltas = [u for u in lecturas if getattr(u, "valid", False)]
+        if not sueltas:
+            return None
+        u = min(sueltas, key=lambda u: u.range_m)
+        return u.range_m, "frente", "obstaculo"
+    if "izq" in porLado and "der" in porLado:
+        rI, rD = porLado["izq"].range_m, porLado["der"].range_m
+        if abs(rI - rD) < 0.3:
+            b = bearingEstereo(rI, rD)
+            direccion = ("frente" if abs(b) < math.radians(5)
+                         else "izquierda" if b > 0 else "derecha")
+            tipo = "pared" if abs(rI - rD) < 0.08 else "obstaculo"
+            return min(rI, rD), direccion, tipo
+        lado = "izq" if rI < rD else "der"
+    else:
+        lado = next(iter(porLado))
+    return (porLado[lado].range_m,
+            "izquierda" if lado == "izq" else "derecha", "obstaculo")
+
+
+def _alertaEcoUltrasonico(navFrame):
+    """eco cercano que NINGUNA deteccion confirmada explica: es algo
+    fisico que la camara no ve (vidrio, mampara, pared lisa)."""
+    from navigation_feed import CRITICAL_DISTANCE_M, CAUTION_DISTANCE_M
+    lect = navFrame.ultrasonic or []
+    info = _ladoYTipo(lect)
+    if info is None:
+        return None
+    r, direccion, tipo = info
+    if r >= CAUTION_DISTANCE_M:
+        return None
+    for d in navFrame.detections:
+        if d.confirmado == "ambos" and d.range_est is not None \
+                and abs(d.range_est - r) < 0.4:
+            return None            # ya lo explica la vision (confirmado)
+    nombre = {"pared": "pared", "obstaculo": "obstáculo"}[tipo]
+    donde = {"frente": "al frente", "izquierda": "adelante a la izquierda",
+             "derecha": "adelante a la derecha"}[direccion]
+    cm = int(r * 100)
+    if r < CRITICAL_DISTANCE_M:
+        return {"prio": 0, "texto": f"Atención: {nombre} {donde} a {cm} "
+                                    "centímetros. Deténgase.",
+                "tipo": tipo, "dir": direccion, "dist": r}
+    return {"prio": 1, "texto": f"Precaución: {nombre} {donde}.",
+            "tipo": tipo, "dir": direccion, "dist": r}
+
+
+def conectarUltrasonido(modAlertas, lecturas, umbralM=1.5, pitchDeg=None):
+    """refuerzo inmediato con los MB1232 (mas rapidos que la camara):
+    un eco mas cerca que umbralM pita AL MOMENTO, sin esperar al ciclo
+    de vision. ojo con el montaje frontal: con la cabeza agachada el
+    haz rebota en el piso, eso se descarta con el pitch de la imu."""
+    from montaje import esEcoDePiso
+    utiles = [u for u in lecturas if getattr(u, "valid", False)
+              and not esEcoDePiso(u.range_m, pitchDeg)]
+    info = _ladoYTipo(utiles)
+    if info is None:
+        return
+    r, direccion, tipo = info
+    if r <= umbralM:
+        modAlertas.reportarSensor(direccion, r, tipo=tipo)
 
 
 class BotonPullUp:
