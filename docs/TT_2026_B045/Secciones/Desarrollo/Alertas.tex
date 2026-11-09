@@ -6,26 +6,26 @@
 \subsection{Descripción}
 
 El módulo de alertas es la capa de seguridad del sistema y corresponde al Algoritmo 7
-de TT1. A diferencia de la navegación, que solo opera cuando hay una ruta activa, las
-alertas están encendidas todo el tiempo: una persona puede usar los lentes sin pedir
-ningún destino y aun así recibir avisos de lo que tiene enfrente. El módulo atiende
-RF-12, RF-20, RNF-01, RNF-09 y RNF-12.
+de TT1. La navegación solo trabaja cuando hay una ruta activa, pero las alertas están
+encendidas todo el tiempo, así que una persona puede usar los lentes sin pedir ningún
+destino y aun así enterarse de lo que tiene enfrente. El módulo atiende RF-12, RF-20,
+RNF-01, RNF-09 y RNF-12.
 
-En cada ciclo, \texttt{alertas.py} lee el cuadro de navegación y devuelve dos cosas:
-la lista de alertas nuevas, cada una con su prioridad, y una bandera que indica si hay
-que recalcular la ruta. Además entrega el sonido. Para esa parte se integró el módulo
-de pitidos desarrollado por el equipo (\texttt{VozYPLN/alertas.py}), de modo que las
-alertas no se confundan con las indicaciones de navegación: una precaución es solo un
-pitido estéreo y una alerta crítica es un pitido seguido de una frase corta que
-interrumpe cualquier otra cosa que el sistema esté diciendo.
+En cada ciclo, \texttt{alertas.py} lee el cuadro de navegación y regresa la lista de
+alertas nuevas, cada una con su prioridad, junto con una bandera que indica si hay que
+recalcular la ruta. También se encarga del sonido. Para esa parte se integró el módulo
+de pitidos que desarrolló el equipo (\texttt{VozYPLN/alertas.py}), y gracias a él las
+alertas no se confunden con las indicaciones de navegación. Una precaución es solo un
+pitido estéreo, mientras que una alerta crítica es un pitido seguido de una frase corta
+que interrumpe cualquier otra cosa que el sistema esté diciendo.
 
 \subsection{Reglas de alerta}
 
-La Tabla~\ref{tab:alertas_reglas} resume las reglas implementadas. Los umbrales del
-frente (0.80~m crítico y 1.50~m precaución) son los definidos en TT1. Para los
-costados se usan umbrales menores, porque caminar a 60~cm de una pared es lo normal en
-un pasillo y no debería generar una alerta crítica; la excepción son las detecciones
-de riesgo alto, que usan los umbrales del frente en cualquier sector.
+La Tabla~\ref{tab:alertas_reglas} reúne las reglas. Los umbrales del frente (0.80~m
+para la alerta crítica y 1.50~m para la precaución) son los definidos en TT1. En los
+costados los umbrales son menores, porque caminar a 60~cm de una pared es lo más normal
+en un pasillo y no amerita una alerta crítica. La excepción son las detecciones de
+riesgo alto, que usan los umbrales del frente en cualquier sector.
 
 \begin{longtable}{|p{3.4cm}|p{3.6cm}|p{3.2cm}|p{4.3cm}|}
 \caption{Reglas del módulo de alertas}
@@ -63,134 +63,137 @@ inmediato en la dirección del eco. \\
 \hline
 \end{longtable}
 
-Cuando hay una persona en movimiento en un sector, su aviso sustituye al aviso
-genérico de obstáculo de ese mismo sector, para no decir dos cosas sobre lo mismo. Los
-peligros de piso se describen en pasos, a razón de 0.7~m por paso, porque es una
-unidad que el usuario puede contar mientras camina. Las distancias del texto se
-redondean a múltiplos de 10~cm, de modo que el ruido de la estimación no produzca
-frases distintas en cada ciclo.
+Si hay una persona en movimiento en un sector, su aviso reemplaza al aviso genérico de
+obstáculo de ese sector, para no decir dos cosas sobre lo mismo. Los peligros de piso se
+describen en pasos, contando 0.7~m por paso, porque es una medida que el usuario puede
+ir contando mientras camina. Las distancias del texto se redondean a múltiplos de
+10~cm para que el ruido de la estimación no cambie la frase en cada ciclo, y los objetos
+se nombran en español con el mismo diccionario que usa la interacción
+(Sección~\ref{sec:dev_interaccion}), de modo que el detector dice \emph{chair} pero el
+usuario escucha ``silla''.
 
-Los dos ultrasónicos frontales agregan tres reglas. Primero, un eco cercano que
-ninguna detección confirmada por la cámara explica se reporta como pared u
-obstáculo; es el caso de los vidrios, las mamparas y las paredes lisas, que la visión
-no reconoce. Si los dos sensores miden casi lo mismo se trata de una superficie de
-frente (``pared''); si solo uno lo detecta, el objeto está cargado a ese lado. Este
-aviso sustituye al aviso genérico de obstáculo en esa dirección, porque el
-ultrasonido mide con más precisión que el mapa. Segundo, una detección visual que el
-ultrasonido contradice (el haz debería alcanzarla y no hay eco a esa distancia) ya no
-dispara una alerta crítica con la distancia de la cámara; se avisa solo como
-precaución, con la frase ``posible\dots{} (solo cámara)'', lo cual sigue la idea de
-RNF-09 de avisar sin alarmar de más. Tercero, las lecturas no esperan al ciclo de
-visión: la función \texttt{conectarUltrasonido} recibe cada lectura nueva y, si hay un
-eco a menos de 1.5~m, produce un pitido inmediato en su dirección. Antes se descartan
-los ecos de piso con el cabeceo de la IMU, y la lectura mínima del sensor (20~cm) se
-trata como ``20~cm o menos'' y produce un pitido crítico, porque es la situación más
-peligrosa. La alerta correspondiente se entrega al navegador en el siguiente ciclo.
+Los dos ultrasónicos frontales agregan tres reglas más. Un eco cercano que ninguna
+detección confirmada por la cámara explica se avisa como pared u obstáculo; así se
+cubren los vidrios, las mamparas y las paredes lisas, que la visión no reconoce. Si los
+dos sensores miden casi lo mismo, se trata de una superficie de frente y el aviso dice
+``pared''; si solo uno la detecta, el objeto está cargado hacia ese lado. Este aviso
+reemplaza al genérico de esa dirección, porque el ultrasonido mide con más precisión que
+el mapa. En cambio, una detección visual que el ultrasonido contradice, porque el haz
+debería alcanzarla y no hay eco a esa distancia, ya no dispara una alerta crítica con la
+distancia de la cámara. Se avisa solo como precaución, con la frase ``posible\dots{}
+(solo cámara)'', siguiendo la idea de RNF-09 de avisar sin alarmar de más.
+
+La tercera regla es de rapidez. Las lecturas no esperan al ciclo de visión; la función
+\texttt{conectarUltrasonido} revisa cada lectura nueva y, si hay un eco a menos de 1.5~m,
+suena un pitido de inmediato en su dirección. Antes se descartan los ecos del piso con
+el cabeceo de la IMU, y la lectura mínima del sensor, 20~cm, se interpreta como ``20~cm
+o menos'' y produce un pitido crítico, porque es la situación más peligrosa. La alerta
+correspondiente llega al navegador en el siguiente ciclo. Como los dos sensores se
+disparan por turnos y cada medición toma 100~ms, cada uno se actualiza unas cinco veces
+por segundo.
 
 \subsection{Dosificación y recálculo}
 
-Si una alerta se repitiera en cada ciclo, el usuario recibiría diez avisos por
-segundo. Por eso cada tipo de alerta tiene un tiempo de espera antes de volver a
-sonar: 2.5~s para las críticas y 8~s para las precauciones. En una primera versión el
-tiempo de espera se aplicaba al texto exacto de la frase, pero como la distancia
-cambia de un ciclo a otro, cada frase resultaba ``nueva'' y no se filtraba nada; la
-versión final agrupa por tipo de alerta.
+Si una alerta se repitiera en cada ciclo, el usuario recibiría diez avisos por segundo.
+Para evitarlo, cada alerta tiene un tiempo de espera antes de volver a sonar, de 2.5~s
+para las críticas y de 8~s para las precauciones. El tiempo se cuenta por prioridad,
+por dirección (frente, izquierda o derecha) y por tipo de aviso (obstáculo, persona en
+movimiento o peligro de piso), de modo que una precaución por algo a la izquierda no
+silencia una precaución por algo al frente.
 
-Cualquier alerta crítica activa la bandera de recálculo. El navegador la recibe y toma
-una decisión en ese mismo ciclo, sin esperar su intervalo de un segundo, y el
-planificador de ruta recalcula de inmediato.
+Esta forma de agrupar se definió después de dos intentos. Primero, el tiempo de espera
+se aplicaba al texto exacto de la frase, pero como la distancia cambia de un ciclo a
+otro, cada frase resultaba ``nueva'' y no se filtraba nada. Después se agrupó por el
+inicio del texto, y en las pruebas del escenario que se describe más adelante una
+precaución lateral llegó a silenciar durante 8~s la precaución frontal de una pared.
 
-Las alertas se pueden apagar y encender con la tecla \texttt{x} en la computadora
-portátil y con un doble clic del botón físico en la Raspberry Pi. La lectura del botón
-por GPIO quedó preparada, pero falta conectarla al hardware.
+Cualquier alerta crítica activa la bandera de recálculo. El navegador la recibe y decide
+en ese mismo ciclo, sin esperar su intervalo de un segundo, y el planificador de ruta
+recalcula de inmediato. Las alertas se pueden apagar y encender con la tecla \texttt{x}
+en la computadora portátil y con un doble clic del botón físico en el prototipo.
 
 \subsection{Pitidos estéreo}
 
-El módulo de pitidos del equipo genera los tonos por software y los reproduce en un
-hilo propio, para que suenen aunque el programa principal esté escuchando o hablando.
-La dirección se codifica con el balance entre canales: un obstáculo a la izquierda
-suena fuerte en el oído izquierdo y débil en el derecho, y uno al frente suena igual en
-ambos. El nivel se codifica con el patrón (Figura~\ref{fig:alertas_pitidos}): la alerta
-crítica son cuatro tonos cortos que alternan entre 2100 y 1500~Hz, y la precaución son
-dos tonos de 1200~Hz más largos. Mientras suena un pitido, la cola de voz espera, y si
-llega una alerta crítica mientras el sistema habla, la frase en curso se interrumpe.
+El módulo de pitidos del equipo genera los tonos por software y los reproduce en un hilo
+propio, de modo que suenan aunque el programa principal esté escuchando o hablando. La
+dirección se codifica con el balance entre canales; un obstáculo a la izquierda suena
+fuerte en el oído izquierdo y bajito en el derecho, y uno al frente suena igual en ambos.
+El nivel se codifica con el patrón (Figura~\ref{fig:alertas_pitidos}). La alerta
+crítica son cuatro tonos cortos que alternan entre 2100 y 1500~Hz, y la precaución, dos
+tonos de 1200~Hz más largos. Mientras suena un pitido la cola de voz espera, y si llega
+una alerta crítica mientras el sistema habla, la frase en curso se corta.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.88\textwidth]{Capturas_TT2/nav/alertas_pitidos.png}
-    \caption{Forma de onda de los pitidos para un obstáculo a la izquierda: alerta
-    crítica (izquierda) y precaución (derecha). El canal derecho suena al 20\,\% del
-    volumen del izquierdo.}
+    \caption{Forma de onda de los pitidos para un obstáculo a la izquierda, con la alerta
+    crítica a la izquierda y la precaución a la derecha. El canal derecho suena al
+    20\,\% del volumen del izquierdo.}
     \label{fig:alertas_pitidos}
 \end{figure}
 
-El módulo del equipo tiene además su propia lógica para decidir el nivel (por ejemplo,
-un vehículo a menos de 5~m es crítico, y si un sensor y la visión reportan lo mismo en
-la misma dirección casi al mismo tiempo, la alerta sube un nivel). En el sistema
-integrado esa lógica no se usa: el nivel lo decide \texttt{alertas.py} con las reglas de
-la Tabla~\ref{tab:alertas_reglas} y el módulo del equipo solo se encarga de sonar.
+El módulo del equipo trae también su propia lógica para decidir el nivel; por ejemplo,
+un vehículo a menos de 5~m es crítico, y si un sensor y la cámara reportan lo mismo en la
+misma dirección casi al mismo tiempo, la alerta sube un nivel. En el sistema integrado
+esa lógica no se usa, porque el nivel lo decide \texttt{alertas.py} con las reglas de la
+Tabla~\ref{tab:alertas_reglas} y el módulo del equipo solo se encarga de sonar.
 
 \subsection{Resultados}
 
-Para probar el módulo se preparó un escenario en el cuarto simulado: el usuario camina
-en línea recta hacia la pared del fondo mientras una persona le cruza por delante. La
+\textbf{Pruebas con el prototipo.} \TODO{escenarios probados con el prototipo (por
+ejemplo, acercarse a una pared, a una puerta de vidrio y a una persona), alertas
+esperadas contra alertas emitidas, falsas alarmas y si los participantes distinguieron
+la dirección de los pitidos}.
+
+\textbf{Escenario simulado.} Para revisar el comportamiento de las reglas se preparó un
+escenario en el cuarto simulado, en el que el usuario camina en línea recta hacia la
+pared del fondo mientras una persona le cruza por delante. La
 Figura~\ref{fig:alertas_escenario} muestra la distancia libre al frente según el mapa,
-la distancia estimada a la persona y las alertas que emitió el módulo.
+la distancia estimada a la persona y las alertas que emitió el módulo, 14 en total en
+17~s.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{Capturas_TT2/nav/alertas_escenario.png}
-    \caption{Alertas emitidas en el escenario de prueba. Los triángulos indican el
-    momento de cada alerta crítica (rojo) y de precaución (verde).}
+    \caption{Alertas emitidas en el escenario de prueba. Los triángulos marcan cada alerta
+    crítica (rojo) y cada precaución (verde).}
     \label{fig:alertas_escenario}
 \end{figure}
 
-La secuencia muestra varias cosas. A los 3.3~s, con la persona a menos de 2~m, se
-emitió ``Precaución: una persona en movimiento al frente'', y a los 7.5~s, ya a menos
-de 1~m, la alerta crítica ``Alto. Se acerca una persona al frente, muy cerca''. Al
-acercarse a la pared, el ultrasonido la detectó como superficie de frente: a los
-11.6~s sonó ``Precaución: pared al frente'' y a los 13.9~s ``Atención: pared al frente a
-79 centímetros. Deténgase'', que se repitió a los 16.4~s con 51~cm porque el usuario
-siguió avanzando. Entre los 12.6 y los 13.9~s el mapa ya marcaba menos de 0.80~m,
-pero el eco, que mide la distancia real, todavía estaba por encima; como el aviso del
-ultrasonido sustituye al del mapa en esa dirección, la alerta crítica esperó a que el
-eco bajara del umbral.
+La persona se avisó como se esperaba. A los 3.3~s, ya a menos de 2~m, sonó ``Precaución:
+una persona en movimiento al frente'', y a los 7.5~s, a menos de 1~m, la alerta crítica
+``Alto. Se acerca una persona al frente, muy cerca''. Al seguir su camino, la persona
+quedó del lado derecho del usuario y el aviso cambió de dirección (8.5~s). Después el
+ultrasonido detectó la pared, primero con precauciones a los 11.6 y 12.4~s y luego con
+alertas críticas a los 13.9, 15.0 y 16.4~s, la última a 51~cm, porque el usuario siguió
+avanzando. Entre los 12.6 y los 13.9~s el mapa ya marcaba menos de 0.80~m, pero el eco,
+que mide la distancia real, todavía estaba por encima del umbral; como el aviso del
+ultrasonido reemplaza al del mapa en esa dirección, la alerta crítica esperó a que el
+eco bajara.
 
-También hubo alertas falsas. A los 2.3~s sonó una alerta crítica por un obstáculo a
-70~cm al frente, y a los 14.2 y 16.7~s dos alertas críticas por un obstáculo a 40~cm a
-la izquierda, donde no había nada. En el segundo caso se comprobó la causa: la pose
-estimada estaba desplazada 0.4~m respecto a la real, de modo que la pared del fondo,
-ya registrada en el mapa, aparecía adelante a la izquierda. El escenario parte de un
-mapa construido en un recorrido previo, con la pose inicial fijada a mano, y ese
-desajuste entre pose y mapa es el que produce las marcas fantasma.
+La prueba dejó ver dos efectos que conviene tener presentes. El primero es que el
+cálculo estéreo del lado oscila cuando el usuario se acerca a una pared con un ligero
+ángulo, de modo que la misma pared se reporta unas veces ``al frente'' y otras
+``adelante a la derecha''. Como la dosificación cuenta cada dirección por separado, eso
+produjo cinco avisos por la misma pared en menos de cinco segundos. \TODO{agrupar los
+avisos del ultrasonido en una sola dirección frontal cuando ambos sensores ven la misma
+superficie}. El segundo es que al inicio sonaron alertas por la mesa y el sillón que
+quedaban a los lados, algunas con una distancia menor a la real. El escenario parte de un
+mapa construido en un recorrido previo y la pose inicial se fijó a mano, así que hay un
+desajuste entre la pose y el mapa; en una corrida de prueba se comprobó que, con la pose
+desplazada 0.4~m, una pared ya registrada aparecía a 40~cm en un costado donde no había
+nada.
 
-La prueba confirmó además un defecto de la dosificación. El tipo de alerta se
-identifica por el inicio del texto (``Precaución'', ``Atención''), no por el sector.
-Las frases del mapa, las de personas en movimiento y las del ultrasonido escriben esas
-palabras unas veces con acento y otras sin él, lo que las convierte en tipos
-distintos por accidente: por eso a los 10.5 y 11.6~s sonaron dos precauciones por la
-misma pared, una del mapa y otra del ultrasonido. En sentido contrario, dos alertas
-con el mismo texto inicial en sectores distintos sí se bloquean entre sí; en una
-corrida anterior del mismo escenario, una precaución lateral silenció durante 8~s la
-precaución frontal de la pared. La corrección es sencilla: agrupar por tipo y sector
-y unificar la ortografía.
-
-En cuanto al tiempo, evaluar las reglas toma en promedio 0.007~ms por ciclo, así que
-la latencia entre que un obstáculo aparece en la imagen y que suena la alerta la
-determina la visión (alrededor de 160~ms por cuadro en la computadora portátil). Ese
-valor está por debajo de los 2~s de RNF-01; en la Raspberry Pi habrá que medirlo de
-nuevo. El módulo tiene 22 pruebas automatizadas junto con el planificador de ruta.
+En cuanto al tiempo, evaluar las reglas toma en promedio 0.007~ms por ciclo, así que lo
+que tarda una alerta en sonar desde que el obstáculo aparece en la imagen depende de la
+visión, unos 160~ms por cuadro en la computadora portátil. En el prototipo esa latencia
+es de \TODO{latencia de alerta medida en la Raspberry Pi}, contra los 2~s que permite
+RNF-01. El módulo tiene 26 pruebas automatizadas junto con el planificador de ruta.
 
 \subsection{Limitaciones}
 
-\begin{itemize}
-    \item La dosificación agrupa por el texto inicial y no por sector, de modo que una
-    precaución lateral puede silenciar una frontal hasta 8~s.
-    \item El driver de los MB1232 y la lectura del botón por GPIO están escritos, pero
-    no se han probado con el hardware montado. Como los dos sensores se disparan de
-    forma alternada y cada medición requiere 100~ms, cada uno se actualiza unas cinco
-    veces por segundo.
-    \item Las alertas heredan los errores de la percepción: un tapete detectado como
-    hoyo genera una alerta falsa y un obstáculo que la visión no reconoce y que no
-    produce eco no genera ninguna.
-\end{itemize}
+Las alertas heredan los errores de la percepción. Un tapete detectado como hoyo provoca
+una alerta falsa, y un obstáculo que la cámara no reconoce y que no devuelve eco, como
+un objeto bajo y muy cercano, no provoca ninguna. Tampoco hay alertas para lo que queda
+detrás o muy a los costados del usuario, porque ni la cámara ni los ultrasónicos cubren
+esas zonas.

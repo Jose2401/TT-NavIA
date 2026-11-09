@@ -111,8 +111,8 @@ class TestInteraccionFlujos(unittest.TestCase):
         frame, _ = _frame(detections=dets)
         msgs = self.inter.manejarTexto("que hay enfrente", frame)
         texto = msgs[0].text
-        self.assertIn("chair", texto)
-        self.assertIn("peligro de piso", texto)
+        self.assertIn("una silla", texto)
+        self.assertIn("un hoyo en el piso", texto)
 
     def test_repetir_ultima_instruccion(self):
         frame, mgr = _frame(landmarks=PUERTA)

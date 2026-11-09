@@ -1,56 +1,60 @@
 % ==============================================================================
-\section{Diseño del prototipo físico}
+\section{Prototipo físico}
 \label{sec:dev_prototipo}
 % ==============================================================================
 
-En paralelo al software se diseñó el armazón de los lentes en un modelador CAD. El
-armazón aloja los sensores definidos en la sección de electrónica de TT1 en un frente
-ensanchado, por encima de los cristales, y tiene patillas anchas.
-
-La Figura~\ref{fig:proto_explosivo} muestra la vista explosionada. En el centro del
-frente, a la altura del puente, se coloca la Camera Module 3 Wide, que así queda
-alineada con la dirección en la que mira el usuario; esa es la suposición que hacen
-el módulo de visión y la geometría de distancia por plano de piso. En las dos esquinas
-del frente se colocan los sensores ultrasónicos MB1232, uno de cada lado. Las tarjetas
-restantes se alojan detrás de la cámara, en la parte superior del frente y en la
+El armazón de los lentes se diseñó en un modelador CAD. Los sensores definidos en la
+sección de electrónica de TT1 van alojados en un frente ensanchado, por encima de los
+cristales, y las patillas son anchas para dar espacio al cableado. La
+Figura~\ref{fig:proto_explosivo} muestra la vista explosionada. La Camera Module 3 Wide
+va en el centro del frente, a la altura del puente de la nariz, de modo que queda
+alineada con la dirección en la que mira el usuario; el módulo de visión y el cálculo de
+distancias por plano de piso parten de esa suposición. Los dos sensores ultrasónicos
+MB1232 van en el frente, uno sobre cada cristal, y la IMU BNO055 va plana en la parte
+superior del mismo frente. El resto de las tarjetas se aloja detrás de la cámara y en la
 patilla derecha, donde queda un conector accesible desde el exterior.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{Capturas_TT2/hardware/Render.jpeg}
-    \caption{Vista explosionada del armazón con la cámara al centro y los sensores
-    ultrasónicos en las esquinas del frente.}
+    \caption{Vista explosionada del armazón, con la cámara al centro y los sensores
+    ultrasónicos sobre cada cristal.}
     \label{fig:proto_explosivo}
 \end{figure}
 
-Las Figuras~\ref{fig:proto_transparente} y \ref{fig:proto_armado} muestran el
-prototipo armado, con el frente transparente para ver la disposición interna y con el
-acabado final.
+Las Figuras~\ref{fig:proto_transparente} y \ref{fig:proto_armado} muestran el diseño
+armado, primero con el frente transparente para ver la disposición interna y después
+con el acabado final.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{Capturas_TT2/hardware/VistaPrincipal.jpeg}
-    \caption{Prototipo armado con el frente transparente.}
+    \caption{Diseño armado con el frente transparente.}
     \label{fig:proto_transparente}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{Capturas_TT2/hardware/VistaReal.jpeg}
-    \caption{Prototipo armado con el acabado final.}
+    \caption{Diseño armado con el acabado final.}
     \label{fig:proto_armado}
 \end{figure}
 
-El montaje definitivo de los sensores es el del render: los dos MB1232 van al
-frente, uno sobre cada cristal, separados unos 10~cm y apuntando en la misma
-dirección que la cámara, y la IMU va plana en la parte superior del mismo frente
-rígido, de modo que el cabeceo que mide es también el de la cámara y el de los
-ultrasónicos. Esta geometría se concentra en \texttt{montaje.py}, que usan el driver de
-los sensores, la fusión, las alertas y el simulador. La TT1 describía sensores que
-cubrían los laterales del usuario, pero el MB1232 es de haz angosto (unos
-$\pm 14^\circ$) y no serviría para ello; al frente, en cambio, su haz coincide con lo
-que ve la cámara y permite la validación cruzada, la detección de vidrios y la
-corrección del estado de las puertas descritas en las secciones de SLAM, visión y
-alertas. El costo de esta decisión es que los costados del usuario quedan cubiertos
-solo por la cámara, y que el mapa registra menos superficie lateral
-(Tabla~\ref{tab:mapeo_us}).
+\TODO{agregar fotos del prototipo fabricado y armado, y describir el material, el
+método de fabricación, el peso final y dónde van la Raspberry Pi y la batería}.
+
+Los dos ultrasónicos apuntan hacia adelante, en la misma dirección que la cámara, y
+están separados unos 10~cm. Como los sensores y la IMU van en el mismo frente rígido, el
+cabeceo que mide la IMU es también el de la cámara y el de los ultrasónicos. Toda esta
+geometría se concentra en un solo archivo, \texttt{montaje.py}, que usan el driver de
+los sensores, la fusión, las alertas y el simulador, y que se ajusta con las medidas
+tomadas sobre el prototipo.
+
+En TT1 se había planteado que los ultrasónicos cubrieran los costados del usuario. Al
+revisar la hoja de datos se vio que el MB1232 tiene un haz angosto, de unos
+$\pm 14^\circ$, así que sirve poco para vigilar los lados. Puesto al frente, en cambio,
+su haz coincide con lo que ve la cámara. Eso permite confirmar o descartar las
+detecciones visuales, avisar de vidrios y mamparas que la cámara no reconoce y corregir
+el estado de las puertas, como se explica en las secciones de SLAM, visión y alertas.
+El costo de esta decisión es que los costados quedan cubiertos solo por la cámara y que
+el mapa registra menos superficie lateral (Tabla~\ref{tab:mapeo_us}).

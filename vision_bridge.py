@@ -328,7 +328,38 @@ class GroundHazardDetector:
         if self.detectarPuertas:
             peligros += self._puertas(seg, walkable, w, h,
                                       yoloDetections or [])
+        self._pisoLibre = self._rayosPisoLibre(walkable, w, h)
         return peligros
+
+    def tomarPisoLibre(self):
+        """rayos de piso transitable visto en la ultima segmentacion
+        (solo pal mapa: le restan un impacto a los hoyos que la camara
+        vuelve a ver como piso). se entregan una sola vez."""
+        out, self._pisoLibre = getattr(self, "_pisoLibre", []), []
+        return out
+
+    def _rayosPisoLibre(self, walkable, w, h, columnas=9):
+        out = []
+        for k in range(columnas):
+            cx = int((k + 0.5) * w / columnas)
+            col = walkable[:, cx]
+            if col[h - 1] == 0:
+                continue            # justo enfrente no hay piso visible
+            fila = h - 1
+            while fila > 0 and col[fila - 1] == 1:
+                fila -= 1
+            dist = groundDistanceFromRow(fila, h, self._vfovEff,
+                                         self.camHeightM, self.camPitchDeg)
+            if dist is None or dist < 0.5:
+                continue
+            dist = min(dist, self.maxRangeM)
+            bearing = ((w / 2.0 - cx) / w) * self.hfov
+            out.append(Observation(range_m=dist, bearing=bearing,
+                                   label="piso_libre",
+                                   sigma_r=0.2 * dist,
+                                   can_init_landmark=False,
+                                   can_correct=False))
+        return out
 
     def _puertas(self, seg, walkable, w, h, yaDetectadas):
         """salidas: la clase door de ade20k. abierta si dentro del bbox

@@ -1,36 +1,32 @@
 \chapter{Desarrollo del sistema}
 \label{cap:desarrollo}
 
-El presente capítulo documenta el desarrollo realizado durante Trabajo Terminal II.
-Mientras que el capítulo de implementación de módulos describe el diseño planteado en
-Trabajo Terminal I, aquí se presenta lo que efectivamente se construyó, cómo se
-validó y qué resultados se obtuvieron. Siguiendo la metodología de desarrollo
-incremental adoptada en el marco metodológico \cite{sommerville2011software}, cada
-módulo se implementó, se probó de forma aislada y después se integró con el resto del
-sistema, lo cual obligó a revisar varias decisiones del diseño original conforme se
-obtuvieron mediciones.
+En este capítulo se documenta el desarrollo realizado durante Trabajo Terminal II. El
+capítulo de implementación de módulos recoge el diseño planteado en Trabajo Terminal I;
+aquí se presenta lo que se construyó a partir de ese diseño, cómo se probó y qué
+resultados dio. Se siguió la metodología incremental del marco metodológico
+\cite{sommerville2011software}, así que cada módulo se implementó y probó por separado
+antes de integrarlo con los demás. Varias decisiones del diseño original cambiaron en
+el camino, conforme las mediciones mostraban qué funcionaba y qué no.
 
-El capítulo sigue el recorrido de la información dentro del sistema. Empieza por la
-percepción (módulo de visión), continúa con la representación del entorno (SLAM, Ray
-Casting y mapeo), sigue con la toma de decisiones (navegación y alertas) y termina con
-la interacción por voz. Al final se presenta el diseño del armazón de los lentes. Cada
-sección describe cómo quedó implementado el módulo, qué se midió y qué limitaciones
-se encontraron.
+El orden del capítulo sigue el recorrido de la información dentro del sistema. Primero
+se describe el prototipo físico y después la percepción (módulo de visión). Le siguen la
+representación del entorno (SLAM, Ray Casting y mapeo), la toma de decisiones
+(navegación y alertas) y, al final, la interacción por voz. En cada sección se explica
+cómo quedó implementado el módulo, qué se midió y cuáles son sus limitaciones.
 
 % ==============================================================================
 \section{Entorno de desarrollo y organización del código}
 % ==============================================================================
 
-El sistema se desarrolló en Python~3 utilizando NumPy para el cálculo matricial,
-OpenCV para el manejo de imágenes y Matplotlib para la generación de croquis y
-gráficas. Cada módulo vive en un archivo independiente y se comunica con los demás
-únicamente a través de las estructuras de datos definidas en \texttt{interfaces.py},
-lo cual atiende el requerimiento de modularidad RNF-14: el SLAM no
-conoce el origen de sus observaciones (cámara real, video grabado o simulación) y el
-mapa no conoce cómo se estimó la pose que recibe.
-
-La Tabla~\ref{tab:archivos_representacion} resume los archivos principales del
-código.
+El software del sistema está escrito en Python~3. Para el cálculo matricial se usa
+NumPy, para el manejo de imágenes OpenCV y para las gráficas y croquis Matplotlib. Cada
+módulo vive en un archivo independiente y se comunica con los demás solo a través de
+las estructuras de datos definidas en \texttt{interfaces.py}, lo que responde al
+requerimiento de modularidad RNF-14. Gracias a eso, el SLAM no necesita saber si sus
+observaciones vienen de la cámara del prototipo, de un video grabado o de la
+simulación, y el mapa tampoco necesita saber cómo se estimó la pose que recibe. La
+Tabla~\ref{tab:archivos_representacion} resume los archivos principales.
 
 \begin{table}[H]
 \centering
@@ -41,23 +37,22 @@ código.
 \hline
 \textbf{Archivo} & \textbf{Responsabilidad} \\
 \hline
-\texttt{vision\_bridge.py}, \texttt{vision/} & Módulo de visión: detección con YOLO,
-segmentación de piso, puertas y peligros, rastreo de movimiento, y fusión
-visión--ultrasonido. \\
-\hline
 \texttt{montaje.py} & Geometría física de los lentes: posición y orientación de la
-cámara, los ultrasónicos y la IMU, y alcance del MB1232 según el tamaño del
+cámara, de los ultrasónicos y de la IMU, y alcance del MB1232 según el tamaño del
 objeto. \\
 \hline
-\texttt{interfaces.py} & Estructuras compartidas entre módulos: estimación de
-movimiento, detecciones, lecturas ultrasónicas, observaciones, salida del SLAM y cuadro
-de navegación. \\
+\texttt{vision\_bridge.py}, \texttt{vision/} & Módulo de visión: detección con YOLO,
+segmentación de piso, puertas y peligros, rastreo de movimiento y fusión con el
+ultrasonido. \\
+\hline
+\texttt{interfaces.py} & Estructuras compartidas entre módulos, desde la estimación de
+movimiento hasta el cuadro de navegación. \\
 \hline
 \texttt{ekf\_slam.py} & Módulo SLAM: filtro de Kalman extendido sobre la pose,
-asociación de datos y gestión del mapa ligero de \emph{landmarks}. \\
+asociación de datos y mapa ligero de \emph{landmarks}. \\
 \hline
-\texttt{odometry.py} & Estimación de movimiento a partir de la IMU BNO055 (giro y
-conteo de pasos), con respaldo por flujo óptico. \\
+\texttt{odometry.py} & Estimación del movimiento con la IMU BNO055 (giro y conteo de
+pasos), con respaldo por flujo óptico. \\
 \hline
 \texttt{occupancy\_grid.py} & Núcleo de Ray Casting: algoritmo de Bresenham, modelo
 inverso del sensor en log-odds y rayos de consulta. \\
@@ -66,11 +61,11 @@ inverso del sensor en log-odds y rayos de consulta. \\
 (\emph{chunks}), persistencia en disco, eventos de cambio de zona y capa de
 peligros. \\
 \hline
-\texttt{navigation\_feed.py} & Construcción del cuadro que se entrega al módulo de
+\texttt{navigation\_feed.py} & Construcción del cuadro que recibe el módulo de
 navegación (distancias por sector, riesgos y mapa local). \\
 \hline
-\texttt{navigation/} & Módulo de navegación: entorno de entrenamiento, entrenamiento con
-PPO, ejecutor en el dispositivo, planificador de ruta y conversión de mapas reales en
+\texttt{navigation/} & Módulo de navegación: entorno y script de entrenamiento con PPO,
+ejecutor en el dispositivo, planificador de ruta y conversión de mapas reales en
 mundos de entrenamiento. \\
 \hline
 \texttt{alertas.py} & Módulo de alertas y su conexión con los pitidos estéreo. \\
@@ -78,12 +73,12 @@ mundos de entrenamiento. \\
 \texttt{interaccion.py}, \texttt{VozYPLN/} & Reconocimiento de voz, PLN, personalidad
 del asistente, síntesis de voz y cola de mensajes con prioridades. \\
 \hline
-\texttt{main\_nav\_lap.py}, \texttt{main\_nav\_pi.py} & Programas principales del
-sistema completo para la computadora portátil (con interfaz gráfica) y para la
-Raspberry Pi. \\
+\texttt{main\_nav\_pi.py}, \texttt{main\_nav\_lap.py} & Programas principales del
+sistema completo, uno para la Raspberry Pi del prototipo y otro para la computadora
+portátil, con interfaz gráfica. \\
 \hline
-\texttt{video\_a\_mapa.py} & Conversión de videos reales grabados en primera persona
-en mapas guardados. \\
+\texttt{video\_a\_mapa.py} & Conversión de videos grabados en primera persona en mapas
+guardados. \\
 \hline
 \texttt{sim\_world.py}, \texttt{tests/} & Banco de simulación, métricas y pruebas
 automatizadas. \\
@@ -95,9 +90,9 @@ automatizadas. \\
 \section{Cambios respecto al diseño de Trabajo Terminal I}
 % ==============================================================================
 
-Durante el desarrollo se tomaron decisiones que modifican lo planteado en TT1. La
-mayoría surgió al medir el comportamiento real de los módulos, y en todos los casos el
-código fuente es la referencia vigente. La Tabla~\ref{tab:cambios_tt1} resume los
+Durante el desarrollo se tomaron decisiones que modifican lo planteado en TT1. Casi
+todas surgieron al medir el comportamiento de los módulos, y en todos los casos el
+código fuente es la referencia vigente. La Tabla~\ref{tab:cambios_tt1} reúne los
 cambios principales.
 
 \begin{longtable}{|p{3.0cm}|p{5.4cm}|p{6.1cm}|}
@@ -112,123 +107,120 @@ cambios principales.
 \hline
 \endhead
 Navegación global & Rutas a nivel ciudad con un servicio de cartografía digital y
-GPS NEO-6M. & Se descartó. Los destinos se resuelven contra los \emph{landmarks}
-etiquetados del propio mapa (por ejemplo, ``la salida'' $\rightarrow$ puerta), sin
-depender de internet ni de señal satelital. \\
+GPS NEO-6M. & Se descartó. Los destinos se buscan entre los \emph{landmarks}
+etiquetados del propio mapa (por ejemplo, ``la salida'' se resuelve como una puerta),
+sin depender de internet ni de señal satelital. \\
 \hline
 Observaciones del EKF & Lecturas de los sensores de proximidad comparadas contra
-el mapa de ocupación. & Observaciones de rango y dirección hacia \emph{landmarks}
-detectados por visión, refinadas con ultrasonido cuando ambos coinciden. Los ecos
-ultrasónicos aislados no corrigen la pose. \\
+el mapa de ocupación. & Rango y dirección hacia \emph{landmarks} detectados por la
+cámara, refinados con el ultrasonido cuando ambos coinciden. Los ecos aislados no
+corrigen la pose. \\
 \hline
-Estado del filtro & Pose $[x, y, \theta]$. & Se conserva la pose de tres variables;
-los \emph{landmarks} se guardan en una lista fuera del estado, con su propio modelo
-de incertidumbre. \\
+Estado del filtro & Pose $[x, y, \theta]$. & Se conserva la pose de tres variables y
+los \emph{landmarks} se guardan en una lista aparte, con su propio modelo de
+incertidumbre. \\
 \hline
-Odometría & ``Odometría aproximada'' sin especificar. & IMU BNO055 (orientación
-fusionada a bordo y conteo de pasos) con respaldo automático por flujo óptico de la
-cámara. \\
+Odometría & ``Odometría aproximada'' sin especificar. & IMU BNO055 con orientación
+fusionada a bordo y conteo de pasos, con respaldo automático por flujo óptico. \\
 \hline
 Mapa & Una sola retícula local. & Mapa global dividido en bloques de
-$8 \times 8$~m, con carga y descarga bajo demanda, persistencia entre sesiones y
-eventos de cambio de cuarto. \\
+$8 \times 8$~m que se cargan y descargan según se necesiten, se guardan entre
+sesiones y avisan de los cambios de cuarto. \\
 \hline
-Ray Casting & Celdas recorridas libres y celda final ocupada. & Además: el rango
-monocular impreciso nunca marca celdas ocupadas, los rayos no atraviesan paredes ya
-consolidadas, los rayos sin eco despejan espacio libre y los peligros de piso van a
-una capa separada. \\
+Ray Casting & Celdas recorridas libres y celda final ocupada. & Se agregaron reglas
+para el rango impreciso, las paredes ya consolidadas, los rayos sin eco y los
+peligros de piso, que van en una capa separada. \\
 \hline
-Salida hacia navegación & Matriz 2D del entorno. & Cuadro de navegación con pose,
-covarianza, confianza, mapa local de dos canales, distancias y riesgos por sector y
-\emph{landmarks} etiquetados. \\
+Salida hacia navegación & Matriz 2D del entorno. & Cuadro de navegación con la pose,
+su incertidumbre, un mapa local de dos canales, las distancias y riesgos por sector y
+los \emph{landmarks} etiquetados. \\
 \hline
 Ultrasonido & Dos MB1232 que cubren los laterales del usuario. & Dos MB1232 al frente,
-uno sobre cada cristal, con validación cruzada de las detecciones visuales, cálculo
-estéreo del lado del obstáculo y rechazo de ecos de piso. \\
+uno sobre cada cristal, que validan las detecciones de la cámara, estiman de qué lado
+está el obstáculo y descartan los ecos del piso. \\
 \hline
 Visión & YOLOv8 con preprocesamiento de contraste y suavizado. & Tres modelos
 preentrenados: YOLOv8s-seg (COCO), YOLOv8s (Open Images) para puertas, escaleras y
-muebles, y SegFormer (ADE20K) para piso, puertas y peligros. Sin igualación de
-histograma ni filtro gaussiano. \\
+muebles, y SegFormer (ADE20K) para piso, puertas y peligros. \\
 \hline
 Observación del agente & Vector de 8 valores. & Vector de 24 valores (11 rayos,
 peligros, riesgos, meta y acción previa), elegido por comparación directa. \\
 \hline
 Seguridad de la navegación & Alertas que fuerzan el recálculo. & Además, una capa
-determinística que anula ``avanzar'' con el frente bloqueado, y alertas activas aunque
-no haya ruta. \\
+determinística que anula la orden de avanzar con el frente bloqueado, y alertas
+activas aunque no haya ruta. \\
 \hline
 Voz y PLN & Detección de actividad de voz, filtro de Wiener, Vosk, spaCy y pyttsx3. &
-Vosk detecta el fin de frase por sí mismo; PLN propio con reglas y red neuronal;
-voz neuronal en línea con respaldo local; personalidad del asistente. \\
+Vosk detecta por sí mismo el final de cada frase, el PLN es propio (reglas más una red
+neuronal) y la voz es neuronal con respaldo local. Se añadió una personalidad para el
+asistente. \\
 \hline
 \end{longtable}
 
 % ==============================================================================
-\section{Metodología de validación}
+\section{Metodología de pruebas}
 \label{sec:validacion_representacion}
 % ==============================================================================
 
-Dado que los sensores físicos (IMU y ultrasónicos MB1232) aún no se encontraban
-montados en el prototipo durante esta etapa, la validación se realizó con tres
-herramientas complementarias. Algunos módulos requirieron pruebas adicionales, que se
-describen en su propia sección: la evaluación del agente de navegación en 880
-episodios, las sesiones completas en lazo cerrado y la evaluación del reconocimiento
-de voz con audio sintetizado.
+El sistema se probó en tres niveles. Las pruebas con el prototipo armado muestran el
+comportamiento real de los lentes; el banco de simulación permite medir el error con
+exactitud, porque ahí sí se conoce la posición verdadera; y los videos grabados en
+primera persona sirven para ver el sistema en lugares reales y variados sin tener que
+recorrerlos cada vez con el prototipo. Algunos módulos tuvieron además pruebas
+propias, como la evaluación del agente de navegación en 880 episodios, las sesiones
+completas en lazo cerrado y la evaluación del reconocimiento de voz, que se describen
+en su sección.
 
-\textbf{Banco de simulación.} Se construyó un cuarto virtual de $6 \times 4$~m con
-cinco obstáculos (una mesa, dos sillas, un sillón y una maceta) en el que un usuario
-simulado recorre una secuencia de puntos de paso. El banco genera odometría con ruido,
-lecturas de dos ultrasónicos frontales montados como en el prototipo, calculadas
-por intersección de rayos contra la geometría real
-del cuarto y detecciones visuales con error de dirección de $2^\circ$ y error de
-distancia del 25\,\%, similar al de la estimación monocular. La ventaja del banco es
-que se conoce la trayectoria y el mapa verdaderos, por lo que el error puede medirse
-de forma objetiva. El flujo de datos que se ejecuta es exactamente el mismo que en el
-prototipo; solo cambia el origen de los datos.
+\textbf{Prototipo.} \TODO{describir las pruebas con el prototipo armado: lugares,
+número de recorridos, participantes y condiciones de luz y ruido}.
+
+\textbf{Banco de simulación.} Es un cuarto virtual de $6 \times 4$~m con cinco
+obstáculos (una mesa, dos sillas, un sillón y una maceta) en el que un usuario simulado
+recorre una secuencia de puntos. El banco genera odometría con ruido, las lecturas de
+los dos ultrasónicos frontales colocados como en el prototipo y detecciones visuales
+con un error de dirección de $2^\circ$ y un error de distancia del 25\,\%, parecido al
+de la estimación monocular. El flujo de datos es el mismo que en el prototipo; lo único
+que cambia es de dónde vienen los datos.
 
 \textbf{Videos reales.} Se grabaron 19 recorridos en primera persona con teléfonos
-celulares (resolución $1920 \times 1080$ a 30~cuadros por segundo) en calles,
-banquetas, una casa, una plaza comercial, oficinas y la sala de maestros de la escuela. Los videos se procesaron con el mismo flujo del
-prototipo para generar mapas y capturas de funcionamiento. En este caso no existe una
-referencia exacta, por lo que la evaluación es cualitativa y se basa en la
-coherencia del mapa con el lugar recorrido.
+celulares ($1920 \times 1080$ a 30 cuadros por segundo) en calles, banquetas, una
+casa, una plaza comercial, oficinas y la sala de maestros de la escuela. Cada video se
+procesó con el mismo flujo del prototipo para generar mapas y capturas. Como en estos
+casos no hay una referencia exacta, la evaluación es cualitativa y se basa en qué tan
+bien se parece el mapa al lugar recorrido.
 
-\textbf{Pruebas automatizadas.} El sistema cuenta con 191 pruebas unitarias y
-funcionales en la carpeta \texttt{tests/}: 33 del SLAM, 36 del mapa, 29 de la
-navegación, 22 de las alertas y el planificador, 22 de la geometría de montaje de los
-sensores y la validación cruzada, 24 de la interacción, 15 de la visión y 10 de la
-odometría. Todas se ejecutan sin hardware y, al cierre de esta etapa, todas
-pasan.
+\textbf{Pruebas automatizadas.} El código tiene 205 pruebas unitarias y funcionales en
+la carpeta \texttt{tests/}. Hay 33 del SLAM, 36 del mapa, 34 de la navegación, 26 de
+las alertas y el planificador, 22 del montaje de los sensores y la validación cruzada,
+24 de la interacción, 5 del PLN, 15 de la visión y 10 de la odometría. Todas corren sin hardware y
+todas pasan.
 
-Las métricas empleadas son las siguientes:
+Para el SLAM se usa el error absoluto de trayectoria (ATE), que es la distancia
+promedio entre la posición estimada y la real a lo largo del recorrido y es la métrica
+habitual para evaluar estos sistemas \cite{sturm2012tum}:
 
-\begin{itemize}
-    \item \textbf{Error absoluto de trayectoria (ATE):} distancia euclidiana promedio
-    entre la posición estimada y la real a lo largo del recorrido, métrica estándar
-    para evaluar sistemas SLAM \cite{sturm2012tum}:
-    \[
-    \text{ATE} = \frac{1}{N}\sum_{t=1}^{N}
-    \sqrt{(\hat{x}_t - x_t)^2 + (\hat{y}_t - y_t)^2}
-    \]
-    \item \textbf{Error medio de orientación:} promedio del valor absoluto de la
-    diferencia angular, normalizada al intervalo $(-\pi, \pi]$.
-    \item \textbf{Precisión y exhaustividad del mapa:} proporción de celdas marcadas
-    como ocupadas que corresponden a un obstáculo real (precisión) y proporción de las
-    superficies reales que quedaron registradas en el mapa (exhaustividad o
-    \emph{recall}). Se acepta una tolerancia de dos celdas (10~cm), ya que exigir la
-    celda exacta penalizaría errores menores que el propio ruido de los sensores.
-    \item \textbf{Tiempo de procesamiento por ciclo}, para verificar el cumplimiento de
-    RNF-03 y RNF-05.
-\end{itemize}
+\[
+\text{ATE} = \frac{1}{N}\sum_{t=1}^{N}
+\sqrt{(\hat{x}_t - x_t)^2 + (\hat{y}_t - y_t)^2}
+\]
 
-Todas las figuras y tablas de resultados de este capítulo se generan a partir del
-código del sistema con los scripts \texttt{tests/figuras\_doc.py} (representación),
-\texttt{tests/figuras\_doc\_vision.py}, \texttt{tests/figuras\_doc\_nav.py}
-(navegación y alertas) y \texttt{tests/eval\_interaccion.py} (voz y PLN), de modo que
-pueden reproducirse. Los tiempos reportados se midieron en una
-computadora portátil con procesador Apple M4; las mediciones en la Raspberry Pi se
-reportarán cuando el prototipo físico esté ensamblado.
+También se reporta el error medio de orientación, con la diferencia angular normalizada
+al intervalo $(-\pi, \pi]$. La calidad del mapa se mide con la precisión, que es la
+proporción de celdas marcadas como ocupadas que de verdad corresponden a un obstáculo,
+y con la exhaustividad (\emph{recall}), que es la proporción de las superficies reales
+que quedaron registradas. En ambas se acepta una tolerancia de dos celdas (10~cm),
+porque exigir la celda exacta castigaría errores más chicos que el propio ruido de los
+sensores. Por último, se mide el tiempo de procesamiento por ciclo para revisar RNF-03
+y RNF-05.
+
+Las figuras y tablas de resultados de este capítulo se generan directamente del código
+con los scripts \texttt{tests/figuras\_doc.py}, \texttt{tests/figuras\_doc\_vision.py},
+\texttt{tests/figuras\_doc\_nav.py} y \texttt{tests/eval\_interaccion.py}, así que
+pueden reproducirse. Los tiempos de los experimentos de simulación y video se midieron
+en una computadora portátil con procesador Apple M4; los del prototipo se indican en
+cada sección.
+
+\input{Secciones/Desarrollo/Prototipo}
 
 \input{Secciones/Desarrollo/Vision}
 
@@ -245,5 +237,3 @@ reportarán cuando el prototipo físico esté ensamblado.
 \input{Secciones/Desarrollo/Alertas}
 
 \input{Secciones/Desarrollo/Interaccion}
-
-\input{Secciones/Desarrollo/Prototipo}

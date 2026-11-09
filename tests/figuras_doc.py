@@ -407,28 +407,25 @@ def figBresenham(out):
 
 
 def figLogOdds(out):
-    # celda que primero se ve libre y luego le aparece un obstaculo
-    seq = ["libre"] * 14 + ["ocupado"] * 10 + ["libre"] * 6
+    # celda libre -> aparece un obstaculo -> se retira. en la ultima fase
+    # los rayos son PRECISOS y terminan detras de la celda (> margen), asi
+    # que la liberan aunque este consolidada (regla de updateFromScan)
+    seq = ["libre"] * 14 + ["ocupado"] * 10 + ["libre"] * 14
     l, hist = 0.0, []
     for s in seq:
-        # igual que updateFromScan: el rayo libre no pasa por celdas > L_BLOCK
-        if s == "libre" and l <= L_BLOCK:
-            l += L_FREE
-        elif s == "ocupado":
-            l += L_OCC
+        l += L_FREE if s == "libre" else L_OCC
         l = max(-L_CLAMP, min(L_CLAMP, l))
         hist.append(l)
-    fig, ax = plt.subplots(figsize=(7.0, 3.0))
+    fig, ax = plt.subplots(figsize=(7.4, 3.0))
     ax.step(range(1, len(hist) + 1), hist, where="post", color="tab:blue")
     ax.axhline(OCC_THRESHOLD, ls="--", color="tab:red", lw=1,
                label=f"umbral ocupado ({OCC_THRESHOLD})")
     ax.axhline(L_BLOCK, ls=":", color="tab:purple", lw=1,
                label=f"$L_{{block}}$ ({L_BLOCK})")
     ax.axhline(0, color="k", lw=0.6)
-    ax.axhspan(-L_CLAMP, -L_CLAMP + 0.05, color="k")
     ax.axvspan(14.5, 24.5, color="tab:orange", alpha=0.1)
     ax.text(19.5, -4.2, "aparece un\nobstáculo", ha="center", fontsize=8)
-    ax.text(27.5, -4.2, "se retira:\nlos rayos se\ndetienen en la celda", ha="center",
+    ax.text(31.5, -4.2, "se retira: ecos precisos\nque llegan detrás", ha="center",
             fontsize=8)
     ax.set_xlabel("observación")
     ax.set_ylabel("log-odds $l$")

@@ -319,7 +319,7 @@ class TestNavigationFeed(unittest.TestCase):
         dets = [VisionDetection(bearing=math.radians(60), label="person",
                                 range_est=0.7, moving=True)]
         alertas = safetyAlerts(buildNavigationFrame(slam, mgr, dets))
-        self.assertTrue(any(p == 0 and "person" in m and "izquierda" in m
+        self.assertTrue(any(p == 0 and "persona" in m and "izquierda" in m
                             for p, m in alertas))
 
     def testAlertLabelOnlyWhenDetectionIsNearest(self):
@@ -329,7 +329,7 @@ class TestNavigationFeed(unittest.TestCase):
                                 range_est=3.5)]
         alertas = safetyAlerts(buildNavigationFrame(slam, mgr, dets))
         self.assertTrue(alertas)
-        self.assertTrue(all("obstaculo" in m for _, m in alertas))
+        self.assertTrue(all("obstáculo" in m for _, m in alertas))
         frame = buildNavigationFrame(slam, mgr, dets)
         self.assertAlmostEqual(effectiveFrontDistance(frame),
                                frame.d_front)

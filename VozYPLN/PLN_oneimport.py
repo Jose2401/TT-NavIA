@@ -198,21 +198,43 @@ INTENTS = {
         "vamos a", "vamos para", "dirigeme", "navega a", "quiero llegar",
         "me puedes llevar", "quiero que me lleves", "llevame para",
         "puedes llevarme",
+        "guiame a",
+        "guiame al",
+        "llevame al",
+        "necesito llegar a",
     ],
 
     "PAUSA": [
         "pausa", "pausar", "pausa la navegacion", "espera", "esperate",
         "espera un momento", "haz una pausa", "detente un momento",
+        "dame un segundo",
+        "un momento",
+        "esperate tantito",
+        "espera tantito",
     ],
 
     "REANUDAR": [
         "continua", "continuar", "avanza", "avanzar", "sigue", "seguir",
         "reanuda", "reanudar", "reanuda la navegacion", "sigue con la ruta",
+        "vamos de nuevo",
+        "seguimos",
+        "continuemos",
+        "ya puedes seguir",
     ],
 
     "DETENER": [
         "detente", "detener", "parar", "para", "alto", "parate",
         "deten", "frenar", "detener la navegacion", "ya quiero parar",
+        "termina",
+        "termina la navegacion",
+        "finaliza",
+        "finaliza el recorrido",
+        "deja de guiarme",
+        "basta",
+        "ya basta",
+        "no quiero continuar",
+        "ya no quiero seguir",
+        "ya no sigas",
     ],
 
     "RUTA_ALTERNATIVA": [
@@ -226,6 +248,12 @@ INTENTS = {
     "EMERGENCIA": [
         "necesito ayuda", "hay una emergencia", "auxilio", "emergencia",
         "necesito salir", "estoy en peligro", "ayuda urgente", "socorro",
+        "me cai",
+        "me lastime",
+        "estoy herido",
+        "me duele",
+        "tuve un accidente",
+        "me siento mal",
     ],
 
     #  extensiones fuera del mínimo (accesibilidad) 
@@ -239,11 +267,20 @@ INTENTS = {
         "que hay", "enfrente", "adelante", "alrededor", "entorno",
         "ambiente", "objetos", "obstaculos", "que tengo delante",
         "que hay enfrente",
+        "que ves",
+        "que hay a mi alrededor",
+        "describe lo que hay",
     ],
 
     "REPETIR": [
         "repite", "repetir", "otra vez", "nuevamente", "dilo otra vez",
         "vuelve a decir",
+        "que dijiste",
+        "como dijiste",
+        "no te escuche",
+        "no escuche",
+        "repitelo",
+        "mande",
     ],
 
     "CANCELAR": [
@@ -254,28 +291,63 @@ INTENTS = {
     "AYUDA": [
         "ayuda", "ayudame", "que puedo hacer", "comandos", "opciones",
         "como funciona",
+        "como te uso",
+        "como se usa",
+        "que puedo decir",
+        "que comandos hay",
+        "instrucciones",
     ],
 
     "CONFIRMAR": [
         "si", "correcto", "afirmativo", "exacto", "confirmo", "esta bien",
+        "ok",
+        "okay",
+        "vale",
+        "de acuerdo",
+        "claro",
+        "sale",
+        "dale",
     ],
 
     "NEGAR": [
         "no", "incorrecto", "negativo", "no quiero", "cancela eso",
+        "no es correcto",
+        "no es asi",
+        "esta mal",
+        "eso no",
+        "no gracias",
+        "no esta bien",
     ],
 
     "ESTADO": [
         "estado", "como voy", "como va", "progreso", "cuanto falta",
         "falta mucho", "donde voy", "ruta actual",
+        "ya casi llego",
+        "ya llegamos",
+        "cuanto me falta",
     ],
 }
 
 INTENT_LABELS = list(INTENTS.keys())
 
+
+def _firma_semilla():
+    # hash propio (sin hashlib, como el resto del modulo)
+    h = 1469598103934665603
+    for intent in INTENTS:
+        for frase in [intent] + INTENTS[intent]:
+            for ch in frase + "|":
+                h = ((h ^ ord(ch)) * 1099511628211) % (1 << 61)
+    return str(h)
+
 SAFETY_KEYWORDS = {
 
-    "DETENER": {"detente", "detener", "parar", "alto", "parate", "deten", "frenar", "stop"},
-    "EMERGENCIA": {"auxilio", "emergencia", "peligro", "socorro"},
+    "DETENER": {"detente", "detener", "parar", "alto", "parate", "deten", "frenar", "stop",
+                "termina", "terminar", "finaliza", "basta"},
+    # una lesion es emergencia aunque diga "ayuda" (y gana a todo)
+    "EMERGENCIA": {"auxilio", "emergencia", "peligro", "socorro", "cai", "caido",
+                   "caida", "lastime", "lastimado", "lastimada", "herido", "herida",
+                   "duele", "accidente"},
     "CANCELAR": {"cancela", "cancelar", "olvidalo"},
 }
 
@@ -733,8 +805,13 @@ class NLPMemory:
                     if value not in bucket:
                         bucket.append(value)
 
-            self.vocabulary.load_dict(data.get("vocabulary"))
-            self.classifier.load_dict(data.get("neural_network"))
+            if data.get("seed_signature") == _firma_semilla():
+                self.vocabulary.load_dict(data.get("vocabulary"))
+                self.classifier.load_dict(data.get("neural_network"))
+            else:
+                # cambiaron las frases semilla: se reentrena desde cero
+                # (lo aprendido del usuario se conserva)
+                print("[MEMORY] frases semilla nuevas: se reentrena la red")
 
         except Exception as error:
             print(f"[MEMORY] Error interpretando el archivo de memoria: {error}")
@@ -745,6 +822,7 @@ class NLPMemory:
             "destinations": self.destinations,
             "vocabulary": self.vocabulary.to_dict(),
             "neural_network": self.classifier.to_dict(),
+            "seed_signature": _firma_semilla(),
         }
         try:
             with open(self.path, "w", encoding="utf-8") as file:
@@ -937,9 +1015,33 @@ class NavigationNLP:
 
     def _safety_override(self, tokens):
         token_set = set(tokens)
+        if token_set & SAFETY_KEYWORDS["EMERGENCIA"]:
+            return "EMERGENCIA"
         for intent, keywords in SAFETY_KEYWORDS.items():
             if token_set & keywords:
                 return intent
+        return None
+
+    def _sentido_override(self, text, tokens):
+        # frases donde una palabra suelta engaña al modelo: "ya no quiero
+        # SEGUIR" no es reanudar, "no es CORRECTO" no es confirmar
+        t = " " + text + " "
+        tk = set(tokens)
+        if text in ("ayuda", "ayudame"):
+            return "AYUDA"
+        if " deja de " in t:
+            return "DETENER"
+        verbos = {"seguir", "sigas", "continuar", "continues", "caminar",
+                  "camines", "avanzar", "avances", "guies", "quiero"}
+        if (text.startswith("ya no ") or " no quiero " in t) and tk & verbos:
+            return "DETENER"
+        if text in ("no te escuche", "no escuche", "no te oi", "no oi"):
+            return "REPETIR"
+        if (text.startswith("no es ") or text.startswith("no esta ")) and \
+                tk & {"correcto", "asi", "bien", "eso"}:
+            return "NEGAR"
+        if text in ("eso no", "esta mal", "no gracias", "asi no"):
+            return "NEGAR"
         return None
 
     
@@ -961,6 +1063,9 @@ class NavigationNLP:
         safety_intent = self._safety_override(tokens)
         if safety_intent:
             return safety_intent, 0.99
+        sentido = self._sentido_override(text, tokens)
+        if sentido:
+            return sentido, 0.95
 
         rule_scores = self._rule_based_scores(text, tokens)
 

@@ -326,6 +326,56 @@ def lazoCerrado(navigator, inter, out, semillas=range(5),
     return filas
 
 
+def figRutaAlternativa(out, seed=0, destino="llévame al sillón"):
+    """ruta planeada antes y despues de pedir 'busca otro camino'"""
+    from tests.eval_interaccion import _armarPln
+    from interaccion import Interaccion
+    world, user, usArray, slam, mgr, outp, frame = _explorar(seed)
+    nav = Navigator("models/nav_ppo", decide_every_s=0.0, repeat_s=2.5)
+    inter = Interaccion(nav, nlp=_armarPln())
+    inter.manejarTexto(destino, frame)
+    inter.ciclo(frame, mgr, [])          # el ejecutor guarda mapa y pose
+    pose = (outp.x, outp.y, outp.theta)
+    antes = planear(nav.policy, mgr, pose, nav.status.goal)
+    msgs = inter.manejarTexto("busca otro camino", frame)
+    bloqueos = list(mgr.bloqueos)
+    despues = planear(nav.policy, mgr, pose, nav.status.goal)
+    lo, hz, (ox, oy) = mgr.stitched()
+    occ = 1.0 / (1.0 + np.exp(-lo))
+    h, w = lo.shape
+    res = mgr.resolution
+    fig, ax = plt.subplots(figsize=(7.2, 5.0))
+    ax.imshow(occ, cmap="Greys", origin="lower", vmin=0, vmax=1,
+              extent=[ox * res, (ox + w) * res, oy * res, (oy + h) * res])
+    for (bx, by, br, _t) in bloqueos:
+        ax.add_patch(Circle((bx, by), br, fc="tab:red", alpha=0.25, ec="none"))
+    for ru, col, nom in ((antes, "tab:cyan", "ruta original"),
+                         (despues, "tab:olive", "ruta alternativa")):
+        p = np.array(ru["points"])
+        ax.plot(p[:, 0], p[:, 1], "-", color=col, lw=2.2,
+                label=f"{nom} ({ru['pasos']} pasos)")
+    ax.plot(pose[0], pose[1], "o", color="tab:green", ms=8)
+    ax.plot(*nav.status.goal, "*", color="tab:purple", ms=15)
+    ax.plot([], [], "o", color="tab:red", alpha=0.3, ms=10,
+            label="tramo bloqueado por 3 min")
+    ax.set_xlim(-0.4, 6.4)
+    ax.set_ylim(-0.4, 4.4)
+    ax.set_aspect("equal")
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.13),
+              ncol=3)
+    ax.set_title("Ruta antes y después de pedir «busca otro camino»",
+                 fontsize=10)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out, "nav_ruta_alternativa.png"), dpi=170)
+    plt.close(fig)
+    return dict(respuesta=[m.text for m in msgs], antes=antes["estado"],
+                despues=despues["estado"], pasos=(antes["pasos"],
+                                                   despues["pasos"]),
+                bloqueos=len(bloqueos))
+
+
 # ---------------- alertas ----------------
 
 def escenarioAlertas(out):

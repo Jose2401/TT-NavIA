@@ -538,3 +538,81 @@ class TestLlegadaPorPercepcion(unittest.TestCase):
         frame2 = bnf(slam, mgr, dets)
         nav.update(frame2, mgr)
         self.assertEqual(nav.status.session, "activo")
+
+
+@unittest.skipUnless(_elegirModelo(), "falta el modelo entrenado")
+class TestRutaAlternativa(unittest.TestCase):
+    """'busca otra ruta' de verdad: bloquea el tramo actual un rato y
+    replanifica; si no hay otro camino lo dice."""
+
+    def _mapa(self, conPilar=True, pasilloAncho=3.0):
+        from map_manager import ChunkedMapManager
+        from interfaces import Observation
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=8.0)
+        medio = pasilloAncho / 2.0
+        for i in range(-10, 70):
+            x = i * 0.1
+            for y in [k * 0.1 for k in range(int(-medio * 10), int(medio * 10) + 1)]:
+                mgr.clearFootprint(x, y, radius=0.12)
+        def pared(px, py, desde=None):
+            # como un eco real: el rayo llega DE FRENTE a la pared
+            import math as m
+            ox, oy = desde if desde else (px, 0.0)
+            ang = m.atan2(py - oy, px - ox)
+            r = m.hypot(px - ox, py - oy)
+            for _ in range(4):
+                mgr.updateFromScan((ox, oy, ang),
+                                   [Observation(r, 0.0, sigma_r=0.05)])
+        for i in range(-20, 140):
+            pared(i * 0.05, medio + 0.1)
+            pared(i * 0.05, -medio - 0.1)
+        if conPilar:
+            for dy in (-0.2, -0.15, -0.1, -0.05, 0.0, 0.05, 0.1, 0.15, 0.2):
+                pared(3.0, dy, desde=(2.0, dy))
+        return mgr
+
+    def _nav(self, mgr):
+        from ekf_slam import EKFSlam
+        from navigation_feed import buildNavigationFrame
+        nav = Navigator(_elegirModelo(), repeat_s=0.0, decide_every_s=0.0)
+        slam = EKFSlam(0.0, 0.0, 0.0)
+        frame = buildNavigationFrame(slam, mgr, [])
+        nav.handle_command("punto 6 0", frame)
+        nav.update(frame, mgr)
+        return nav
+
+    def test_alternativa_cambia_de_lado(self):
+        from navigation.route_planner import planear
+        mgr = self._mapa()
+        nav = self._nav(mgr)
+        antes = planear(nav.policy, mgr, (0.0, 0.0, 0.0), (6.0, 0.0))
+        ladoAntes = sum(p[1] for p in antes["points"] if 2.5 < p[0] < 3.5)
+        msgs = nav.handle_command("ruta_alternativa"
+                                  if False else _cmd("ruta_alternativa"))
+        self.assertEqual(msgs[0].text, "Calculando ruta alternativa.")
+        self.assertTrue(mgr.bloqueos)
+        despues = planear(nav.policy, mgr, (0.0, 0.0, 0.0), (6.0, 0.0))
+        self.assertEqual(despues["estado"], "llega")
+        ladoDespues = sum(p[1] for p in despues["points"] if 2.5 < p[0] < 3.5)
+        self.assertTrue(ladoAntes * ladoDespues < 0,
+                        (ladoAntes, ladoDespues))
+
+    def test_sin_otro_camino_lo_dice_y_no_deja_bloqueos(self):
+        mgr = self._mapa(conPilar=False, pasilloAncho=1.0)
+        nav = self._nav(mgr)
+        msgs = nav.handle_command(_cmd("ruta_alternativa"))
+        self.assertIn("No encuentro otra ruta", msgs[0].text)
+        self.assertEqual(mgr.bloqueos, [])
+
+    def test_llegar_o_detener_quita_bloqueos(self):
+        mgr = self._mapa()
+        nav = self._nav(mgr)
+        nav.handle_command(_cmd("ruta_alternativa"))
+        self.assertTrue(mgr.bloqueos)
+        nav.handle_command(_cmd("detener"))
+        self.assertEqual(mgr.bloqueos, [])
+
+
+def _cmd(tipo):
+    from navigation.navigator import NavCommand
+    return NavCommand(tipo)

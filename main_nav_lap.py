@@ -473,8 +473,9 @@ def runCamera(args):
             observaciones = fuseObservations(detections, [])
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
-            mgr.updateFromScan(pose, slam.observationsForMap(),
-                               maxRange=args.max_range)
+            mgr.updateFromScan(pose, slam.observationsForMap()
+                               + (detPeligros.tomarPisoLibre() if detPeligros else []),
+                           maxRange=args.max_range)
             mgr.clearFootprint(output.x, output.y)
             describeEvents(mgr.updatePosition(pose, slam.getLandmarks()),
                            eventsLog)

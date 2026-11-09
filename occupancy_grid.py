@@ -6,6 +6,9 @@ L_FREE = -0.4
 L_CLAMP = 5.0
 OCC_THRESHOLD = 1.0
 L_BLOCK = 2.0
+# un eco preciso libera una celda consolidada si llego al menos esto mas
+# lejos que ella (si no, es la misma pared con ruido)
+MARGEN_LIBERAR_M = 0.30
 HAZARD_MIN_HITS = 2
 HAZARD_MAX_HITS = 10
 
@@ -32,12 +35,38 @@ def bresenham(x0, y0, x1, y1):
     return puntos
 
 
-class OccupancyGrid:
+class BloqueosTemporales:
+    """tramos marcados como no transitables por un rato (ruta
+    alternativa: "por ahi no"). no tocan el log-odds del mapa: se
+    consultan aparte y caducan solos."""
+
+    def __init__(self):
+        self.bloqueos = []          # [(x, y, radio, expira)]
+
+    def agregarBloqueo(self, x, y, radio=0.35, duracionS=180.0):
+        import time
+        self.bloqueos.append((x, y, radio, time.time() + duracionS))
+
+    def quitarBloqueos(self):
+        self.bloqueos = []
+
+    def _bloqueadoTemporal(self, wx, wy):
+        if not self.bloqueos:
+            return False
+        import time
+        ahora = time.time()
+        self.bloqueos = [b for b in self.bloqueos if b[3] > ahora]
+        return any(math.hypot(wx - bx, wy - by) <= br
+                   for bx, by, br, _t in self.bloqueos)
+
+
+class OccupancyGrid(BloqueosTemporales):
     def __init__(self, sizeM=8.0, resolution=0.05, origin=None):
         self.resolution = resolution
         self.n = int(sizeM / resolution)
         self.logOdds = np.zeros((self.n, self.n), dtype=np.float32)
         self.hazardHits =np.zeros((self.n, self.n), dtype=np.uint8)
+        self.bloqueos = []
         self.origin = origin if origin is not None else (sizeM / 2.0, sizeM / 2.0)
         self.lOcc = L_OCC
         self.lFree= L_FREE
@@ -60,6 +89,10 @@ class OccupancyGrid:
         if self.inBounds(gx, gy):
             self.logOdds[gy, gx] = np.clip(
                 self.logOdds[gy, gx] + delta, -self.lClamp, self.lClamp)
+
+    def _quitarHazard(self, gx, gy):
+        if self.inBounds(gx, gy) and self.hazardHits[gy, gx] > 0:
+            self.hazardHits[gy, gx] -= 1
 
     def _addHazard(self, gx, gy):
         if self.inBounds(gx, gy):
@@ -96,11 +129,21 @@ class OccupancyGrid:
                 frac = max(0.0, (r - 2.0 * sigma) / r)
                 celdasLibres = celdasLibres[:int(len(recortado) * frac)]
 
+            if getattr(obs, "label", "") == "piso_libre":
+                for (cx, cy) in celdasLibres:
+                    self._quitarHazard(cx, cy)
+                continue
+
             bloqueado = False
             for (cx, cy) in celdasLibres:
                 if self.logOdds[cy, cx] > L_BLOCK:
-                    bloqueado = True
-                    break
+                    # celda consolidada: un rayo impreciso NO la perfora,
+                    # pero un eco preciso que llego CLARAMENTE mas lejos
+                    # dice que ya no hay nada ahi (alguien quito la caja)
+                    detras = math.hypot(cx - gx1, cy - gy1) * self.resolution
+                    if impreciso or detras <= MARGEN_LIBERAR_M:
+                        bloqueado = True
+                        break
                 self._addLogOdds(cx, cy, self.lFree)
 
             if finAdentro and not bloqueado and obs.range_m <= maxRange:
@@ -116,8 +159,25 @@ class OccupancyGrid:
         return (self.inBounds(gx, gy)
                 and self.hazardHits[gy, gx] >= HAZARD_MIN_HITS)
 
+    # misma interfaz que ChunkedMapManager (el planificador usa esta)
+    def worldToCell(self, x, y):
+        return self.worldToGrid(x, y)
+
+    def cellToWorld(self, gx, gy):
+        wx, wy = self.gridToWorld(gx, gy)
+        return wx + self.resolution / 2.0, wy + self.resolution / 2.0
+
+    def isBlockedCell(self, gx, gy):
+        return self.isBlocked(gx, gy)
+
     def isBlocked(self, gx, gy):
-        return self.isOccupied(gx, gy) or self.isHazard(gx, gy)
+        if self.isOccupied(gx, gy) or self.isHazard(gx, gy):
+            return True
+        if self.bloqueos:
+            wx, wy = self.gridToWorld(gx, gy)
+            r = self.resolution / 2.0
+            return self._bloqueadoTemporal(wx + r, wy + r)
+        return False
 
     # distancia a lo primero bloqueado
     def castDistance(self, x, y, angle, maxRange=4.0):
@@ -225,3 +285,4 @@ class OccupancyGrid:
         fig.savefig(path, dpi=150)
         plt.close(fig)
         return path
+

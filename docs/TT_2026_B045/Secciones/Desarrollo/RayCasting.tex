@@ -6,64 +6,57 @@
 \subsection{Descripción}
 
 El módulo de Ray Casting, implementado en \texttt{occupancy\_grid.py}, es el puente
-entre las observaciones del SLAM y el mapa de ocupación. En el sistema final cumple
-dos funciones distintas que comparten el mismo núcleo de recorrido de celdas:
+entre las observaciones del SLAM y el mapa de ocupación. Cumple dos funciones que
+comparten el mismo núcleo de recorrido de celdas. La primera es actualizar el mapa;
+desde la pose estimada se traza un rayo por cada observación, las celdas que atraviesa
+acumulan evidencia de espacio libre y la celda del extremo acumula evidencia de
+ocupación, que es el modelo inverso del sensor de los mapas de ocupación
+\cite{moravec1985sonar, elfes1989}. La segunda es consultarlo. Desde la pose actual se
+lanzan rayos virtuales sobre el mapa ya construido para medir cuánto espacio libre hay
+en cada dirección, y de ahí salen las variables $d_{\text{front}}$, $d_{\text{left}}$ y
+$d_{\text{right}}$ que usa el módulo de navegación.
 
-\begin{enumerate}
-    \item \textbf{Actualización del mapa.} Desde la pose estimada se traza un rayo por
-    cada observación; las celdas atravesadas acumulan evidencia de espacio libre y la
-    celda del extremo acumula evidencia de ocupación. Esto corresponde al modelo
-    inverso del sensor de los mapas de ocupación \cite{moravec1985sonar, elfes1989}.
-    \item \textbf{Consulta del mapa.} Desde la pose actual se lanzan rayos virtuales
-    sobre el mapa ya construido para medir la distancia libre en cada dirección. Estas
-    distancias son las variables $d_{\text{front}}$, $d_{\text{left}}$ y
-    $d_{\text{right}}$ que recibe el módulo de navegación.
-\end{enumerate}
-
-En el diseño de TT1 solo se contemplaba la primera función con la regla básica ``libre
-en el recorrido, ocupado al final''. Durante el desarrollo esa regla resultó
-insuficiente porque las observaciones del sistema tienen precisiones muy distintas
-(5~cm del ultrasonido frente a $\pm 30$\,\% de la estimación monocular), por lo que se
-añadieron las reglas descritas en esta sección.
+El diseño de TT1 contemplaba solo la primera función, con la regla básica de ``libre
+en el recorrido y ocupado al final''. Esa regla se quedó corta porque las observaciones
+del sistema tienen precisiones muy distintas (5~cm en el ultrasonido contra
+$\pm 30$\,\% en la estimación monocular), y por eso se le agregaron las reglas que se
+describen más adelante.
 
 \subsection{Discretización y recorrido de celdas}
 
-El plano se discretiza en celdas de $5 \times 5$~cm. Un punto $(x, y)$ del mundo
-corresponde a la celda $(\lfloor x / 0.05 \rfloor,\; \lfloor y / 0.05 \rfloor)$, y el
-extremo de un rayo con rango $r$ y dirección relativa $\phi$ desde la pose
-$(x, y, \theta)$ es:
+El plano se divide en celdas de $5 \times 5$~cm. Un punto $(x, y)$ cae en la celda
+$(\lfloor x / 0.05 \rfloor,\; \lfloor y / 0.05 \rfloor)$, y el extremo de un rayo con
+rango $r$ y dirección relativa $\phi$, lanzado desde la pose $(x, y, \theta)$, está en
 
 \[
 x_e = x + r\cos(\theta + \phi),
 \qquad
-y_e = y + r\sin(\theta + \phi)
+y_e = y + r\sin(\theta + \phi).
 \]
 
-Las celdas atravesadas entre la celda del usuario y la del extremo se obtienen con el
-algoritmo de Bresenham \cite{bresenham1965}, que avanza celda por celda utilizando
-únicamente sumas y comparaciones de enteros (Figura~\ref{fig:ray_bresenham}). Para un
-alcance máximo de 4~m, un rayo recorre a lo sumo 80 celdas. Se consideró el algoritmo
-de recorrido de vóxeles de Amanatides y Woo \cite{amanatides1987voxel}, que visita
-todas las celdas que toca el segmento, pero Bresenham resultó suficiente para la
-actualización y es más sencillo; la consecuencia de esta elección en la consulta se
-discute en las limitaciones.
+Las celdas que hay entre la del usuario y la del extremo se obtienen con el algoritmo de
+Bresenham \cite{bresenham1965}, que avanza celda por celda usando solo sumas y
+comparaciones de enteros (Figura~\ref{fig:ray_bresenham}). Con un alcance máximo de
+4~m, un rayo recorre a lo mucho 80 celdas. También se consideró el recorrido de vóxeles
+de Amanatides y Woo \cite{amanatides1987voxel}, que visita todas las celdas que toca el
+segmento, pero para actualizar el mapa Bresenham es suficiente y más sencillo. El efecto
+de esta elección en las consultas se comenta en las limitaciones.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.6\textwidth]{Capturas_TT2/raycasting_bresenham.png}
-    \caption{Celdas recorridas por el algoritmo de Bresenham para un rayo: las celdas
-    intermedias reciben evidencia de espacio libre y la celda del extremo, de
-    ocupación.}
+    \caption{Celdas recorridas por el algoritmo de Bresenham. Las celdas intermedias
+    reciben evidencia de espacio libre y la del extremo, de ocupación.}
     \label{fig:ray_bresenham}
 \end{figure}
 
 \subsection{Modelo inverso del sensor en log-odds}
 
-Cada celda almacena el logaritmo de la razón de probabilidades de estar ocupada,
-$l = \log\frac{p}{1-p}$, de modo que la fusión de una nueva observación es una suma
-\cite{thrun2005probabilistic}. La probabilidad se recupera como
-$p = 1/(1 + e^{-l})$. La Tabla~\ref{tab:ray_constantes} resume las constantes
-utilizadas.
+Cada celda guarda el logaritmo de la razón de probabilidades de estar ocupada,
+$l = \log\frac{p}{1-p}$, lo que convierte la fusión de una nueva observación en una
+simple suma \cite{thrun2005probabilistic}. La probabilidad se recupera con
+$p = 1/(1 + e^{-l})$. La Tabla~\ref{tab:ray_constantes} reúne las constantes que se
+usan.
 
 \begin{table}[H]
 \centering
@@ -88,61 +81,73 @@ consolidada que detiene los rayos de espacio libre. \\
 \end{tabular}
 \end{table}
 
-La asimetría entre $l_{occ}$ y $l_{free}$ es intencional: un rayo atraviesa muchas
-celdas pero termina en una sola, por lo que la evidencia de ocupación debe pesar más
-para que los obstáculos no se borren por los rayos que pasan junto a ellos. La
-saturación en $\pm 5$ evita que una celda acumule tanta evidencia que después no pueda
-corregirse \cite{hornung2013octomap}. La Figura~\ref{fig:ray_logodds} muestra el
-efecto con las mismas reglas del código: una celda que se vio libre muchas veces
-necesita seis impactos para volver a considerarse ocupada cuando aparece un
-obstáculo. La figura también muestra la limitación discutida al final de esta
-sección: una vez que la celda supera $L_{block}$, los rayos de espacio libre se
-detienen en ella y su valor ya no disminuye aunque el obstáculo se retire.
+La diferencia entre $l_{occ}$ y $l_{free}$ es intencional. Un rayo atraviesa muchas
+celdas pero termina en una sola, así que la evidencia de ocupación tiene que pesar más;
+si no, los rayos que pasan junto a un obstáculo terminarían borrándolo. La saturación en
+$\pm 5$ evita que una celda junte tanta evidencia que después ya no se pueda corregir
+\cite{hornung2013octomap}. La Figura~\ref{fig:ray_logodds} muestra el efecto con las
+mismas reglas del código: una celda que se vio libre muchas veces necesita seis impactos
+para volver a contar como ocupada cuando aparece un obstáculo. La última parte de la
+figura muestra el caso contrario, cuando el obstáculo se retira y los ecos precisos
+empiezan a llegar más lejos; la celda, que estaba saturada en $+5$, necesita once de
+esos ecos para dejar de contar como ocupada. Esto depende de una regla que se explica
+en la siguiente sección.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.82\textwidth]{Capturas_TT2/raycasting_logodds.png}
-    \caption{Evolución del log-odds de una celda que primero se observa libre, después
-    ocupada y finalmente queda libre otra vez, calculada con las reglas de
-    \texttt{updateFromScan}.}
+    \caption{Evolución del log-odds de una celda que primero se ve libre, después ocupada
+    y al final otra vez libre por ecos precisos que llegan más allá de ella, calculada
+    con las reglas de \texttt{updateFromScan}.}
     \label{fig:ray_logodds}
 \end{figure}
 
 \subsection{Reglas añadidas durante el desarrollo}
 
-Sobre el modelo básico se implementaron las siguientes reglas, cada una motivada por
-un problema observado durante las pruebas:
+Sobre el modelo básico se agregaron siete reglas, cada una a raíz de un problema
+encontrado en las pruebas.
 
-\begin{enumerate}
-    \item \textbf{El rango impreciso no marca ocupación.} Si la observación tiene
-    $\sigma_r > 0.15$~m (estimación monocular cruda), el rayo solo despeja espacio
-    libre hasta $r - 2\sigma_r$ y no marca la celda final como ocupada. El propósito
-    es evitar que el ruido monocular deje manchas de celdas ocupadas alrededor de cada
-    objeto y que despeje como libre el espacio donde realmente está el objeto. La
-    ocupación de los objetos detectados por visión llega al mapa por la vía precisa:
-    el rayo anclado a la posición consolidada del \emph{landmark} que genera el SLAM.
-    \item \textbf{Las superficies consolidadas detienen el rayo.} Si al recorrer el
-    rayo se encuentra una celda con $l > L_{block}$, el recorrido se detiene y no se
-    marca nada más allá. Así un rayo ruidoso no perfora una pared ya registrada ni
-    pinta marcas fantasma detrás de ella.
-    \item \textbf{Rayos sin eco.} Cuando un sensor ultrasónico no recibe eco, se genera
-    un rayo de espacio libre con la longitud del alcance máximo; como su extremo cae
-    fuera del alcance útil, no marca ocupación. Esto permite registrar pasillos libres.
-    \item \textbf{Recorte en lugar de descarte.} En la retícula de tamaño fijo, si el
-    extremo de un rayo cae fuera del mapa, el rayo se recorta en el borde y se
-    conservan las celdas libres recorridas. Inicialmente esos rayos se descartaban
-    completos. En el mapa por bloques (Sección~\ref{sec:dev_mapeo}) esta regla deja de
-    ser necesaria porque el mapa no tiene bordes.
-    \item \textbf{Alcance máximo.} Los rayos se limitan a 4~m; una observación más
-    lejana solo despeja espacio libre hasta ese límite.
-    \item \textbf{Peligros de piso.} Las observaciones marcadas como peligro (hoyos,
-    agua, escaleras) no modifican el log-odds, ya que el espacio por encima de un hoyo
-    está libre; en su lugar suman un impacto en una capa separada que se describe en
-    el módulo de mapeo.
-\end{enumerate}
+La más importante tiene que ver con el rango impreciso. Si una observación tiene
+$\sigma_r > 0.15$~m, que es el caso de la estimación monocular cruda, el rayo solo
+despeja espacio libre hasta $r - 2\sigma_r$ y no marca la celda final como ocupada. Así
+el ruido monocular no deja manchas de celdas ocupadas alrededor de cada objeto ni despeja
+el lugar donde el objeto realmente está. La ocupación de los objetos que ve la cámara
+llega al mapa por otro camino, más preciso, que es el rayo anclado a la posición
+consolidada del \emph{landmark} que calcula el SLAM.
+
+La segunda regla protege las paredes ya registradas. Si al recorrer un rayo aparece una
+celda con $l > L_{block}$, el recorrido se detiene ahí, y así un rayo con ruido no
+perfora una pared ni pinta marcas fantasma detrás de ella.
+
+Esta regla, en su primera versión, tenía un efecto secundario. Si ningún rayo podía
+cruzar una celda consolidada, esa celda tampoco podía volver a bajar, y una caja que
+alguien retiraba se quedaba en el mapa para siempre; en una prueba ni cincuenta rayos
+posteriores la liberaron. Por eso la tercera regla hace una excepción. Cuando un eco
+preciso ($\sigma_r \leq 0.15$~m) termina más de 0.30~m detrás de la celda consolidada
+(\texttt{MARGEN\_LIBERAR\_M}), el sensor está diciendo que ahí ya no hay nada, y el
+rayo la atraviesa restándole $l_{free}$ como a cualquier otra. Los rayos imprecisos y
+los que terminan cerca de la celda se siguen deteniendo, porque podrían ser la misma
+pared vista con un poco de error. El margen de 0.30~m es mayor que el ruido del
+MB1232 y que el error de pose típico entre dos ciclos, de modo que una pared real no se
+borra por un eco que cae unos centímetros detrás. Así el mapa cumple RF-17, que pide
+actualizar los obstáculos que cambian.
+
+La cuarta aprovecha los
+ultrasónicos que no reciben eco, pues en ese caso se genera un rayo de espacio libre
+del largo del alcance máximo, que no marca ocupación porque su extremo cae fuera del
+alcance útil; con eso se registran pasillos libres.
+
+Las otras tres son más sencillas. En la retícula de tamaño fijo, si el extremo de un rayo
+cae fuera del mapa, el rayo se recorta en el borde y se conservan las celdas libres que
+recorrió, en lugar de descartarlo completo; en el mapa por bloques
+(Sección~\ref{sec:dev_mapeo}) esto ya no hace falta, porque no tiene bordes. Los rayos
+se limitan a 4~m, de modo que una observación más lejana solo despeja espacio hasta ese
+límite. Y las observaciones marcadas como peligro de piso (hoyos, agua, escaleras) no
+tocan el log-odds, porque el espacio encima de un hoyo sí está libre; en su lugar suman
+un impacto en una capa aparte que se describe en el módulo de mapeo.
 
 La Figura~\ref{fig:ray_casos} muestra el resultado de ejecutar el código del módulo en
-tres casos representativos, con celdas de 10~cm para facilitar su lectura.
+tres casos típicos, con celdas de 10~cm para que se lea mejor.
 
 \begin{figure}[H]
     \centering
@@ -153,8 +158,8 @@ tres casos representativos, con celdas de 10~cm para facilitar su lectura.
     \label{fig:ray_casos}
 \end{figure}
 
-El Algoritmo~\ref{alg:dev_ray_update} describe la actualización tal como quedó
-implementada en \texttt{updateFromScan}.
+El Algoritmo~\ref{alg:dev_ray_update} describe la actualización tal como quedó en
+\texttt{updateFromScan}.
 
 \begin{center}
 \captionof{algorithm}{Actualización del mapa por Ray Casting}
@@ -167,8 +172,9 @@ implementada en \texttt{updateFromScan}.
 
 \Statex \textbf{ENTRADA:}
 \Statex pose \Comment{(x, y, $\theta$) estimada por el SLAM}
-\Statex observaciones \Comment{ancladas a landmarks + ecos + rayos sin eco}
+\Statex observaciones \Comment{ancladas a referencias, ecos y rayos sin eco}
 \Statex alcance\_max \Comment{4 m}
+\Statex margen\_liberar \Comment{0.30 m}
 \Statex \textbf{SALIDA:}
 \Statex mapa actualizado (log-odds y capa de peligros)
 
@@ -177,8 +183,8 @@ implementada en \texttt{updateFromScan}.
 \For{cada obs en observaciones}
     \State r $\gets$ mín(obs.r, alcance\_max)
     \State impreciso $\gets$ obs.$\sigma_r > 0.15$
-    \State extremo $\gets$ a\_celda(x + r cos($\theta$ + obs.$\phi$), y + r sin($\theta$ + obs.$\phi$))
-    \State celdas $\gets$ bresenham(celda\_origen, extremo)
+    \State extremo $\gets$ a\_celda(x + r cos($\theta$ + obs.$\phi$), y + r sen($\theta$ + obs.$\phi$))
+    \State celdas $\gets$ recorrido\_bresenham(celda\_origen, extremo)
     \State libres $\gets$ celdas sin la última
     \If{impreciso}
         \State libres $\gets$ primeras celdas hasta la distancia r $- 2\sigma_r$
@@ -186,7 +192,10 @@ implementada en \texttt{updateFromScan}.
     \State bloqueado $\gets$ falso
     \For{cada c en libres}
         \If{l(c) $> L_{block}$}
-            \State bloqueado $\gets$ verdadero;\; salir del ciclo
+            \State detras $\gets$ distancia(c, extremo)
+            \If{impreciso O detras $\leq$ margen\_liberar}
+                \State bloqueado $\gets$ verdadero;\; salir del ciclo
+            \EndIf
         \EndIf
         \State l(c) $\gets$ saturar(l(c) + $l_{free}$, $-5$, $+5$)
     \EndFor
@@ -205,26 +214,25 @@ implementada en \texttt{updateFromScan}.
 
 \subsection{Rayos de consulta}
 
-La segunda función del módulo es medir el espacio libre alrededor del usuario sobre
-el mapa construido. La función \texttt{castDistance} recorre con Bresenham las celdas
-desde la pose en una dirección dada y devuelve la distancia al centro de la primera
-celda bloqueada, entendida como una celda con $l > 1.0$ o con al menos dos impactos
-en la capa de peligros; si no encuentra ninguna, devuelve el alcance máximo de 4~m.
+La segunda función del módulo es medir el espacio libre que rodea al usuario. La
+función \texttt{castDistance} recorre con Bresenham las celdas que hay desde la pose en
+una dirección dada y devuelve la distancia al centro de la primera celda bloqueada, que
+es la que tiene $l > 1.0$ o al menos dos impactos en la capa de peligros. Si no
+encuentra ninguna, devuelve el alcance máximo de 4~m.
 
-Para construir las variables del vector de estado del módulo de navegación, la
-función \texttt{directionDistances} divide el entorno del usuario en tres sectores
-(Figura~\ref{fig:ray_sectores}): frente ($|\phi| \leq 30^\circ$), izquierda
-($30^\circ < \phi \leq 90^\circ$) y derecha ($-90^\circ \leq \phi < -30^\circ$). En
-cada sector se lanzan cinco rayos equiespaciados y se conserva la distancia mínima,
-lo cual es conservador: basta con que un rayo encuentre un obstáculo para que el
-sector se considere ocupado a esa distancia.
+Para armar las variables del vector de estado de la navegación, la función
+\texttt{directionDistances} divide el entorno en tres sectores
+(Figura~\ref{fig:ray_sectores}), que son el frente ($|\phi| \leq 30^\circ$), la
+izquierda ($30^\circ < \phi \leq 90^\circ$) y la derecha ($-90^\circ \leq \phi <
+-30^\circ$). En cada sector se lanzan cinco rayos equiespaciados y se queda la distancia
+más corta. Es un criterio conservador, porque basta con que un rayo choque con algo para
+que todo el sector se considere ocupado a esa distancia.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{Capturas_TT2/raycasting_sectores.png}
     \caption{Rayos de consulta por sector sobre el mapa construido en simulación. El
-    título indica las distancias resultantes que se entregan al módulo de
-    navegación.}
+    título indica las distancias que se entregan al módulo de navegación.}
     \label{fig:ray_sectores}
 \end{figure}
 
@@ -241,8 +249,8 @@ sector se considere ocupado a esa distancia.
 \Statex \textbf{SALIDA:} $d_{\text{front}}$, $d_{\text{left}}$, $d_{\text{right}}$
 
 \Statex
-\Function{castDistance}{x, y, $\alpha$}
-    \For{cada c en bresenham(a\_celda(x, y), a\_celda(x + 4 cos $\alpha$, y + 4 sin $\alpha$))}
+\Function{distancia\_libre}{x, y, $\alpha$}
+    \For{cada c en recorrido\_bresenham(a\_celda(x, y), a\_celda(x + 4 cos $\alpha$, y + 4 sen $\alpha$))}
         \If{c no es la celda del usuario Y (l(c) $> 1.0$ O peligros(c) $\geq 2$)}
             \State \Return mín(4, distancia(x, y, centro(c)))
         \EndIf
@@ -251,10 +259,10 @@ sector se considere ocupado a esa distancia.
 \EndFunction
 
 \Statex
-\For{cada sector (a0, a1) en \{frente: ($-30^\circ$, $30^\circ$), izq: ($30^\circ$, $90^\circ$), der: ($-90^\circ$, $-30^\circ$)\}}
+\For{cada sector (a0, a1) en \{frente: ($-30^\circ$, $30^\circ$), izquierda: ($30^\circ$, $90^\circ$), derecha: ($-90^\circ$, $-30^\circ$)\}}
     \State d $\gets$ 4
     \For{k = 0 hasta 4}
-        \State d $\gets$ mín(d, castDistance(x, y, $\theta$ + a0 + (a1 $-$ a0) k / 4))
+        \State d $\gets$ mín(d, distancia\_libre(x, y, $\theta$ + a0 + (a1 $-$ a0) k / 4))
     \EndFor
     \State d\_sector $\gets$ d
 \EndFor
@@ -264,25 +272,25 @@ sector se considere ocupado a esa distancia.
 \vspace{-0.9cm}
 \rule{\textwidth}{0.4pt}
 
-El módulo de navegación utiliza además una versión vectorizada con NumPy del mismo
-principio para simular sensores durante el entrenamiento del agente, la cual se
-documentará junto con ese módulo.
+El módulo de navegación usa además una versión vectorizada con NumPy de la misma idea
+para simular los sensores durante el entrenamiento del agente, como se explica en su
+sección.
 
 \subsection{Resultados}
 
-En el banco de simulación, la actualización del mapa con todas las observaciones de un
-ciclo (cuatro a seis rayos) tomó en promedio 0.15~ms, y en el procesamiento de video
-real, incluyendo el despeje de la huella del usuario, 0.23~ms por ciclo. La
-construcción completa del cuadro para navegación, que incluye los quince rayos de
-consulta y el mapa local, tomó 0.51~ms. Estos tiempos son dos órdenes de magnitud
-menores que el periodo de 100~ms que impone RNF-03, por lo que el Ray Casting no
-representa un cuello de botella del sistema.
+En el banco de simulación, actualizar el mapa con todas las observaciones de un ciclo
+(entre cuatro y seis rayos) toma en promedio 0.15~ms, y en el procesamiento de video,
+contando el despeje de la huella del usuario, 0.23~ms. Construir el cuadro completo para
+la navegación, con los quince rayos de consulta y el mapa local, toma 0.51~ms. En la
+Raspberry Pi del prototipo estos pasos tardan \TODO{tiempo de actualización y consulta
+del mapa en la Raspberry Pi}. Son tiempos muy por debajo del periodo de 100~ms que pide
+RNF-03, así que el Ray Casting no frena al sistema.
 
-Para cuantificar la aportación de las reglas añadidas se realizó un experimento de
-ablación en el banco de simulación, desactivándolas una por una. Además de la
-precisión y la exhaustividad, se contó el número de celdas marcadas como ocupadas que
-no tienen ningún obstáculo real a menos de 10~cm (celdas falsas). Los resultados se
-muestran en la Tabla~\ref{tab:ray_ablacion}.
+Para medir cuánto aportan las reglas agregadas se hizo un experimento de ablación en el
+banco, apagándolas una por una. Además de la precisión y la exhaustividad, se contaron
+las celdas marcadas como ocupadas que no tienen ningún obstáculo real a menos de 10~cm,
+a las que aquí se llama celdas falsas. Los resultados están en la
+Tabla~\ref{tab:ray_ablacion}.
 
 \begin{table}[H]
 \centering
@@ -294,50 +302,42 @@ muestran en la Tabla~\ref{tab:ray_ablacion}.
 \textbf{Configuración} & \textbf{Precisión} & \textbf{Exhaustividad} &
 \textbf{Ocupadas} & \textbf{Falsas} \\
 \hline
-Vigente (todas las reglas) & 0.60 & 0.31 & 152 & 60 \\
+Vigente (todas las reglas) & 0.60 & 0.31 & 154 & 62 \\
 Sin $L_{block}$ & 0.58 & 0.30 & 172 & 73 \\
-Rango monocular crudo marca ocupación & 0.60 & 0.32 & 157 & 63 \\
-Sin anclar a \emph{landmarks} (rango crudo) & 0.62 & 0.31 & 150 & 57 \\
+Rango monocular crudo marca ocupación & 0.59 & 0.32 & 160 & 66 \\
+Sin anclar a \emph{landmarks} (rango crudo) & 0.60 & 0.31 & 151 & 60 \\
 Sin las tres reglas & 0.57 & 0.35 & 192 & 82 \\
 \hline
 \end{tabular}
 \end{table}
 
-En conjunto, las reglas reducen las celdas falsas de 82 a 60 (alrededor de 27\,\%), y
-la mayor parte de esa mejora proviene de $L_{block}$. Quitar las tres reglas sube un
-poco la exhaustividad, porque el mapa marca más celdas, pero a costa de más celdas
-falsas. Las reglas del rango monocular y del anclaje casi no modifican las métricas
-globales del banco, porque la mayoría de las celdas ocupadas corresponden a paredes
-registradas por ultrasonido y los objetos son una fracción pequeña del mapa; su
-efecto es local, alrededor de cada objeto, donde evitan manchas difusas y marcas
-duplicadas. También se observa que cerca del 40\,\% de las celdas ocupadas no
-coinciden con un obstáculo real dentro de la tolerancia de 10~cm. La causa principal
-no es el Ray Casting sino el error de pose: con un ATE de 0.21~m, una pared registrada
-en distintos momentos queda dibujada con un desplazamiento de varias celdas. La Sección~\ref{sec:dev_mapeo}
-analiza la calidad del mapa con mayor detalle.
+En conjunto, las reglas bajan las celdas falsas de 82 a 62, alrededor de un 25\,\%, y
+casi toda la mejora viene de $L_{block}$. Sin las tres reglas la exhaustividad sube un
+poco, porque el mapa marca más celdas, pero a costa de más celdas falsas. Las reglas del
+rango monocular y del anclaje casi no mueven las métricas globales, porque la mayoría
+de las celdas ocupadas son paredes registradas por el ultrasonido y los objetos son una
+parte pequeña del mapa; su efecto es local, alrededor de cada objeto, donde evitan
+manchas y marcas repetidas. También llama la atención que cerca del 40\,\% de las celdas
+ocupadas no coincide con un obstáculo real dentro de los 10~cm de tolerancia. La causa
+principal no está en el Ray Casting sino en el error de pose, porque con un ATE de
+0.21~m una pared que se registró en distintos momentos queda dibujada varias celdas
+corrida. La Sección~\ref{sec:dev_mapeo} analiza la calidad del mapa con más detalle.
 
 \subsection{Limitaciones}
 
-\begin{itemize}
-    \item \textbf{Celdas consolidadas permanentes.} La regla $L_{block}$ impide que un
-    rayo de espacio libre atraviese una celda con $l > 2$, lo cual también impide que
-    esa celda vuelva a disminuir. En la práctica, una celda que recibió dos o más
-    impactos precisos queda marcada como ocupada de forma permanente: se verificó que
-    ni cincuenta rayos posteriores que la atraviesan la liberan. Esto significa que
-    un obstáculo que desaparece (por ejemplo, una caja que se retira) permanece en el
-    mapa, lo cual no cumple por completo con RF-17 en el caso de desaparición de
-    obstáculos. Una corrección posible es permitir que los rayos precisos, cuyo
-    extremo está claramente más allá de la celda, sí reduzcan su valor.
-    \item \textbf{Huecos entre celdas.} Bresenham visita una sola celda por paso, por
-    lo que un rayo de consulta diagonal puede pasar entre dos celdas ocupadas que solo
-    se tocan por una esquina y reportar libre un frente bloqueado. Esto es frecuente en
-    mapas con ecos dispersos. El módulo de navegación lo mitiga lanzando un abanico de
-    tres sub-rayos por dirección; una alternativa sería usar el recorrido de
-    Amanatides y Woo en la consulta.
-    \item \textbf{Mapa bidimensional.} Los rayos se trazan en el plano, por lo que
-    obstáculos colgantes (ramas, letreros a la altura de la cabeza) solo se registran
-    si los detecta la visión.
-    \item Como el rango monocular nunca marca ocupación por sí solo, los obstáculos de
-    clases que la visión no reconoce y que no producen eco ultrasónico no aparecen en
-    el mapa.
-\end{itemize}
+Solo los ecos precisos pueden liberar una celda consolidada, y en la práctica esos ecos
+vienen casi siempre de los ultrasónicos, que miran al frente. Un obstáculo retirado que
+queda a un costado, fuera del haz, tarda más en borrarse, hasta que el usuario voltea
+hacia él. \TODO{tiempo que tarda en borrarse del mapa una caja retirada en las pruebas
+con el prototipo}.
+
+Bresenham visita una sola celda por paso, así que un rayo de consulta en diagonal puede
+colarse entre dos celdas ocupadas que solo se tocan por una esquina y reportar libre un
+frente que está bloqueado. Esto pasa seguido en mapas con ecos dispersos. El módulo de
+navegación lo compensa lanzando un abanico de tres sub-rayos por dirección, y otra
+opción sería usar el recorrido de Amanatides y Woo en las consultas.
+
+Además, los rayos se trazan en el plano, de modo que los obstáculos colgantes, como
+ramas o letreros a la altura de la cabeza, solo se registran si la cámara los detecta.
+Y como el rango monocular nunca marca ocupación por sí solo, los obstáculos de clases que
+la visión no reconoce y que tampoco devuelven eco no aparecen en el mapa.

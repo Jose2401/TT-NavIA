@@ -16,6 +16,7 @@ import time
 from dataclasses import replace
 
 from navigation_feed import safetyAlerts, _sectorOf as _sectorDe
+from nombres import nombreEs
 
 _COOLDOWN = {0: 2.5, 1: 8.0}
 CONF_MIN_MAPA = 0.35    # debajo de esto el mapa no dispara alertas
@@ -59,6 +60,11 @@ def _armarSalidaPip(hablarFn=None, interrumpirFn=None):
             hablarFn(dialogo.obstacle_warning(ev.tipo, ev.direccion,
                                               ev.distancia_m, ev.nivel))
 
+    # el dialogo del equipo solo conoce carros/personas: le enseñamos el
+    # nombre en español de todas nuestras clases (con articulo indef)
+    from nombres import _ES
+    for label in _ES:
+        dialogo.OBSTACLE_NAMES.setdefault(label, nombreEs(label, "indef"))
     salida = SalidaPip(on_interrupt=interrumpirFn, on_speak=_hablar)
     salida.start()
     salida.CRITICAL = pipmod.CRITICAL
@@ -189,8 +195,8 @@ class ModuloAlertas:
                 if _sectorDe(det.bearing) != "front":
                     continue
                 crudas.append({"prio": 1,
-                               "texto": f"Posible {det.label} al frente "
-                                        "(solo cámara).",
+                               "texto": f"Posible {nombreEs(det.label, None)} "
+                                        "al frente (solo cámara).",
                                "tipo": det.label, "dir": "frente",
                                "dist": det.range_est})
 

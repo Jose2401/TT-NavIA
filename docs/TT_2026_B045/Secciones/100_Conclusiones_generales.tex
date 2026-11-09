@@ -1,19 +1,16 @@
 \chapter{Resultados y conclusiones}
 \label{cap:conclusiones}
 
-Este capítulo reúne los resultados obtenidos durante Trabajo Terminal II, los
-contrasta con los objetivos y requerimientos planteados en TT1 y presenta las
-conclusiones del trabajo. Los detalles de cada medición están en el
-Capítulo~\ref{cap:desarrollo}.
+En este capítulo se juntan los resultados de Trabajo Terminal II, se comparan con los
+objetivos y requerimientos planteados en TT1 y se presentan las conclusiones del
+trabajo. El detalle de cada medición está en el Capítulo~\ref{cap:desarrollo}.
 
 % ==============================================================================
 \section{Resumen de resultados}
 % ==============================================================================
 
-La Tabla~\ref{tab:resumen_resultados} resume el resultado principal de cada módulo.
-Salvo que se indique otra cosa, las mediciones se hicieron en simulación o con
-videos reales grabados con teléfono, porque los sensores físicos aún no estaban
-montados en el prototipo.
+La Tabla~\ref{tab:resumen_resultados} resume el resultado principal de cada módulo y
+las condiciones en las que se obtuvo.
 
 \begin{longtable}{|p{2.6cm}|p{6.4cm}|p{5.5cm}|}
 \caption{Resultados principales por módulo}
@@ -26,33 +23,40 @@ montados en el prototipo.
 \textbf{Módulo} & \textbf{Resultado} & \textbf{Condición de la prueba} \\
 \hline
 \endhead
-Visión & Detecta personas, muebles, puertas (con su estado), escaleras y peligros de
-piso; unos 160~ms por cuadro. & 19 videos reales; CPU de computadora portátil. Sin
-datos etiquetados para medir precisión. \\
+Prototipo & \TODO{resultado general de los recorridos con el prototipo} &
+\TODO{lugares, participantes y número de recorridos} \\
 \hline
-SLAM & ATE de 0.21~m en recorridos cortos; con odometría sesgada, entre la mitad y tres cuartas partes del error
-de la odometría pura. & Banco de simulación, seis semillas. \\
+Visión & Detecta personas, muebles, puertas con su estado, escaleras y peligros de piso,
+en unos 160~ms por cuadro. & 19 videos reales, CPU de computadora portátil;
+\TODO{precisión en imágenes etiquetadas del prototipo}. \\
+\hline
+SLAM & ATE de 0.21~m en recorridos cortos; con odometría sesgada, el error queda entre
+la mitad y tres cuartas partes del de la odometría sola. & Banco de simulación, seis
+semillas. \\
 \hline
 Ray Casting & Actualización y consulta del mapa en menos de 1~ms por ciclo. &
 Simulación y videos reales. \\
 \hline
-Mapeo & Mapa por bloques con persistencia; 19 mapas de lugares reales entre 24 y
+Mapeo & Mapa por bloques con persistencia; 19 mapas de lugares reales de entre 24 y
 60~KB. & Videos reales. \\
 \hline
-Navegación & 97.8\,\% de llegadas, 2.0\,\% de choques y ningún episodio de caída en
-880 episodios. & Simulador de entrenamiento con 19 mapas reales. \\
+Navegación & 97.8\,\% de llegadas, 2.0\,\% de choques y ninguna caída en 880
+episodios. & Simulador de entrenamiento con 19 mapas reales. \\
 \hline
-Navegación (sistema completo) & 20 de 20 sesiones sin choque; llegada a menos de 1~m
-del objeto en 7. & Lazo cerrado con todos los módulos y usuario virtual. \\
+Navegación (sistema completo) & 20 de 20 sesiones con llegada; en 17 el usuario terminó
+a menos de 1~m del objeto. & Lazo cerrado con todos los módulos y un usuario
+virtual. \\
 \hline
-Alertas & Alertas críticas y de precaución con pitido estéreo; evaluación en
-0.007~ms por ciclo. & Escenario simulado con persona cruzando. \\
+Alertas & Avisos críticos y de precaución con pitido estéreo; evaluación en 0.007~ms
+por ciclo. & Escenario simulado con una persona cruzando. \\
 \hline
-PLN & 78.4\,\% de intenciones correctas en 102 frases nuevas; 2.8~ms por frase. &
-Frases redactadas fuera del conjunto de referencia. \\
+PLN & 51.2\,\% de intenciones correctas en 86 frases coloquiales que el PLN no conocía,
+en 4.8~ms por frase. & Frases redactadas antes de la evaluación y fuera del conjunto de
+referencia. \\
 \hline
-Voz completa & 91.7\,\% de comandos correctos en limpio con voces naturales; 59 a
-71\,\% con ruido de 5 a 10~dB. & Voz sintetizada, Vosk y PLN. \\
+Voz completa & 95.0\,\% de comandos correctos en limpio con voces naturales, y de 62 a
+74\,\% con ruido de 5 a 10~dB. & Voz sintetizada, Vosk y PLN;
+\TODO{resultado con personas y el micrófono del prototipo}. \\
 \hline
 \end{longtable}
 
@@ -60,56 +64,53 @@ Voz completa & 91.7\,\% de comandos correctos en limpio con voces naturales; 59 
 \section{Cumplimiento de los objetivos}
 % ==============================================================================
 
-\textbf{Objetivo general.} Se desarrolló un sistema de navegación asistida que
-integra visión artificial, localización y mapeo, trazado de rayos, aprendizaje por
-refuerzo e interacción por voz, y que funciona de extremo a extremo en una
-computadora portátil con cámara, con videos grabados y en simulación. Se diseñó
-además el armazón de los lentes. Queda pendiente la integración física: montar los
-sensores, medir el desempeño en la Raspberry Pi y probar el sistema con personas.
-El objetivo general se cumple en lo que respecta al software y queda parcialmente
-cumplido en lo que respecta al prototipo físico.
+\textbf{Objetivo general.} Se desarrolló un sistema de navegación asistida montado en
+unos lentes, que combina visión artificial, localización y mapeo simultáneos, trazado de
+rayos, aprendizaje por refuerzo e interacción por voz. El sistema funciona de principio a
+fin en el prototipo, y el mismo código corre en una computadora portátil con cámara,
+con videos grabados y en simulación. \TODO{resumen de cómo se comportó el prototipo en
+las pruebas con personas y si se considera cumplido el objetivo general}.
 
-\textbf{Objetivo 1: modelo de visión con precisión mayor al 80\,\%.} Se integraron tres
-modelos que detectan y segmentan los objetos relevantes, incluidas las puertas, que
-no estaban cubiertas por el detector original. La precisión en el entorno de uso no
-se pudo medir por falta de un conjunto de imágenes etiquetadas, y las pruebas con
-video mostraron errores concretos (mamparas confundidas con puertas, tapetes
-detectados como hoyos). El objetivo se cumple parcialmente.
+\textbf{Objetivo 1, modelo de visión con precisión mayor al 80\,\%.} Se integraron tres
+modelos que detectan y segmentan los objetos relevantes, incluidas las puertas, que el
+detector original no reconocía. Las pruebas con video mostraron también sus errores
+típicos, como confundir mamparas con puertas o tapetes con hoyos. \TODO{precisión medida
+en imágenes etiquetadas del prototipo y veredicto sobre el 80\,\%}.
 
-\textbf{Objetivo 2: reconstrucción del escenario con trazado de rayos.} El mapa del
+\textbf{Objetivo 2, reconstrucción del escenario con trazado de rayos.} El mapa del
 entorno se construye con Ray Casting sobre una retícula de ocupación, se divide en
 bloques, se guarda entre sesiones y se consulta para obtener las distancias que usa la
-navegación. Se optó por Ray Casting en lugar de un trazado de rayos completo por su
-costo, tal como se justificó en el marco teórico. El objetivo se cumple, con la
-limitación de que los obstáculos que desaparecen no se borran del mapa.
+navegación. Se eligió Ray Casting en lugar de un trazado de rayos completo por su costo,
+como se justificó en el marco teórico. El mapa también se corrige cuando el entorno
+cambia, porque los ecos precisos liberan las celdas de un obstáculo que se retiró y la
+segmentación borra los falsos peligros de piso. El objetivo se cumple.
 
-\textbf{Objetivo 3: navegación con una medición del terreno 90\,\% segura.} En el
-simulador, el agente llegó a la meta en el 97.8\,\% de los episodios y chocó en el
-2.0\,\%, sin caídas en peligros de piso; en las sesiones completas no hubo ningún
-choque. Si se toma la tasa de episodios sin choque ni caída como medida de seguridad,
-el objetivo se cumple en simulación. Las sesiones completas mostraron, sin embargo,
-que el sistema puede anunciar la llegada antes de tiempo, y la validación con
-usuarios reales sigue pendiente.
+\textbf{Objetivo 3, navegación con una medición del terreno 90\,\% segura.} En el
+simulador, el agente llegó a la meta en el 97.8\,\% de los episodios, chocó en el
+2.0\,\% y nunca cayó en un peligro de piso. Con el sistema completo en lazo cerrado,
+el usuario virtual llegó en las 20 sesiones y en 17 terminó a menos de un metro del
+objeto. Tomando como medida de seguridad la tasa de episodios sin choque ni caída, el
+objetivo se cumple en simulación. \TODO{tasa de recorridos seguros con el prototipo y
+veredicto sobre el 90\,\%}.
 
-\textbf{Objetivo 4: interacción por voz.} El sistema reconoce comandos de voz sin
-conexión, responde en voz alta con una voz natural y funciona por completo sin
-pantalla. El objetivo se cumple; la limitación está en el desempeño con ruido.
+\textbf{Objetivo 4, interacción por voz.} El sistema reconoce comandos de voz sin
+conexión, responde en voz alta con una voz natural y se puede usar sin pantalla. El
+objetivo se cumple; su punto débil es el desempeño con ruido.
 
-\textbf{Objetivo 5: lenguaje natural para indicaciones cotidianas y de emergencia.}
-El PLN reconoce 14 intenciones, incluida la emergencia, y la personalidad del
-asistente hace que las indicaciones suenen cercanas. El objetivo se cumple
-parcialmente: la tasa de acierto en frases nuevas es de 78\,\%, algunos errores
-invierten el sentido de la orden, y el aviso a contactos de emergencia no se
-implementó.
+\textbf{Objetivo 5, lenguaje natural para indicaciones cotidianas y de emergencia.}
+El PLN reconoce 14 intenciones, entre ellas la emergencia, y la personalidad del
+asistente hace que las indicaciones suenen cercanas, con los objetos nombrados en
+español. Los comandos de uso frecuente se interpretan bien, pero con frases coloquiales
+que no conoce el PLN acierta poco más de la mitad, y algunas emergencias dichas sin
+palabras de lesión no se reconocen, así que el objetivo se cumple en parte. \TODO{aviso
+a contactos de emergencia}.
 
 % ==============================================================================
 \section{Cumplimiento de los requerimientos}
 % ==============================================================================
 
-La Tabla~\ref{tab:cumplimiento_req} presenta el estado de cada requerimiento al
-cierre de esta etapa. ``Parcial'' indica que la función existe pero con una
-limitación medida o sin el hardware; ``pendiente'' indica que no se ha podido
-verificar.
+La Tabla~\ref{tab:cumplimiento_req} muestra el estado de cada requerimiento. ``Parcial''
+quiere decir que la función existe pero con una limitación medida.
 
 \begin{longtable}{|p{1.6cm}|p{4.6cm}|p{1.9cm}|p{6.4cm}|}
 \caption{Estado de los requerimientos funcionales y no funcionales}
@@ -126,9 +127,10 @@ RF-01 & Captura de voz con detección de actividad & Cumplido & Vosk detecta el 
 de cada frase. \\
 \hline
 RF-02 & Filtrado de audio & No implementado & El filtro de Wiener no mostró mejora y
-se omitió. \\
+se dejó fuera. \\
 \hline
-RF-03 & Reconocimiento e intención & Cumplido & 78.4\,\% en frases nuevas. \\
+RF-03 & Reconocimiento e intención & Parcial & 95\,\% de los comandos frecuentes en
+limpio, pero 51.2\,\% en frases coloquiales nuevas. \\
 \hline
 RF-04 & Síntesis de voz & Cumplido & Voz neuronal con respaldo local. \\
 \hline
@@ -138,39 +140,40 @@ detener. \\
 RF-06 & Todas las funciones por voz & Parcial & Las alertas se apagan con tecla o
 botón, no por voz. \\
 \hline
-RF-07 & Captura y preprocesamiento & Parcial & Solo redimensionamiento; el resto se
-descartó. \\
+RF-07 & Captura y preprocesamiento & Parcial & Solo redimensionamiento; los demás
+pasos se descartaron. \\
 \hline
 RF-08 & Detección con localización & Cumplido & Personas, obstáculos, puertas,
 escaleras y desniveles. \\
 \hline
-RF-09 & Clasificación y riesgo & Cumplido & Riesgo 0 a 3 según la tabla de TT1. \\
+RF-09 & Clasificación y riesgo & Cumplido & Riesgo de 0 a 3 según la tabla de TT1. \\
 \hline
-RF-10 & Distancia a los objetos & Cumplido & Monocular, con errores de 25\,\% o
-más. \\
+RF-10 & Distancia a los objetos & Cumplido & Monocular, con errores de 25\,\% o más,
+y precisa con el ultrasonido dentro de su cono. \\
 \hline
-RF-11 & Validación con sensores & Parcial & Validación cruzada con los ultrasónicos
-frontales implementada y probada en simulación; sensores sin montar. \\
+RF-11 & Validación con sensores & Cumplido & Validación cruzada con los dos
+ultrasónicos frontales. \\
 \hline
 RF-12 & Alerta de obstáculo & Cumplido & Pitido estéreo y frase corta. \\
 \hline
-RF-13 & Relaciones contextuales & Parcial & Estado de puertas, corregido con el
+RF-13 & Relaciones contextuales & Parcial & Estado de las puertas, corregido con el
 ultrasonido; no se mide la obstrucción de pasillos. \\
 \hline
-RF-14 & Estimación de la pose & Cumplido & EKF. \\
+RF-14 & Estimación de la pose & Cumplido & EKF con IMU y respaldo por flujo
+óptico. \\
 \hline
 RF-15 & Mapa incremental & Cumplido & Sin mapa previo. \\
 \hline
 RF-16 & Zonas libres y ocupadas & Cumplido & Log-odds y capa de peligros. \\
 \hline
-RF-17 & Actualización dinámica & Parcial & Los obstáculos que desaparecen no se
-borran. \\
+RF-17 & Actualización dinámica & Cumplido & Los ecos precisos liberan las celdas de
+obstáculos retirados. \\
 \hline
 RF-18 & Ruta local & Cumplido & Agente de PPO y planificador. \\
 \hline
 RF-19 & Actualización periódica de la ruta & Cumplido & Cada 2~s. \\
 \hline
-RF-20 & Recálculo ante obstáculos & Cumplido & Decisión inmediata ante alerta
+RF-20 & Recálculo ante obstáculos & Cumplido & Decisión inmediata ante una alerta
 crítica. \\
 \hline
 RF-21 & Instrucciones de movimiento & Cumplido & Frases de TT1 y versión
@@ -178,45 +181,47 @@ amigable. \\
 \hline
 RF-22 & Destinos sobre el mapa & Cumplido & Por etiqueta de \emph{landmark}. \\
 \hline
-RF-23 & Ruta alternativa por voz & Parcial & No obliga a tomar otro camino. \\
+RF-23 & Ruta alternativa por voz & Cumplido & Bloquea por tres minutos el tramo
+siguiente y replanea; avisa si no hay otra ruta. \\
 \hline
-RNF-01 & Alerta en menos de 2~s & Cumplido & Unos 160~ms en la computadora
-portátil; falta medir en la Raspberry Pi. \\
+RNF-01 & Alerta en menos de 2~s & \TODO{} & Unos 160~ms en la computadora portátil;
+\TODO{latencia en la Raspberry Pi}. \\
 \hline
 RNF-02 & Voz en menos de 500~ms & Cumplido & 10~ms de procesamiento, sin contar la
 espera de fin de frase. \\
 \hline
-RNF-03 & Mapa a 10~Hz & Parcial & 1~ms por ciclo; la percepción limita a unos
-6~Hz. \\
+RNF-03 & Mapa a 10~Hz & \TODO{} & 1~ms por ciclo para la representación;
+\TODO{frecuencia del ciclo completo en la Raspberry Pi}. \\
 \hline
 RNF-04 & Ruta cada 10~s o menos & Cumplido & Cada 2~s. \\
 \hline
-RNF-05 & Hardware limitado & Pendiente & Inferencia de navegación en NumPy lista;
-falta medir en la Raspberry Pi. \\
+RNF-05 & Hardware limitado & \TODO{} & Inferencia de navegación en NumPy;
+\TODO{uso de CPU y memoria en la Raspberry Pi}. \\
 \hline
-RNF-06 & Precisión de detección del 90\,\% & Pendiente & Sin datos etiquetados. \\
+RNF-06 & Precisión de detección del 90\,\% & \TODO{} & \TODO{precisión medida}. \\
 \hline
-RNF-07 & 92\,\% de comandos con 60~dB & No cumplido & 91.7\,\% en limpio; 59 a
-71\,\% con ruido. \\
+RNF-07 & 92\,\% de comandos con 60~dB & No cumplido & 95.0\,\% en limpio y de 62 a
+74\,\% con ruido. \\
 \hline
 RNF-08 & Degradación controlada & Cumplido & Respaldos sin IMU, sin micrófono, sin
 voz y sin internet. \\
 \hline
-RNF-09 & Comportamiento conservador & Cumplido & Capa de seguridad y confianza de
-la pose. \\
+RNF-09 & Comportamiento conservador & Cumplido & Capa de seguridad, confianza de la
+pose y alertas ``posible'' para detecciones contradichas. \\
 \hline
 RNF-10 & Interfaz solo por voz & Parcial & Igual que RF-06. \\
 \hline
-RNF-11 & Instrucciones claras & Parcial & Algunas frases usan etiquetas en
-inglés. \\
+RNF-11 & Instrucciones claras & Cumplido & Frases cortas en español, distancias en
+pasos y objetos con su nombre en español. \\
 \hline
 RNF-12 & Retroalimentación proactiva & Cumplido & Alertas, llegada y cambios de
 zona. \\
 \hline
-RNF-13 & Operación sin internet & Cumplido & Con voz de respaldo menos natural. \\
+RNF-13 & Operación sin internet & Cumplido & Con una voz de respaldo menos
+natural. \\
 \hline
-RNF-14 & Modularidad & Cumplido & Interfaces comunes; mismo código con cámara, video
-y simulación. \\
+RNF-14 & Modularidad & Cumplido & Interfaces comunes; el mismo código trabaja con
+cámara, video y simulación. \\
 \hline
 RNF-15 & Actualización de modelos & Cumplido & Modelos intercambiables y script de
 reentrenamiento. \\
@@ -227,43 +232,44 @@ reentrenamiento. \\
 \section{Conclusiones}
 % ==============================================================================
 
-Al terminar TT1 la propuesta era una arquitectura en papel. Al terminar TT2 existe un
-sistema que recibe la imagen de una cámara, entiende una orden hablada, construye un
-mapa del lugar, decide por dónde ir y lo dice en voz alta, con todos los módulos
+Al terminar TT1, la propuesta era una arquitectura en papel. Al terminar TT2 hay unos
+lentes que reciben la imagen de una cámara, entienden una orden hablada, construyen un
+mapa del lugar, deciden por dónde ir y lo dicen en voz alta, con todos los módulos
 conectados y probados. Ese es el resultado principal del trabajo.
 
-La conclusión técnica más importante tiene que ver con la forma de evaluar. Varios
-módulos parecían terminados hasta que se midieron dentro del sistema completo. El
-agente de navegación llega al 97.8\,\% de las metas en su simulador, pero cuando opera
-junto con el SLAM y la estimación monocular de distancia, la llegada correcta a menos
-de un metro baja a 7 de 20 sesiones. El EKF apenas mejora a la odometría en recorridos
-cortos, y en dos de seis corridas la empeora; su valor aparece cuando la odometría
-tiene sesgo. El PLN acierta casi
-siempre las frases con las que fue escrito y bastante menos las que dice una persona
-cualquiera. Ninguno de estos hallazgos se habría visto midiendo cada módulo por
-separado, y por eso las pruebas en lazo cerrado y con datos nuevos fueron la parte más
-útil de la etapa.
+La lección técnica más importante tiene que ver con la forma de evaluar. Varios módulos
+parecían terminados hasta que se midieron dentro del sistema completo. El agente de
+navegación llega al 97.8\,\% de las metas en su simulador, pero al trabajar junto con el
+SLAM y la estimación monocular apareció un problema que solo se nota con todo integrado,
+porque la regla de llegada por percepción terminaba las sesiones antes de tiempo. Medir
+el sistema en lazo cerrado permitió encontrar la causa, corregirla y pasar de 7 a 17
+sesiones de 20 con el usuario a menos de un metro del objeto. Algo parecido pasó con el
+EKF, que apenas mejora a la odometría en recorridos cortos y muestra su valor cuando la
+odometría tiene sesgo, y con el PLN, que acierta casi siempre las frases parecidas a
+las suyas y apenas la mitad de las expresiones coloquiales que nunca vio. Ninguno de estos
+hallazgos se habría visto midiendo cada módulo por separado.
 
-La segunda conclusión es que la percepción determina el desempeño del resto. El
-mapa, la navegación y las alertas tardan alrededor de un milisegundo por ciclo; la
-visión tarda más de cien. Los errores siguen la misma proporción: una distancia
-monocular equivocada en un solo cuadro termina una sesión de navegación, y un tapete
-detectado como hoyo dispara una alerta falsa. Las mejoras con mayor impacto para la
-siguiente etapa son de percepción: la odometría física con la IMU, los ultrasónicos
-montados y un conjunto de imágenes propio para reentrenar el detector con las
-puertas y mamparas del entorno real.
+La segunda conclusión es que la percepción manda sobre el resto. El mapa, la navegación
+y las alertas tardan alrededor de un milisegundo por ciclo, mientras que la visión tarda
+más de cien, y con los errores pasa algo similar; una distancia monocular equivocada o un
+tapete tomado por hoyo se propagan hasta lo que escucha el usuario. Por eso las mejoras
+con más impacto son de percepción, como reentrenar el detector con imágenes del entorno
+real o separar la banqueta del arroyo vehicular. En esa misma línea, poner los
+ultrasónicos al frente resultó una buena decisión, porque permiten confirmar lo que ve la
+cámara, detectar vidrios y mamparas y dar por buena una llegada solo cuando la distancia
+está verificada.
 
-La tercera es una decisión de diseño que resultó acertada: mantener capas
-determinísticas por encima de los modelos aprendidos. La capa de seguridad del
-navegador, las palabras de seguridad del PLN y el módulo de alertas siempre activo no
-dependen de que la red neuronal acierte, y en las sesiones de prueba ningún usuario
-virtual chocó. Para un sistema que guía a una persona con discapacidad visual, esa
-redundancia vale más que unos puntos porcentuales de precisión.
+La tercera es que vale la pena mantener capas determinísticas por encima de los modelos
+aprendidos. La capa de seguridad del navegador, las palabras de seguridad del PLN y el
+módulo de alertas siempre encendido no dependen de que una red neuronal acierte. Aun así,
+las pruebas mostraron sus límites; en una de las primeras sesiones, un objeto bajo y muy cercano
+quedó fuera de la vista de todos los sensores y el sistema siguió indicando avanzar. Para
+un sistema que guía a una persona con discapacidad visual, esa redundancia es necesaria,
+y también lo es reconocer qué casos no cubre.
 
-Finalmente, el sistema no está listo para usarse sin supervisión. Funciona como
-prototipo de investigación, que es el alcance definido para este trabajo, y deja
-identificados, medidos y con una corrección propuesta los problemas que lo separan
-de una herramienta de uso cotidiano. Como se estableció en las limitaciones del
-proyecto, es un complemento del bastón blanco y no un sustituto.
+Por último, el sistema es un prototipo de investigación, que es el alcance definido para
+este trabajo. \TODO{conclusión a partir de las pruebas con el prototipo y de la opinión
+de los participantes}. Como se estableció en las limitaciones del proyecto, los lentes
+son un complemento del bastón blanco y no lo sustituyen.
 
 \input{Secciones/101_Trabajo_a_futuro}

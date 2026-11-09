@@ -145,6 +145,18 @@ class OidoVoz:
 AYUDA_VOZ = ("Puede decir: llévame a un lugar, pausa, continúa, detener, "
              "otra ruta, dónde estoy, qué hay enfrente, o repite.")
 
+def _decirDistancia(r):
+    if r < 1.0:
+        return f"{max(10, int(round(r * 10)) * 10)} centímetros"
+    m = int(round(r))
+    return "1 metro" if m == 1 else f"{m} metros"
+
+
+def _contracciones(texto):
+    # "llegamos a el punto" -> "al punto", "de el" -> "del"
+    return texto.replace(" a el ", " al ").replace(" de el ", " del ")
+
+
 _ARTICULOS = ("el ", "la ", "los ", "las ", "un ", "una ", "al ")
 
 
@@ -285,7 +297,8 @@ class Interaccion:
         return msgs
 
     def ciclo(self, navFrame, mgr, alertas=None):
-        label = self.navigator.status.goal_label
+        st0 = self.navigator.status
+        label, dicho = st0.goal_label, st0.goal_nombre
         msgs = self.navigator.update(navFrame, mgr, alertas)
         for m in msgs:
             if self.amigable:
@@ -294,10 +307,19 @@ class Interaccion:
                     if amigo:
                         m.text = amigo
                 elif m.text == "Ha llegado a su destino.":
-                    m.text = self.dialogo.arrival_message(label)
+                    m.text = _contracciones(self.dialogo.arrival_message(
+                        self._nombreDestino(label, dicho)))
             if m.kind == "instruccion":
                 self.ultimaInstruccion = m.text
         return msgs
+
+    def _nombreDestino(self, label, dicho):
+        # se repite lo que dijo el usuario ("la salida"); si no hay
+        # (destino por punto o por landmark), el nombre de la clase
+        from nombres import nombreEs, conArticulo
+        if dicho:
+            return self.dialogo.DISPLAY_NAMES.get(dicho) or conArticulo(dicho)
+        return nombreEs(label)
 
     def _instruccionAmigable(self, action, navFrame):
         # ojo signos: dialogo usa grados>0 = derecha; nuestro phi>0 = izq
@@ -331,12 +353,14 @@ class Interaccion:
                         cerca = d
             if cerca is not None:
                 extra = " en movimiento" if cerca.moving else ""
-                tag = "peligro de piso" if cerca.hazard else cerca.label
+                from nombres import nombreEs
+                tag = nombreEs(cerca.label, "indef")
+                if cerca.hazard:
+                    tag += " en el piso"
+                if cerca.label == "door" and cerca.estado:
+                    tag += f" {cerca.estado}"
                 partes.append(f"{nombre}, {tag}{extra} a "
-                              f"{cerca.range_est:.0f} metros"
-                              if cerca.range_est >= 1.5 else
-                              f"{nombre}, {tag}{extra} a "
-                              f"{int(cerca.range_est * 100)} centímetros")
+                              f"{_decirDistancia(cerca.range_est)}")
             else:
                 d_libre = {"Al frente": frame.d_front,
                            "A la izquierda": frame.d_left,
@@ -345,10 +369,7 @@ class Interaccion:
                     partes.append(f"{nombre} libre")
                 else:
                     partes.append(f"{nombre}, obstáculo a "
-                                  f"{d_libre:.0f} metros"
-                                  if d_libre >= 1.5 else
-                                  f"{nombre}, obstáculo a "
-                                  f"{int(d_libre * 100)} centímetros")
+                                  f"{_decirDistancia(d_libre)}")
         if frame.room:
             partes.append(f"Está en {frame.room}")
         return ". ".join(partes) + "."

@@ -2,7 +2,7 @@ pln
 .venv
 __pycache__/
 croquis*
-
+/docs/presentacion
 maps/
 *.pyc
 models/*_cmp*

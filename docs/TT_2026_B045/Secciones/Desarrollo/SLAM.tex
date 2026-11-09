@@ -5,44 +5,36 @@
 
 \subsection{Descripción y alcance}
 
-El módulo de SLAM responde en cada ciclo a la pregunta ``¿dónde está el usuario y
-hacia dónde mira?'' dentro del mapa que se va construyendo. Ni la cámara ni los
-sensores ultrasónicos entregan esa información de manera directa: la cámara
-proporciona detecciones con una dirección precisa pero una distancia imprecisa, el
-ultrasonido mide distancias puntuales en direcciones fijas y cualquier estimación de
-movimiento acumula error con el tiempo (deriva). El SLAM integra estas fuentes,
-mantiene una medida explícita de cuánto se puede confiar en la pose y la entrega
-sincronizada a los módulos de Ray Casting y mapeo, cumpliendo RF-14 y RF-15.
+El módulo de SLAM responde en cada ciclo una pregunta sencilla de plantear y difícil de
+resolver, que es dónde está el usuario y hacia dónde mira dentro del mapa que se va
+construyendo. Ningún sensor entrega esa respuesta de manera directa. La cámara da la
+dirección de los objetos con buena precisión, pero su distancia con mucho error; el
+ultrasonido mide distancias exactas, pero solo hacia el frente; y cualquier estimación
+de movimiento acumula error con el tiempo. El SLAM junta estas fuentes, lleva la cuenta
+de qué tanto se puede confiar en la pose y la entrega a los módulos de Ray Casting y
+mapeo. Con ello cubre RF-14 y RF-15.
 
-En el diseño de TT1 se planteó un SLAM ``simplificado'' basado en un filtro de Kalman
-extendido (EKF) \cite{kalman1960, thrun2005probabilistic}. Durante el desarrollo se
-mantuvo esa idea, pero se precisó la variante concreta. En el EKF-SLAM clásico
-\cite{smith1990uncertain} el vector de estado incluye la pose y la posición de cada
-\emph{landmark}, por lo que la matriz de covarianza crece de forma cuadrática con el
-número de elementos del mapa \cite{bailey2006slam2}. Por otro lado, los sistemas de
-SLAM visual como ORB-SLAM \cite{murartal2015orbslam} rastrean miles de puntos
-característicos y requieren una capacidad de cómputo que excede lo razonable para una
-Raspberry Pi que además debe ejecutar la detección de objetos. Por ello se adoptó la
-siguiente simplificación:
+En TT1 se planteó un SLAM ``simplificado'' basado en un filtro de Kalman extendido
+(EKF) \cite{kalman1960, thrun2005probabilistic}, y esa idea se mantuvo, aunque hubo que
+precisar la variante. En el EKF-SLAM clásico \cite{smith1990uncertain} el vector de
+estado incluye la pose y la posición de cada \emph{landmark}, de modo que la matriz de
+covarianza crece con el cuadrado del número de elementos del mapa
+\cite{bailey2006slam2}. Los sistemas de SLAM visual como ORB-SLAM
+\cite{murartal2015orbslam}, por su parte, siguen miles de puntos característicos y
+piden más cómputo del que una Raspberry Pi puede dar mientras también ejecuta la
+detección de objetos.
 
-\begin{itemize}
-    \item El estado del filtro contiene \textbf{únicamente la pose}
-    $\boldsymbol{\mu} = [x,\; y,\; \theta]^T$, con una covarianza $\mathbf{P}$ de
-    $3 \times 3$. El costo de las operaciones matriciales es constante sin importar
-    cuántos objetos haya en el mapa.
-    \item Los \emph{landmarks} se guardan en una lista ligera fuera del filtro. Cada
-    uno conserva su posición, su etiqueta semántica (silla, puerta, mesa, etc.) y el
-    número de veces que se ha observado.
-    \item La corrección utiliza el \emph{landmark} asociado como referencia, pero su
-    incertidumbre de posición (que disminuye con cada reobservación) se suma a la
-    covarianza de la innovación, de modo que el filtro no trata a un objeto recién
-    visto como verdad absoluta.
-\end{itemize}
-
-Académicamente, esta variante corresponde a un \textbf{EKF de localización con mapeo
-incremental de apoyo}: se prioriza una pose barata y estable sobre el refinamiento del
-mapa dentro del filtro. El refinamiento del mapa de ocupación lo realizan los módulos
-de Ray Casting y mapeo, con la pose que el SLAM les entrega.
+Por eso el estado del filtro contiene solo la pose, $\boldsymbol{\mu} = [x,\; y,\;
+\theta]^T$, con una covarianza $\mathbf{P}$ de $3 \times 3$, y el costo de cada ciclo es
+el mismo sin importar cuántos objetos haya en el mapa. Los \emph{landmarks} se guardan
+en una lista ligera fuera del filtro, cada uno con su posición, su etiqueta (silla,
+puerta, mesa, etc.) y el número de veces que se ha visto. Al corregir, el filtro usa el
+\emph{landmark} asociado como referencia y suma su incertidumbre de posición, que baja
+con cada nueva observación, a la covarianza de la innovación; así no trata a un objeto
+recién visto como si su posición fuera exacta. En términos académicos, la variante
+corresponde a un EKF de localización con mapeo incremental de apoyo. Se privilegia una
+pose barata y estable, y el mapa de ocupación lo refinan después los módulos de Ray
+Casting y mapeo con la pose que el SLAM les entrega.
 
 \subsection{Entradas y salidas}
 
@@ -67,7 +59,7 @@ $\sigma_r$ y $\sigma_\phi$, y banderas que indican si la observación puede crea
 \emph{landmarks}, si puede corregir la pose y si es un peligro de piso. \\
 \hline
 \texttt{SlamOutput} & Salida & Pose $(x, y, \theta)$, covarianza de $3 \times 3$,
-marca de tiempo y confianza escalar en $[0, 1]$. \\
+marca de tiempo y confianza entre 0 y 1. \\
 \hline
 Lista de \emph{landmarks} & Salida & Posición, etiqueta, número de avistamientos y
 estado (candidato o confirmado) de cada elemento del mapa ligero. \\
@@ -75,8 +67,7 @@ estado (candidato o confirmado) de cada elemento del mapa ligero. \\
 \end{tabular}
 \end{table}
 
-A manera de ejemplo, la salida de un ciclo serializada para el resto del sistema tiene
-la siguiente forma:
+Como ejemplo, la salida de un ciclo, tal como la recibe el resto del sistema, se ve así.
 
 \begin{verbatim}
 pose: {x: 1.83, y: 0.42, theta: 0.31}
@@ -89,46 +80,44 @@ confianza: 0.94
 
 \subsection{Fuentes de movimiento}
 
-La etapa de predicción requiere conocer cuánto avanzó y cuánto giró el usuario desde
-el ciclo anterior. El módulo \texttt{odometry.py} obtiene esta información de tres
-formas, en orden de preferencia:
+Para la predicción hace falta saber cuánto avanzó y cuánto giró el usuario desde el
+ciclo anterior. El módulo \texttt{odometry.py} obtiene ese dato de tres maneras, en
+orden de preferencia.
 
-\begin{enumerate}
-    \item \textbf{IMU BNO055.} El sensor de orientación absoluta de nueve ejes de Bosch
-    \cite{bno055_datasheet} se conecta al mismo bus I2C que los sensores ultrasónicos y
-    se configura en modo de fusión NDOF, en el cual el propio chip combina
-    acelerómetro, giroscopio y magnetómetro. El giro del ciclo se obtiene como la
-    diferencia normalizada del rumbo fusionado. Para el avance se descartó integrar la
-    aceleración dos veces, ya que el error crece de forma cuadrática con el tiempo; en
-    su lugar se utiliza navegación peatonal por estima (\emph{pedestrian dead
-    reckoning}) \cite{harle2013pdr}: se detecta cada paso como un pico en la magnitud
-    de la aceleración lineal superior a $1.8$~m/s$^2$, con rearme cuando baja de
-    $0.8$~m/s$^2$ y un intervalo mínimo de $0.3$~s entre pasos, y cada paso aporta una
-    longitud configurable (por defecto $0.68$~m). La IMU también reporta la
-    inclinación real de la cabeza, que se utiliza para la estimación de distancia por
-    plano de piso descrita más adelante.
-    \item \textbf{Flujo óptico.} Si la IMU no está disponible o falla la lectura I2C,
-    el sistema recurre automáticamente a la cámara: se seleccionan puntos
-    característicos con el detector de Shi--Tomasi \cite{shi1994good}, se rastrean
-    entre cuadros con el método de Lucas--Kanade \cite{lucas1981iterative} y el giro se
-    calcula a partir de la mediana del desplazamiento horizontal $\overline{\Delta u}$
-    como $\Delta\theta = \arctan(\overline{\Delta u} / f)$, donde $f$ es la distancia
-    focal en píxeles. En este modo no se estima avance.
-    \item \textbf{Detector de caminata (solo videos).} Para procesar videos grabados,
-    que no traen información inercial, se resta al flujo óptico la componente debida
-    al giro; si el flujo residual supera $1.4$~píxeles se considera que el usuario
-    camina y se asume una velocidad de $1.1$~m/s. Esta aproximación permite construir
-    mapas a partir de videos, aunque la escala del mapa depende de la velocidad
-    supuesta.
-\end{enumerate}
+La fuente principal es la IMU BNO055 de Bosch \cite{bno055_datasheet}, conectada al
+mismo bus I2C que los ultrasónicos y configurada en su modo de fusión NDOF, en el que
+el propio chip combina acelerómetro, giroscopio y magnetómetro. El giro de cada ciclo es
+la diferencia entre dos lecturas del rumbo fusionado. Para el avance no se integra la
+aceleración dos veces, porque el error crecería con el cuadrado del tiempo; se usa en
+cambio la navegación peatonal por estima (\emph{pedestrian dead reckoning})
+\cite{harle2013pdr}. Cada paso se detecta como un pico en la magnitud de la aceleración
+lineal por encima de 1.8~m/s$^2$, con rearme cuando baja de 0.8~m/s$^2$ y un mínimo de
+0.3~s entre pasos, y cada paso suma una longitud configurable, de 0.68~m por defecto. La
+IMU también mide la inclinación real de la cabeza, que se usa para la distancia por
+plano de piso. Como la orientación del chip dentro del armazón puede variar, se
+configura con las posiciones de montaje P0 a P7 de su hoja de datos, y el programa
+\texttt{odometry.py --calibrar} identifica, con los lentes puestos, qué eje corresponde
+al cabeceo, su signo y su cero.
+
+Si la IMU no responde, el sistema pasa solo al flujo óptico de la cámara. Se eligen
+puntos característicos con el detector de Shi--Tomasi \cite{shi1994good}, se siguen
+entre cuadros con el método de Lucas--Kanade \cite{lucas1981iterative} y el giro se
+calcula con la mediana del desplazamiento horizontal, $\Delta\theta =
+\arctan(\overline{\Delta u} / f)$, donde $f$ es la distancia focal en píxeles. En este
+modo no se estima el avance.
+
+La tercera fuente solo se usa al procesar videos grabados, que no traen información
+inercial. Al flujo óptico se le resta la parte que corresponde al giro, y si lo que
+queda supera 1.4 píxeles se considera que el usuario está caminando, con una velocidad
+supuesta de 1.1~m/s. Con esto se pueden construir mapas a partir de videos, aunque su
+escala depende de esa velocidad.
 
 \subsection{Construcción de observaciones}
 
-Las detecciones del módulo de visión y las lecturas ultrasónicas se convierten en
-observaciones de rango y dirección en la función \texttt{fuseObservations}. La
-dirección de un objeto se obtiene de la columna central de su caja delimitadora y del
-campo de visión horizontal de la cámara; la distancia se estima de forma monocular con
-el modelo de cámara estenopeica \cite{hartley2004multiple}:
+La función \texttt{fuseObservations} convierte las detecciones de la cámara y las
+lecturas ultrasónicas en observaciones de rango y dirección. La dirección de un objeto
+sale de la columna central de su caja y del campo de visión de la cámara. La distancia
+se estima con el modelo de cámara estenopeica \cite{hartley2004multiple}:
 
 \[
 d_{h} = \frac{f \, H_{\text{típica}}}{h_{\text{bbox}}},
@@ -136,27 +125,23 @@ d_{h} = \frac{f \, H_{\text{típica}}}{h_{\text{bbox}}},
 f = \frac{W/2}{\tan(\text{FOV}_h/2)}
 \]
 
-donde $H_{\text{típica}}$ es la altura típica de la clase detectada (1.65~m para una
-persona, 0.90~m para una silla, 2.00~m para una puerta, entre otras) y $h_{\text{bbox}}$
-la altura de la caja en píxeles. Cuando el borde inferior de la caja es visible, se
-calcula también la distancia por intersección con el plano del piso:
+donde $H_{\text{típica}}$ es la altura típica de la clase (1.65~m para una persona,
+0.90~m para una silla o 2.00~m para una puerta, por ejemplo) y $h_{\text{bbox}}$ es la
+altura de la caja en píxeles. Si el borde inferior de la caja se ve en la imagen, se
+calcula además la distancia al punto donde el objeto toca el piso:
 
 \[
 d_{g} = \frac{h_{c}}{\tan\!\left(\alpha + \arctan\dfrac{v_b - H/2}{f}\right)}
 \]
 
-donde $h_c = 1.55$~m es la altura de la cámara, $\alpha$ su inclinación hacia el piso
-(10° por defecto, o la medida por la IMU) y $v_b$ la fila del borde inferior. El
-resultado final es $d_g$ acotado al intervalo $[0.4\,d_h,\; 1.6\,d_h]$, lo cual combina
-la robustez del primer modelo con la mejor precisión del segundo. Durante las pruebas
-con video se detectó que redimensionar los cuadros a una resolución fija de
-$640 \times 480$ deformaba la relación de aspecto de los videos 16:9 y producía
-distancias alrededor de 25\,\% más cortas; la versión final conserva la relación de
-aspecto y deriva toda la geometría de una sola distancia focal.
+con $h_c = 1.55$~m como altura de la cámara, $\alpha$ como su inclinación hacia el piso
+(10° por defecto, o la que mide la IMU) y $v_b$ como la fila del borde inferior. El
+resultado final es $d_g$, pero acotado entre $0.4\,d_h$ y $1.6\,d_h$, lo que combina la
+estabilidad del primer modelo con la mejor precisión del segundo.
 
-Cada observación lleva su propia incertidumbre, con la que el filtro pondera
-cada fuente sin ramas especiales. La Tabla~\ref{tab:slam_fusion} resume las reglas de
-fusión.
+Cada observación lleva su propia incertidumbre y el filtro la usa para dar más o menos
+peso a cada fuente, sin necesidad de casos especiales. La Tabla~\ref{tab:slam_fusion}
+resume las reglas.
 
 \begin{table}[H]
 \centering
@@ -171,7 +156,7 @@ Detección visual con eco ultrasónico compatible & 0.05~m & $3^\circ$ & Rango d
 ultrasonido y dirección de la cámara. Corrige la pose y crea \emph{landmarks} con 2
 avistamientos. \\
 \hline
-Detección visual sin respaldo & $0.30\,r$ & $3^\circ$ & Corrige la pose; requiere 4
+Detección visual sin respaldo & $0.30\,r$ & $3^\circ$ & Corrige la pose; hacen falta 4
 avistamientos para confirmar un \emph{landmark}. \\
 \hline
 Peligro de piso (hoyo, agua, escalera) & $0.20\,r$ & $3^\circ$ & Va a la capa de
@@ -180,63 +165,60 @@ peligros del mapa. \\
 Eco ultrasónico sin detección visual & 0.05~m & $10^\circ$ & Solo actualiza el mapa;
 no corrige la pose ni crea \emph{landmarks}. \\
 \hline
-Objeto en movimiento & --- & --- & Se descarta: una persona caminando no es una
+Objeto en movimiento & --- & --- & Se descarta, porque una persona caminando no es una
 referencia fija. \\
 \hline
 \end{tabular}
 \end{table}
 
-Una detección visual y un eco se consideran el mismo objeto si sus direcciones difieren
-menos de $20^\circ$ y sus rangos son compatibles
-($|r_{us} - r_{mono}| \leq \max(0.6,\; 0.5\, r_{mono})$).
+Una detección y un eco se toman como el mismo objeto si sus direcciones difieren menos
+de $20^\circ$ y sus rangos son compatibles, es decir, si
+$|r_{us} - r_{mono}| \leq \max(0.6,\; 0.5\, r_{mono})$.
 
-\textbf{Decisión sobre los ecos de pared.} En una primera versión los ecos ultrasónicos
-sin detección visual también creaban \emph{landmarks} y corregían la pose. Al revisar
-el banco de simulación se encontró un error en el cálculo de la intersección de rayos
-con las paredes que hacía los ecos escasos e irreales. Con la geometría corregida se
-observó que el punto de reflexión de un eco sobre una pared se desliza a lo largo de
-ella conforme el usuario camina, por lo que no es un punto fijo del mundo y tratarlo
-como \emph{landmark} corrompe la pose. Excluir los ecos aislados de la corrección
-redujo el ATE promedio de 0.53~m a 0.27~m sobre seis corridas. Los ecos sí se envían
-siempre al mapa de ocupación, pues el extremo del rayo cae sobre la superficie real que
-lo produjo.
+\textbf{Ecos de pared.} En una primera versión, los ecos que no tenían una detección
+visual asociada también creaban \emph{landmarks} y corregían la pose. El problema es que
+el punto donde rebota un eco sobre una pared se desliza conforme el usuario camina, así
+que no es un punto fijo del mundo, y usarlo como referencia echaba a perder la pose. Al
+sacar esos ecos de la corrección, el ATE promedio del banco bajó de 0.53 a 0.27~m. Los
+ecos se siguen enviando siempre al mapa de ocupación, porque el extremo de cada rayo sí
+cae sobre la superficie que lo produjo.
 
-\textbf{Ultrasonido frontal y validación cruzada.} En el armazón final los dos
-MB1232 van al frente, uno sobre cada cristal, separados unos 10~cm y apuntando en la
-misma dirección que la cámara (Sección~\ref{sec:dev_prototipo}). La geometría vive en
-un solo archivo, \texttt{montaje.py}, que usan el driver, la fusión y el simulador.
-Según su hoja de datos, el MB1232 es un sensor de haz angosto: su cono útil es de
-unos $\pm 14^\circ$ y su alcance depende del tamaño del objeto; alimentado a 3.3~V,
-como en la Raspberry Pi, detecta una persona hasta 1.8~m y una pared hasta unos 6~m
-\cite{mb1232_datasheet}. Con este montaje se implementaron cuatro mecanismos:
+\textbf{Ultrasonido frontal y validación cruzada.} Los dos MB1232 del prototipo van al
+frente, uno sobre cada cristal, separados unos 10~cm y apuntando en la misma dirección
+que la cámara (Sección~\ref{sec:dev_prototipo}). Según su hoja de datos son sensores de
+haz angosto, con un cono útil de unos $\pm 14^\circ$, y su alcance depende del tamaño
+del objeto; alimentados a 3.3~V, como en la Raspberry Pi, detectan a una persona hasta a
+1.8~m y una pared hasta a unos 6~m \cite{mb1232_datasheet}. Sobre este montaje se
+construyeron cuatro mecanismos.
 
-\begin{itemize}
-    \item Cada lectura se convierte a coordenadas polares centradas en la cámara,
-    tomando en cuenta el desplazamiento lateral del sensor, antes de fusionarla.
-    \item Cuando los dos sensores ven el mismo objeto, la diferencia entre sus rangos
-    indica de qué lado está ($y = (r_{der}^2 - r_{izq}^2)/2s$, con $s$ la separación),
-    con una zona muerta de 5~cm para no reaccionar al ruido.
-    \item Validación cruzada, que corresponde al Algoritmo 2 de TT1: una detección
-    visual dentro del cono con un eco compatible se marca como confirmada por ambos y
-    toma el rango del ultrasonido; si el haz debería alcanzar al objeto (por tamaño,
-    altura y distancia) pero el eco está mucho más lejos, la detección se marca como
-    contradicha. En las puertas, un eco que pasa por el vano indica que está abierta y
-    un eco a la distancia de la puerta, que está cerrada, lo que corrige las puertas de
-    vidrio que la segmentación daba por abiertas.
-    \item Rechazo de ecos de piso: con la cabeza inclinada, el haz rebota en el suelo.
-    Con el cabeceo medido por la IMU se calcula a qué distancia toca el piso y esas
-    lecturas se tratan como corredor libre, no como pared.
-\end{itemize}
+El primero es geométrico. Cada lectura se convierte a coordenadas polares centradas en
+la cámara, tomando en cuenta el desplazamiento lateral de su sensor, antes de
+fusionarla. El segundo aprovecha que los dos sensores ven casi lo mismo, pues cuando
+ambos detectan el mismo objeto, la diferencia entre sus rangos indica de qué lado está,
+con $y = (r_{der}^2 - r_{izq}^2)/2s$, donde $s$ es la separación, y una zona muerta de
+5~cm para no reaccionar al ruido.
 
-Como los dos sensores miran hacia el mismo lado, si disparan al mismo tiempo cada uno
-escucha el eco del otro; el driver los dispara de forma alternada en un hilo propio,
-con 100~ms entre la orden de medir y la lectura, como indica la hoja de datos.
+El tercero es la validación cruzada, que corresponde al Algoritmo 2 de TT1. Si una
+detección visual cae dentro del cono y hay un eco compatible, se marca como confirmada
+por ambos sensores y toma el rango del ultrasonido, que es mucho más preciso. Si el haz
+debería alcanzar al objeto, por su tamaño, su altura y su distancia, pero el eco está
+mucho más lejos, la detección se marca como contradicha. Con las puertas el criterio
+sirve también para saber su estado, ya que un eco que pasa por el vano indica que está
+abierta y uno a la distancia de la puerta, que está cerrada; esto corrige las puertas de
+vidrio que la segmentación daba por abiertas. El cuarto mecanismo descarta los ecos del
+piso. Cuando el usuario inclina la cabeza, el haz rebota en el suelo; con el cabeceo de
+la IMU se calcula a qué distancia lo toca, y esas lecturas se tratan como espacio libre
+y no como pared.
+
+Como los dos sensores apuntan al mismo lado, si disparan a la vez cada uno escucha el eco
+del otro. Por eso el driver los dispara de forma alternada en un hilo propio, con
+100~ms entre la orden de medir y la lectura, como indica la hoja de datos.
 
 \subsection{Predicción}
 
-La pose se propaga con un modelo de arco, en el que la traslación se aplica en la
-orientación promedio del tramo, lo cual es más exacto que aplicarla en la orientación
-inicial cuando el usuario gira mientras camina:
+La pose se propaga con un modelo de arco, en el que el avance se aplica en la
+orientación promedio del tramo. Es más exacto que aplicarlo en la orientación inicial
+cuando el usuario gira mientras camina.
 
 \[
 \theta_m = \theta + \frac{\Delta\theta}{2},
@@ -250,7 +232,7 @@ y + \Delta d \sin\theta_m \\
 \end{bmatrix}
 \]
 
-El jacobiano respecto al estado y la propagación de la covarianza son:
+El jacobiano respecto al estado y la propagación de la covarianza quedan como sigue.
 
 \[
 \mathbf{G} =
@@ -263,17 +245,17 @@ El jacobiano respecto al estado y la propagación de la covarianza son:
 \mathbf{P}' = \mathbf{G}\,\mathbf{P}\,\mathbf{G}^T + \mathbf{Q}
 \]
 
-El ruido de proceso crece con la magnitud del movimiento:
-$\mathbf{Q} = \operatorname{diag}(\sigma_t^2,\, \sigma_t^2,\, \sigma_\theta^2)$ con
+El ruido de proceso crece con el movimiento, con
+$\mathbf{Q} = \operatorname{diag}(\sigma_t^2,\, \sigma_t^2,\, \sigma_\theta^2)$,
 $\sigma_t = 0.02 + 0.05\,|\Delta d|$~m y
 $\sigma_\theta = 0.035\,\max(|\Delta\theta|,\, 0.01) + 0.3^\circ$. La covarianza
-inicial es $\operatorname{diag}(0.01,\; 0.01,\; (1^\circ)^2)$, ya que el sistema
-arranca en el origen de su propio marco de referencia.
+inicial es $\operatorname{diag}(0.01,\; 0.01,\; (1^\circ)^2)$, porque el sistema arranca
+en el origen de su propio marco de referencia.
 
 \subsection{Modelo de observación y asociación de datos}
 
 Para un \emph{landmark} conocido en $(l_x, l_y)$, la observación esperada y su
-jacobiano son:
+jacobiano son los siguientes.
 
 \[
 \delta_x = l_x - x,\quad \delta_y = l_y - y,\quad q = \delta_x^2 + \delta_y^2
@@ -290,9 +272,9 @@ jacobiano son:
 \end{bmatrix}
 \]
 
-Cada observación $\mathbf{z} = [r, \phi]^T$ se asocia con el \emph{landmark}
-confirmado más cercano en distancia de Mahalanobis, siempre que esta sea menor que un
-umbral de compuerta (\emph{gating}) \cite{barshalom2001estimation, neira2001jcbb}:
+Cada observación $\mathbf{z} = [r, \phi]^T$ se asocia con el \emph{landmark} confirmado
+más cercano en distancia de Mahalanobis, siempre que esa distancia quede por debajo de un
+umbral de compuerta \cite{barshalom2001estimation, neira2001jcbb}.
 
 \[
 \boldsymbol{\nu} = \mathbf{z} - \hat{\mathbf{z}},
@@ -302,19 +284,19 @@ umbral de compuerta (\emph{gating}) \cite{barshalom2001estimation, neira2001jcbb
 d^2 = \boldsymbol{\nu}^T \mathbf{S}^{-1} \boldsymbol{\nu} < \gamma^2,\quad \gamma = 3
 \]
 
-donde $\mathbf{R} = \operatorname{diag}(\sigma_r^2, \sigma_\phi^2)$ proviene de la
-propia observación y $\mathbf{R}_{lm}$ modela la incertidumbre del \emph{landmark},
-con $\sigma_{lm} = 0.4/\sqrt{n}$~m para un elemento observado $n$ veces. Además, solo
-se comparan elementos con etiquetas compatibles: una silla no puede asociarse con una
-mesa, mientras que las etiquetas genéricas (por ejemplo, un eco sin clase) son
-compatibles con todas y heredan la etiqueta cuando la visión identifica al objeto.
+Aquí $\mathbf{R} = \operatorname{diag}(\sigma_r^2, \sigma_\phi^2)$ viene de la propia
+observación y $\mathbf{R}_{lm}$ representa la incertidumbre del \emph{landmark}, con
+$\sigma_{lm} = 0.4/\sqrt{n}$~m para un elemento visto $n$ veces. Además, solo se comparan
+etiquetas compatibles, así que una silla nunca se asocia con una mesa. Las etiquetas
+genéricas, como la de un eco sin clase, son compatibles con todas y toman la etiqueta
+correcta en cuanto la cámara identifica al objeto.
 
 \subsection{Corrección}
 
-Si existe asociación, se calcula la ganancia de Kalman y se actualizan la pose y la
-covarianza. Para la covarianza se usa la forma de Joseph, que es numéricamente más
-estable que la forma simplificada y conserva a $\mathbf{P}$ simétrica y semidefinida
-positiva \cite{grewal2015kalman}:
+Si hay asociación, se calcula la ganancia de Kalman y se actualizan la pose y la
+covarianza. Para la covarianza se usa la forma de Joseph, que es más estable
+numéricamente que la forma simplificada y mantiene a $\mathbf{P}$ simétrica y
+semidefinida positiva \cite{grewal2015kalman}.
 
 \[
 \mathbf{K} = \mathbf{P}\mathbf{H}^T\mathbf{S}^{-1},
@@ -327,62 +309,56 @@ positiva \cite{grewal2015kalman}:
 \]
 
 donde $\mathbf{R}_{ef} = \mathbf{R} + \mathbf{R}_{lm}$. Después de cada corrección se
-impone un piso a la varianza de cada componente ($10^{-4}$~m$^2$ en posición y
-$(0.5^\circ)^2$ en orientación). Sin este piso, tras miles de correcciones el filtro
-declararía una pose ``perfecta'' y dejaría de reaccionar a observaciones nuevas, lo
-cual sería grave si el usuario tropieza o es desplazado.
+impone un mínimo a la varianza de cada componente ($10^{-4}$~m$^2$ en posición y
+$(0.5^\circ)^2$ en orientación). Sin ese mínimo, tras miles de correcciones el filtro
+terminaría creyendo que su pose es perfecta y dejaría de reaccionar a observaciones
+nuevas, lo cual sería grave si el usuario tropieza o alguien lo mueve.
 
-Si en un ciclo ninguna observación se asocia, no se ejecuta la corrección y el sistema
-continúa solo con la predicción. La confianza reportada combina la incertidumbre y el
-número $k$ de ciclos consecutivos sin corrección:
+Si en un ciclo ninguna observación se asocia, no hay corrección y el sistema sigue solo
+con la predicción. La confianza que se reporta combina la incertidumbre con el número
+$k$ de ciclos seguidos sin corrección,
 
 \[
-c = \frac{1}{1 + \operatorname{tr}(\mathbf{P})}\cdot 0.9^{k}
+c = \frac{1}{1 + \operatorname{tr}(\mathbf{P})}\cdot 0.9^{k},
 \]
 
-De esta forma el módulo de navegación sabe cuándo la pose es menos fiable y puede
-actuar de forma conservadora, como exige RNF-09.
+de modo que el módulo de navegación sabe cuándo la pose es menos fiable y puede actuar
+con más cuidado, como pide RNF-09.
 
 \subsection{Gestión de \emph{landmarks}}
 
-Una observación que no se asocia con ningún \emph{landmark} confirmado no se descarta,
-sino que alimenta el mapa ligero mediante el siguiente ciclo de vida:
+Una observación que no se asocia con ningún \emph{landmark} confirmado no se tira; pasa
+a alimentar el mapa ligero. Primero se proyecta al marco global y se busca un candidato
+que corresponda al mismo objeto. La comparación usa la elipse de incertidumbre de la
+observación, que es estrecha en dirección y alargada en profundidad, y gracias a ella la
+misma silla vista a 2.1~m y después a 2.9~m (con el $\pm 30$\,\% de error de la
+estimación monocular) se reconoce como un solo objeto. Si no hay candidato, se crea uno
+nuevo.
 
-\begin{enumerate}
-    \item \textbf{Candidato.} Se proyecta la observación al marco global y se busca un
-    candidato existente que corresponda al mismo objeto. La comparación usa la elipse
-    de incertidumbre de la observación, que es estrecha en dirección y alargada en
-    profundidad: la misma silla vista a 2.1~m y después a 2.9~m (error monocular de
-    $\pm 30$\,\%) se reconoce como un solo objeto y no genera duplicados. Si no
-    existe, se crea un candidato nuevo.
-    \item \textbf{Confirmación.} El candidato se confirma tras 2 avistamientos si la
-    observación tiene respaldo ultrasónico, o tras 4 si es puramente monocular. Así,
-    un falso positivo de YOLO que aparece en uno o dos cuadros no se convierte en un
-    obstáculo inventado. La observación que confirma a un candidato no corrige la pose
-    en ese mismo ciclo, para no contar dos veces la misma evidencia.
-    \item \textbf{Refinamiento.} Cada reobservación desplaza la posición del
-    \emph{landmark} hacia la nueva medición con un factor
-    $\alpha = \max(0.05,\; 1/n)$, que equivale a un promedio acumulado al inicio y a
-    un promedio móvil cuando el objeto ya se ha visto muchas veces.
-    \item \textbf{Poda y deduplicación.} Los candidatos que no se reobservan en 40
-    ciclos se eliminan. Además, dos \emph{landmarks} confirmados con la misma etiqueta
-    a menos de 0.7~m se fusionan en uno solo, ponderando por su número de
-    avistamientos, para corregir la duplicación causada por la deriva.
-\end{enumerate}
+El candidato se confirma tras 2 avistamientos si tiene respaldo del ultrasonido, o tras
+4 si solo lo vio la cámara. Así, un falso positivo de YOLO que aparece en uno o dos
+cuadros no se convierte en un obstáculo inventado. La observación que confirma a un
+candidato no corrige la pose en ese mismo ciclo, para no contar dos veces la misma
+evidencia. Cada vez que el objeto se vuelve a ver, su posición se acerca a la nueva
+medición con un factor $\alpha = \max(0.05,\; 1/n)$, que al principio equivale a un
+promedio acumulado y, cuando el objeto ya se vio muchas veces, a un promedio móvil. Los
+candidatos que no se vuelven a ver en 40 ciclos se eliminan, y dos \emph{landmarks}
+confirmados con la misma etiqueta a menos de 0.7~m se funden en uno, ponderando por sus
+avistamientos, para deshacer duplicados causados por la deriva.
 
-Finalmente, la función \texttt{observationsForMap} reemplaza el rango crudo de cada
-observación asociada por la posición consolidada del \emph{landmark}, con
-$\sigma_r = 0.05$~m. Con ello cada objeto deja en el mapa de ocupación una marca firme
-en la misma celda, en lugar de una mancha dispersa por el ruido monocular. Solo se
-anclan \emph{landmarks} con etiqueta semántica real. Los \emph{landmarks} confirmados
-se pueden exportar e importar entre sesiones (\texttt{exportLandmarks} e
-\texttt{importLandmarks}), lo cual permite que el filtro corrija contra un lugar ya
-conocido desde el primer ciclo.
+Por último, la función \texttt{observationsForMap} cambia el rango crudo de cada
+observación asociada por la posición consolidada de su \emph{landmark}, con
+$\sigma_r = 0.05$~m. Con eso cada objeto deja en el mapa de ocupación una marca firme en
+la misma celda, en lugar de una mancha dispersa por el ruido monocular; solo se anclan
+los \emph{landmarks} con una etiqueta real. Los \emph{landmarks} confirmados se pueden
+guardar y volver a cargar en otra sesión (\texttt{exportLandmarks} e
+\texttt{importLandmarks}), y así el filtro puede corregir contra un lugar conocido desde
+el primer ciclo.
 
 \subsection{Pseudocódigo del ciclo implementado}
 
-El Algoritmo~\ref{alg:dev_slam} resume un ciclo completo del módulo tal como quedó
-implementado en el método \texttt{EKFSlam.step}.
+El Algoritmo~\ref{alg:dev_slam} resume un ciclo completo del módulo, tal como quedó en
+el método \texttt{EKFSlam.step}.
 
 \begin{center}
 \captionof{algorithm}{Ciclo del módulo SLAM implementado}
@@ -414,14 +390,14 @@ implementado en el método \texttt{EKFSlam.step}.
         \State continuar
     \EndIf
     \If{obs.puede\_corregir es falso}
-        \State registrar obs solo para el mapa
+        \State guardar obs solo para el mapa
         \State continuar
     \EndIf
-    \State lm, $\mathbf{H}$, $\mathbf{S}$, $\boldsymbol{\nu}$ $\gets$
-    asociar(obs) \Comment{Mahalanobis $< 3$, etiqueta compatible}
-    \If{no hay lm}
-        \If{obs.puede\_crear\_landmark}
-            \State alimentar\_candidato(obs) \Comment{crea, refina o confirma}
+    \State ref, $\mathbf{H}$, $\mathbf{S}$, $\boldsymbol{\nu}$ $\gets$
+    asociar(obs) \Comment{Mahalanobis $< 3$ y etiqueta compatible}
+    \If{no se encontró ref}
+        \If{obs.puede\_crear\_referencia}
+            \State actualizar\_candidato(obs) \Comment{crea, refina o confirma}
         \EndIf
         \State continuar
     \EndIf
@@ -429,8 +405,8 @@ implementado en el método \texttt{EKFSlam.step}.
     \State $\boldsymbol{\mu} \gets \boldsymbol{\mu} + \mathbf{K}\boldsymbol{\nu}$;\;
     normalizar $\theta$
     \State $\mathbf{P} \gets$ forma\_de\_Joseph($\mathbf{P}$, $\mathbf{K}$, $\mathbf{H}$, $\mathbf{R}_{ef}$)
-    \State aplicar piso de varianza a $\mathbf{P}$
-    \State refinar posición de lm;\; lm.avistamientos $\gets$ lm.avistamientos + 1
+    \State aplicar varianza mínima a $\mathbf{P}$
+    \State refinar posición de ref;\; ref.avistamientos $\gets$ ref.avistamientos + 1
     \State hubo\_correccion $\gets$ verdadero
 \EndFor
 
@@ -439,14 +415,14 @@ implementado en el método \texttt{EKFSlam.step}.
 \If{hubo\_correccion}
     \State $k \gets 0$
 \Else
-    \State $k \gets k + 1$ \Comment{ciclos en dead reckoning}
+    \State $k \gets k + 1$ \Comment{ciclos solo con predicción}
 \EndIf
-\State podar candidatos no vistos en 40 ciclos
-\State fusionar landmarks confirmados iguales a menos de 0.7 m
+\State eliminar candidatos no vistos en 40 ciclos
+\State fundir referencias confirmadas iguales a menos de 0.7 m
 \State confianza $\gets 0.9^{k} / (1 + \operatorname{tr}(\mathbf{P}))$
 
 \Statex
-\State \Return (x, y, $\theta$, $\mathbf{P}$, ahora(), confianza)
+\State \Return (x, y, $\theta$, $\mathbf{P}$, tiempo\_actual(), confianza)
 
 \end{algorithmic}
 \vspace{-0.9cm}
@@ -454,14 +430,17 @@ implementado en el método \texttt{EKFSlam.step}.
 
 \subsection{Resultados}
 
+\textbf{Pruebas con el prototipo.} \TODO{error de posición medido con el prototipo en
+un recorrido de longitud conocida (por ejemplo, un pasillo marcado en el piso),
+número de \emph{landmarks} confirmados y estado de calibración de la IMU}.
+
 \textbf{Exactitud en el banco de simulación.} La Figura~\ref{fig:slam_trayectorias}
-muestra un recorrido de 300 ciclos por el cuarto simulado. Se comparan la trayectoria
-real, la estimada por el EKF y la que se obtendría integrando únicamente la odometría.
-Las elipses representan dos desviaciones estándar de la posición: crecen mientras el
-usuario no observa objetos conocidos y se contraen al reobservarlos. También se
-observa un \emph{landmark} confirmado junto a la pared derecha (cerca de
-$x = 5.9$~m) que no corresponde a ningún objeto real, producto del error de la
-distancia monocular; este efecto se discute en las limitaciones.
+muestra un recorrido de 300 ciclos por el cuarto simulado, con la trayectoria real, la
+estimada por el EKF y la que resultaría de integrar solo la odometría. Las elipses
+representan dos desviaciones estándar de la posición; crecen mientras el usuario no ve
+objetos conocidos y se encogen al volver a verlos. También aparece un \emph{landmark}
+junto a la pared derecha (cerca de $x = 5.9$~m) que no corresponde a ningún objeto real
+y que es producto del error de la distancia monocular.
 
 \begin{figure}[H]
     \centering
@@ -471,8 +450,8 @@ distancia monocular; este efecto se discute en las limitaciones.
     \label{fig:slam_trayectorias}
 \end{figure}
 
-La Tabla~\ref{tab:slam_semillas} reporta el resultado de seis corridas con semillas
-aleatorias distintas.
+La Tabla~\ref{tab:slam_semillas} reporta seis corridas con semillas aleatorias
+distintas.
 
 \begin{table}[H]
 \centering
@@ -496,16 +475,15 @@ aleatorias distintas.
 \end{tabular}
 \end{table}
 
-El resultado debe leerse con cuidado. En promedio el EKF reduce el error de 0.23 a
-0.21~m, pero no en todas las corridas: en dos de las seis la odometría pura fue más
-precisa. En recorridos cortos y con una odometría sin sesgo, como la del banco,
-integrar la odometría ya es bastante preciso, y las correcciones contra
-\emph{landmarks} ubicados con distancia monocular introducen un error del mismo
-orden que el que eliminan. La odometría real, en cambio, no es así: la longitud de paso nunca está perfectamente
-calibrada y los giroscopios presentan sesgo. Para evaluar este escenario se repitió el
-experimento con recorridos de 1200 ciclos (alrededor de cuatro vueltas al cuarto) y con odometría
-sesgada. Los resultados se muestran en la Tabla~\ref{tab:slam_deriva} y la
-Figura~\ref{fig:slam_deriva}.
+Estos números hay que leerlos con cuidado. En promedio el EKF baja el error de 0.23 a
+0.21~m, pero no en todas las corridas, porque en dos de las seis la odometría sola fue
+más precisa. En recorridos cortos y sin sesgo, como los del banco, integrar la odometría
+ya da un buen resultado, y las correcciones contra \emph{landmarks} ubicados con
+distancia monocular meten un error parecido al que quitan. Con una odometría real la
+historia cambia, porque la longitud de paso nunca queda perfectamente calibrada y los
+sensores tienen sesgo. Para ver ese caso se repitió el experimento con recorridos de
+1200 ciclos (unas cuatro vueltas al cuarto) y con odometría sesgada; los resultados están
+en la Tabla~\ref{tab:slam_deriva} y en la Figura~\ref{fig:slam_deriva}.
 
 \begin{table}[H]
 \centering
@@ -528,91 +506,88 @@ Figura~\ref{fig:slam_deriva}.
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.78\textwidth]{Capturas_TT2/slam_deriva.png}
-    \caption{Recorrido de 1200 ciclos con giroscopio sesgado (semilla 0): la odometría
-    pura gira progresivamente el recorrido; el EKF lo mantiene cerca del real, aunque
-    con desviaciones de hasta un metro en algunos tramos.}
+    \caption{Recorrido de 1200 ciclos con giroscopio sesgado (semilla 0). La odometría
+    sola va girando el recorrido; el EKF lo mantiene cerca del real, aunque con
+    desviaciones de hasta un metro en algunos tramos.}
     \label{fig:slam_deriva}
 \end{figure}
 
 En recorridos largos y con error de escala en el paso, el EKF reduce el error de la
-odometría en alrededor de un tercio, que es el propósito del SLAM. Con el giroscopio
-sesgado lo reduce casi a la mitad en promedio, pero el máximo llega a 1.7~m, y con
-ambos sesgos la mejora baja a una cuarta parte. Al revisar esas corridas se
-encontró una divergencia de orientación: en dos de las seis el error de rumbo
-superó los $100^\circ$ hacia el final del recorrido. Cuando el rumbo está tan
-equivocado, las detecciones dejan de asociarse con los \emph{landmarks} existentes y
-se crean duplicados desplazados (hasta diez sillas en un cuarto que tiene dos), con
-los cuales el filtro queda consistente con un mapa erróneo. Es el modo de falla
-típico de un EKF sin cierre de lazo. En el prototipo este caso es poco probable,
-porque el giro no se integra a partir del giroscopio: se toma del rumbo que entrega la
-BNO055 en su modo de fusión con magnetómetro, y ese rumbo es absoluto, así que el
-sesgo no se va sumando como en la simulación. Esto depende de que la brújula esté
-calibrada; por eso, al arrancar, el sistema revisa el estado de calibración del
-magnetómetro y, si es bajo, le pide al usuario que mueva los lentes en forma de ocho.
-El experimento sigue siendo útil por dos razones: representa lo que pasaría con una
-brújula mal calibrada o alterada por estructuras metálicas, y describe el
-comportamiento del modo de respaldo sin IMU, en el que el giro se estima con flujo
-óptico y sí acumula error.
+odometría en alrededor de un tercio, que es justo para lo que sirve el SLAM. Con el
+giroscopio sesgado lo reduce casi a la mitad en promedio, aunque el máximo llega a
+1.7~m, y con los dos sesgos juntos la mejora baja a una cuarta parte. En esas corridas
+se observó una divergencia de orientación, ya que en dos de las seis el error de rumbo
+pasó de $100^\circ$ hacia el final. Con el rumbo tan equivocado, las detecciones dejan
+de asociarse con los \emph{landmarks} que ya existen y se crean duplicados desplazados
+(hasta diez sillas en un cuarto que tiene dos), y el filtro termina siendo consistente
+con un mapa erróneo. Es la forma típica en que falla un EKF sin cierre de lazo.
 
-\textbf{Comportamiento ante pérdida de observaciones.} Para verificar el manejo de
-oclusiones se repitió la corrida de la semilla 0 eliminando todas las detecciones
-visuales entre los ciclos 120 y 200. La Figura~\ref{fig:slam_incertidumbre} muestra
-que, durante la oclusión, la traza de la covarianza crece de forma monótona y la
-confianza cae prácticamente a cero, es decir, el sistema reconoce que su pose ya no es
-fiable. Al volver a observar objetos conocidos (ciclo 220) la incertidumbre se contrae
-de inmediato. El ATE de esta corrida fue de 0.08~m, por lo que la oclusión no provocó
-pérdida de la localización. En la corrida normal también se aprecian caídas de
-confianza en los tramos donde no hay objetos dentro del campo de visión de la cámara.
+En el prototipo este caso es poco probable, porque el giro no se integra a partir del
+giroscopio sino que se toma del rumbo que entrega la BNO055 en su modo de fusión con
+magnetómetro. Ese rumbo es absoluto, así que el sesgo no se va sumando como en la
+simulación. Para que funcione, la brújula debe estar calibrada; por eso, al arrancar,
+el sistema revisa el estado de calibración del magnetómetro y, si es bajo, le pide al
+usuario que mueva los lentes en forma de ocho. El experimento sigue siendo útil por dos
+razones, ya que muestra lo que pasaría con una brújula mal calibrada o alterada por
+estructuras metálicas, y describe el modo de respaldo sin IMU, en el que el giro sale
+del flujo óptico y sí acumula error.
+
+\textbf{Pérdida de observaciones.} Para probar el manejo de oclusiones se repitió la
+corrida de la semilla 0 quitando todas las detecciones visuales entre los ciclos 120 y
+200. En la Figura~\ref{fig:slam_incertidumbre} se ve que, durante la oclusión, la traza
+de la covarianza crece sin parar y la confianza cae casi a cero, es decir, el sistema se
+da cuenta de que su pose ya no es fiable. En cuanto vuelve a ver objetos conocidos
+(ciclo 220), la incertidumbre se reduce de golpe. El ATE de esta corrida fue de
+0.08~m, así que la oclusión no hizo que el sistema se perdiera. En la corrida normal
+también hay caídas de confianza en los tramos donde la cámara no tiene objetos a la
+vista.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{Capturas_TT2/slam_incertidumbre.png}
     \caption{Evolución de la traza de la covarianza (escala logarítmica) y de la
-    confianza con y sin oclusión visual entre los ciclos 120 y 200.}
+    confianza, con y sin oclusión visual entre los ciclos 120 y 200.}
     \label{fig:slam_incertidumbre}
 \end{figure}
 
-Adicionalmente, eliminando de forma aleatoria el 60\,\% de las detecciones visuales
-en las seis corridas, el ATE promedio fue de 0.23~m (máximo 0.28~m), por lo que el
-módulo tolera detecciones intermitentes.
+Al quitar al azar el 60\,\% de las detecciones visuales en las seis corridas, el ATE
+promedio fue de 0.23~m (máximo 0.28~m), por lo que el módulo aguanta bien las
+detecciones intermitentes.
 
-\textbf{Videos reales.} Al procesar los 19 videos grabados, el SLAM confirmó entre
-1 y 39 \emph{landmarks} por recorrido, con las puertas como la clase más frecuente en
-interiores (entre 9 y 17 por recorrido de oficina). En las calles se confirmaron muy
-pocos objetos estáticos de las clases detectables; en el recorrido más pobre, solo
-uno, por lo que el sistema operó casi todo el tiempo en modo de estima. La
-Sección~\ref{sec:dev_integracion} presenta capturas del funcionamiento en video.
+\textbf{Videos reales.} En los 19 videos grabados, el SLAM confirmó entre 1 y 39
+\emph{landmarks} por recorrido. En interiores la clase más frecuente fue la puerta,
+con entre 9 y 17 por recorrido de oficina. En las calles hubo muy pocos objetos
+estáticos de las clases que se detectan, y en el recorrido más pobre se confirmó uno
+solo, de modo que el sistema avanzó casi todo el tiempo con la pura predicción. La
+Sección~\ref{sec:dev_integracion} presenta capturas del sistema trabajando con video.
 
-\textbf{Costo computacional.} Un ciclo del EKF tardó en promedio 0.03~ms en el banco
-(alrededor de siete \emph{landmarks}) y 0.27~ms en video real (alrededor de cuarenta
-\emph{landmarks}, ya que la asociación es lineal en su número). En ambos casos el
-costo es despreciable frente a los 100~ms disponibles por ciclo para cumplir RNF-03.
+\textbf{Costo computacional.} Un ciclo del EKF tarda en promedio 0.03~ms en el banco,
+con unos siete \emph{landmarks}, y 0.27~ms con video real, con unos cuarenta, porque la
+asociación crece linealmente con su número. En la Raspberry Pi del prototipo el ciclo
+tarda \TODO{tiempo por ciclo del EKF en la Raspberry Pi}. En cualquier caso el costo es
+mínimo frente a los 100~ms por ciclo que permite RNF-03.
 
 \subsection{Limitaciones}
 
-\begin{itemize}
-    \item El rumbo absoluto de la BNO055 depende de que el magnetómetro esté
-    calibrado y de que no haya perturbaciones magnéticas cerca (estructuras de acero,
-    equipos eléctricos). El sistema revisa la calibración solo al arrancar; durante la
-    sesión el estado se lee, pero ningún módulo actúa si empeora.
-    \item El filtro no realiza cierre de lazo (\emph{loop closure}): si la deriva es
-    grande al regresar a una zona ya visitada, el error no se redistribuye a lo largo
-    de la trayectoria anterior. Si el error de orientación supera lo que tolera la
-    compuerta de asociación, el sistema crea \emph{landmarks} duplicados y puede
-    divergir, como ocurrió en una de las seis corridas largas.
-    \item La posición de los \emph{landmarks} monoculares depende de la altura típica
-    de su clase, por lo que un objeto de tamaño atípico puede quedar mal ubicado,
-    incluso fuera del cuarto, como se observa en la
-    Figura~\ref{fig:slam_trayectorias}.
-    \item La asociación por vecino más cercano puede confundir dos objetos cercanos
-    de la misma clase. Una prueba de compatibilidad conjunta \cite{neira2001jcbb}
-    sería más robusta, a un costo computacional mayor.
-    \item Los valores de ruido de la odometría se ajustaron en simulación y deberán
-    medirse cuando se monte la IMU BNO055. La orientación del chip dentro del armazón
-    se configura con las posiciones de montaje P0 a P7 de su hoja de datos, y el
-    programa \texttt{odometry.py --calibrar} mide con los lentes puestos qué eje
-    corresponde al cabeceo, su signo y su cero; falta además calibrar la longitud de
-    paso de cada usuario.
-    \item En los mapas obtenidos de video la escala depende de la velocidad de caminata
-    supuesta, ya que el video no contiene información de desplazamiento.
-\end{itemize}
+El rumbo absoluto de la BNO055 depende de que el magnetómetro esté calibrado y de que no
+haya perturbaciones magnéticas cerca, como estructuras de acero o equipos eléctricos. La
+calibración se revisa al arrancar, pero durante la sesión ningún módulo reacciona si
+empeora. \TODO{avisar al usuario si la calibración del magnetómetro baja durante la
+sesión}.
+
+El filtro no hace cierre de lazo (\emph{loop closure}). Si la deriva es grande al
+regresar a una zona ya visitada, el error no se reparte a lo largo de la trayectoria
+anterior, y si el error de orientación rebasa lo que tolera la compuerta de asociación,
+aparecen \emph{landmarks} duplicados y el filtro puede divergir. La posición de los
+\emph{landmarks} monoculares depende además de la altura típica de su clase, así que un
+objeto de tamaño poco común puede quedar mal ubicado, como el que aparece junto a la
+pared en la Figura~\ref{fig:slam_trayectorias}. La asociación por vecino más cercano
+también puede confundir dos objetos cercanos de la misma clase; una prueba de
+compatibilidad conjunta \cite{neira2001jcbb} sería más confiable, a cambio de más
+cómputo.
+
+Por último, los valores de ruido de la odometría se ajustaron en simulación.
+\TODO{medir el ruido real de la IMU y del conteo de pasos en el prototipo y actualizar
+los parámetros del filtro}. En los mapas que se obtienen de video la escala depende de
+la velocidad de caminata supuesta, porque el video no trae información de
+desplazamiento.

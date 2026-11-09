@@ -139,6 +139,111 @@ FRASES = [
     ("cuánto me falta para la salida", "ESTADO", None),
 ]
 
+# segundo conjunto, escrito despues de que las frases del primero se
+# agregaron a las referencias del pln: ninguna esta en INTENTS. mide
+# generalizacion (el primero ya quedo "memorizado")
+FRASES_NUEVAS = [
+    ("acompáñame a la salida", "DESTINO", "door"),
+    ("condúceme hasta la puerta", "DESTINO", "door"),
+    ("quisiera ir al baño", "DESTINO", "toilet"),
+    ("me urge llegar a las escaleras", "DESTINO", "escalera"),
+    ("ayúdame a encontrar la silla", "DESTINO", "chair"),
+    ("busca la mesa por favor", "DESTINO", "table"),
+    ("llévanos a la ventana", "DESTINO", "window"),
+    ("tengo que ir al elevador", "DESTINO", "elevador"),
+
+    ("aguanta tantito", "PAUSA", None),
+    ("detente tantito", "PAUSA", None),
+    ("pérame un segundo", "PAUSA", None),
+    ("un segundito", "PAUSA", None),
+    ("espérame aquí", "PAUSA", None),
+    ("permíteme un momento", "PAUSA", None),
+
+    ("ya sigue", "REANUDAR", None),
+    ("vámonos", "REANUDAR", None),
+    ("adelante continúa", "REANUDAR", None),
+    ("ándale sigue guiándome", "REANUDAR", None),
+    ("retoma la ruta", "REANUDAR", None),
+    ("otra vez en marcha", "REANUDAR", None),
+
+    ("ya no me guíes", "DETENER", None),
+    ("apaga la navegación", "DETENER", None),
+    ("suficiente", "DETENER", None),
+    ("quiero que te detengas", "DETENER", None),
+    ("para la ruta", "DETENER", None),
+    ("ya estuvo para", "DETENER", None),
+
+    ("ya no voy a ir", "CANCELAR", None),
+    ("cancela el viaje", "CANCELAR", None),
+    ("anula la ruta", "CANCELAR", None),
+    ("olvida el destino", "CANCELAR", None),
+    ("mejor no cancela", "CANCELAR", None),
+    ("ya no quiero ir a ningún lado", "CANCELAR", None),
+
+    ("por aquí está cerrado busca por otro lado", "RUTA_ALTERNATIVA", None),
+    ("llévame por otra parte", "RUTA_ALTERNATIVA", None),
+    ("esa ruta no me sirve", "RUTA_ALTERNATIVA", None),
+    ("quiero ir por otro lado", "RUTA_ALTERNATIVA", None),
+    ("hay algún otro camino", "RUTA_ALTERNATIVA", None),
+    ("encuentra otra forma de llegar", "RUTA_ALTERNATIVA", None),
+
+    ("me tropecé y no me puedo levantar", "EMERGENCIA", None),
+    ("ayuda por favor me pegué", "EMERGENCIA", None),
+    ("llama a una ambulancia", "EMERGENCIA", None),
+    ("me están siguiendo", "EMERGENCIA", None),
+    ("me perdí y tengo miedo", "EMERGENCIA", None),
+    ("estoy sangrando", "EMERGENCIA", None),
+
+    ("en dónde me encuentro ahorita", "UBICACION", None),
+    ("sabes dónde estoy", "UBICACION", None),
+    ("qué lugar es este", "UBICACION", None),
+    ("dime en qué parte del edificio estoy", "UBICACION", None),
+    ("estoy perdido dónde estoy", "UBICACION", None),
+    ("en qué piso estoy", "UBICACION", None),
+
+    ("qué tengo enfrente de mí", "ENTORNO", None),
+    ("hay algo en mi camino", "ENTORNO", None),
+    ("dime qué hay cerca", "ENTORNO", None),
+    ("qué objetos hay por aquí", "ENTORNO", None),
+    ("hay alguien adelante", "ENTORNO", None),
+    ("está libre el paso", "ENTORNO", None),
+
+    ("no entendí", "REPETIR", None),
+    ("perdón qué", "REPETIR", None),
+    ("dímelo de nuevo", "REPETIR", None),
+    ("repíteme la instrucción", "REPETIR", None),
+    ("puedes repetir", "REPETIR", None),
+    ("otra vez la indicación", "REPETIR", None),
+
+    ("qué sabes hacer", "AYUDA", None),
+    ("cómo funcionas", "AYUDA", None),
+    ("explícame cómo usarte", "AYUDA", None),
+    ("qué te puedo pedir", "AYUDA", None),
+    ("necesito instrucciones de uso", "AYUDA", None),
+    ("para qué sirves", "AYUDA", None),
+
+    ("sí por favor", "CONFIRMAR", None),
+    ("simón", "CONFIRMAR", None),
+    ("así es", "CONFIRMAR", None),
+    ("perfecto", "CONFIRMAR", None),
+    ("eso mero", "CONFIRMAR", None),
+    ("va", "CONFIRMAR", None),
+
+    ("nel", "NEGAR", None),
+    ("para nada", "NEGAR", None),
+    ("no eso no es", "NEGAR", None),
+    ("equivocado", "NEGAR", None),
+    ("no lo quiero", "NEGAR", None),
+    ("no me sirve eso", "NEGAR", None),
+
+    ("cuánto camino queda", "ESTADO", None),
+    ("ya mero llegamos", "ESTADO", None),
+    ("qué tan lejos estoy", "ESTADO", None),
+    ("falta poco", "ESTADO", None),
+    ("cuántos metros me faltan", "ESTADO", None),
+    ("voy bien", "ESTADO", None),
+]
+
 # lo que de verdad hace el sistema: detener y cancelar acaban igual
 ACCION_EFECTIVA = {"DETENER": "detener", "CANCELAR": "detener"}
 
@@ -403,9 +508,19 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     nlp = _armarPln()
+    filasN = evaluarPln(nlp, FRASES_NUEVAS)
+    resN = resumenPln(filasN)
+    print("PLN nuevas:", resN)
+    for f in filasN:
+        if f["pred"] != f["esperada"] or f["okDest"] is False:
+            print("  X", f["texto"], "->", f["pred"], f["destino"])
+    figConfusion(filasN, os.path.join(args.out, "pln_confusion_nuevas.png"))
+    json.dump({"resumen": resN, "filas": filasN},
+              open(os.path.join(args.out, "pln_eval_nuevas.json"), "w"),
+              indent=1, ensure_ascii=False)
     filas = evaluarPln(nlp)
     res = resumenPln(filas)
-    print("PLN:", res)
+    print("PLN original:", res)
     for f in filas:
         if f["pred"] != f["esperada"] or f["okDest"] is False:
             print("  X", f["texto"], "->", f["pred"], f["destino"])

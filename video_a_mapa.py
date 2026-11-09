@@ -91,7 +91,8 @@ def processVideo(path, bridge, yawEst, detPeligros, slam, mgr, args):
         output = slam.step(MotionEstimate(deltaTrans, deltaRot, dt),
                            fuseObservations(detections, []))
         pose = (output.x, output.y, output.theta)
-        mgr.updateFromScan(pose, slam.observationsForMap(),
+        mgr.updateFromScan(pose, slam.observationsForMap()
+                           + (detPeligros.tomarPisoLibre() if detPeligros else []),
                            maxRange=args.max_range)
         mgr.clearFootprint(output.x, output.y)
         mgr.updatePosition(pose, slam.getLandmarks())

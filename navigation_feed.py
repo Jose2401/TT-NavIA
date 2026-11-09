@@ -1,5 +1,7 @@
 import math
 
+from nombres import nombreEs
+
 from interfaces import NavigationFrame
 from vision_bridge import detectionRisk
 
@@ -102,7 +104,7 @@ def safetyAlerts(frame: NavigationFrame):
         detD = det.range_est if det is not None else float("inf")
         eff = min(dist, detD)
         detGana = det is not None and detD <= dist
-        label = det.label if detGana else "obstaculo"
+        label = nombreEs(det.label if detGana else "obstaculo", None)
         riesgoAlto= detGana and detectionRisk(det) >= 3
 
         if sector == "front" or riesgoAlto:

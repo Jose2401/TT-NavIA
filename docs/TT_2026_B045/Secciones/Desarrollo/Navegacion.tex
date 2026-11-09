@@ -5,61 +5,55 @@
 
 \subsection{Descripción}
 
-El módulo de navegación decide, paso a paso, qué debe hacer el usuario para llegar a
-su destino: avanzar, girar a la izquierda, girar a la derecha o detenerse. La decisión
-la toma un agente de aprendizaje por refuerzo profundo entrenado en simulación con el
-algoritmo PPO, tal como se planteó en TT1. Alrededor del agente se construyeron tres
-piezas que no estaban en el diseño original: un ejecutor que administra la sesión y
-traduce las acciones en frases, una capa de seguridad determinística que puede
-anular al agente y un planificador que anticipa la ruta completa para mostrarla en la
+El módulo de navegación decide, paso a paso, qué debe hacer el usuario para llegar a su
+destino; las opciones son avanzar, girar a la izquierda, girar a la derecha o detenerse.
+La decisión la toma un agente de aprendizaje por refuerzo profundo entrenado en
+simulación con el algoritmo PPO, como se planteó en TT1. Alrededor del agente se
+construyeron tres piezas que no estaban en el diseño original. Un ejecutor administra la
+sesión y convierte las acciones en frases, una capa de seguridad determinística puede
+anular al agente, y un planificador anticipa la ruta completa para mostrarla en la
 interfaz. El módulo cubre los requerimientos RF-18 a RF-21 y RF-23.
 
-Los destinos ya no provienen de un servicio de cartografía. Cuando el usuario pide
+Los destinos ya no vienen de un servicio de cartografía. Cuando el usuario pide
 ``llévame a la salida'', el ejecutor busca entre los \emph{landmarks} del SLAM el más
-cercano con la etiqueta correspondiente (puerta, en este caso) y lo toma como meta.
-También se acepta un punto explícito del mapa, lo cual se usa durante las pruebas.
+cercano con la etiqueta que corresponde, en este caso una puerta, y lo toma como meta.
+Para las pruebas también se acepta un punto explícito del mapa.
 
 \subsection{Entorno de entrenamiento}
 
 El agente se entrena en un entorno propio construido con Gymnasium
-(\texttt{navigation/nav\_env.py}). Cada episodio genera un mundo nuevo de uno de tres
-tipos:
+(\texttt{navigation/nav\_env.py}), que en cada episodio genera un mundo nuevo de uno de
+tres tipos. El 40\,\% de los episodios ocurre en un cuarto rectangular de 4 a 9~m por
+3.5 a 7~m, con entre dos y cinco muebles, hasta un peligro de piso y hasta una persona en
+movimiento. Otro 35\,\% ocurre en dos cuartos separados por una pared con un vano de 0.9
+a 1.3~m, con el inicio en un cuarto y la meta en el otro, así que el agente tiene que
+encontrar la puerta. El 25\,\% restante es un exterior abierto de 10 a 18~m por 8 a
+14~m, con postes dispersos, de una a tres coladeras y hasta dos personas.
 
-\begin{itemize}
-    \item \textbf{Cuarto} (40\,\% de los episodios): un rectángulo de 4 a 9~m por 3.5 a
-    7~m con entre dos y cinco muebles, hasta un peligro de piso y hasta una persona en
-    movimiento.
-    \item \textbf{Dos cuartos con puerta} (35\,\%): dos cuartos separados por una pared
-    con un vano de 0.9 a 1.3~m. El inicio está en un cuarto y la meta en el otro, de
-    modo que el agente debe encontrar la puerta.
-    \item \textbf{Exterior} (25\,\%): un área abierta de 10 a 18~m por 8 a 14~m con
-    postes dispersos, de una a tres coladeras y hasta dos personas.
-\end{itemize}
-
-Las personas se desplazan entre 5 y 12~cm por paso, rebotan en los límites y de vez
-en cuando cambian de dirección. Los peligros de piso no bloquean los rayos, igual que
-en el sistema real, donde un hoyo no produce eco ni detiene la vista: el agente solo
-los conoce por la distancia por sector que le llega en la observación. Además de los
-mundos generados, en aproximadamente la mitad de los episodios se usa uno de los 19
-mapas reales obtenidos de video (Sección~\ref{sec:dev_mapeo}). Para ello, las celdas
-ocupadas se convierten en obstáculos circulares, la capa de peligros en coladeras, y
-el inicio y la meta se eligen dentro de la misma zona libre conexa, con al menos
-30~cm de holgura respecto a cualquier obstáculo.
+Las personas avanzan entre 5 y 12~cm por paso, rebotan en los límites y de vez en
+cuando cambian de dirección. Los peligros de piso no bloquean los rayos, igual que en el
+sistema real, donde un hoyo no devuelve eco ni tapa la vista, de modo que el agente solo
+se entera de ellos por la distancia por sector que le llega en la observación. Además de
+los mundos generados, en cerca de la mitad de los episodios se usa uno de los 19 mapas
+reales obtenidos de video (Sección~\ref{sec:dev_mapeo}). Para eso, las celdas ocupadas
+se convierten en obstáculos circulares y la capa de peligros en coladeras, y el inicio y
+la meta se eligen dentro de la misma zona libre, con al menos 30~cm de separación de
+cualquier obstáculo.
 
 \subsection{Acciones, observación y recompensa}
 
-Las acciones son las cuatro definidas en TT1: avanzar 0.30~m, girar $20^\circ$ a la
-izquierda, girar $20^\circ$ a la derecha y detenerse.
+Las acciones son las cuatro definidas en TT1, que son avanzar 0.30~m, girar $20^\circ$ a
+la izquierda, girar $20^\circ$ a la derecha y detenerse.
 
-La observación es donde más se apartó la implementación del diseño original. El
-vector de ocho valores planteado en TT1 ($d_{\text{front}}$, $d_{\text{left}}$,
+En la observación es donde más se apartó la implementación del diseño original. El
+vector de ocho valores de TT1 ($d_{\text{front}}$, $d_{\text{left}}$,
 $d_{\text{right}}$, $\phi_{\text{goal}}$, $d_{\text{goal}}$ y los tres riesgos) se
-implementó y se comparó contra una observación extendida de 24 valores, descrita en la
-Tabla~\ref{tab:nav_obs}. Con el mismo presupuesto de entrenamiento, la observación
-extendida obtuvo 85.8\,\% de episodios exitosos contra 44.2\,\% de la original
-(Figura~\ref{fig:nav_comparacion}). La diferencia se concentra en los mundos con
-puerta: con solo tres distancias por sector, el agente no ``ve'' el hueco de la puerta
-y fracasa en nueve de cada diez intentos.
+implementó y se comparó con una observación extendida de 24 valores, descrita en la
+Tabla~\ref{tab:nav_obs}. Con el mismo presupuesto de entrenamiento, la extendida llegó
+a la meta en el 85.8\,\% de los episodios y la original en el 44.2\,\%
+(Figura~\ref{fig:nav_comparacion}). Casi toda la diferencia está en los mundos con
+puerta; con solo tres distancias por sector, el agente no alcanza a ``ver'' el hueco y
+fracasa en nueve de cada diez intentos.
 
 \begin{table}[H]
 \centering
@@ -73,7 +67,7 @@ y fracasa en nueve de cada diez intentos.
 11 & Distancia libre en 11 direcciones entre $-100^\circ$ y $+100^\circ$, divididas
 entre el alcance máximo de 4~m. \\
 \hline
-3 & Distancia al peligro de piso más cercano en cada sector (frente, izquierda,
+3 & Distancia al peligro de piso más cercano en cada sector (frente, izquierda y
 derecha), divididas entre 3~m. \\
 \hline
 3 & Nivel de riesgo por sector, dividido entre 3. \\
@@ -81,7 +75,7 @@ derecha), divididas entre 3~m. \\
 3 & Dirección a la meta como $\sin\phi_{\text{goal}}$ y $\cos\phi_{\text{goal}}$, y
 distancia a la meta acotada a 10~m. \\
 \hline
-4 & Acción anterior en codificación \emph{one-hot}. \\
+4 & Acción anterior, en codificación \emph{one-hot}. \\
 \hline
 \end{tabular}
 \end{table}
@@ -94,9 +88,9 @@ distancia a la meta acotada a 10~m. \\
     \label{fig:nav_comparacion}
 \end{figure}
 
-La recompensa sigue la estructura de TT1, pero con escalas ajustadas. Con los
-coeficientes originales, la penalización por riesgo pesaba tanto que el agente
-aprendía a quedarse quieto. La versión final es:
+La recompensa sigue la estructura de TT1 con las escalas ajustadas. Con los coeficientes
+originales, la penalización por riesgo pesaba tanto que el agente aprendía a quedarse
+quieto. La versión final quedó así.
 
 \[
 r_t = -0.1 + 4\,(d_{t-1} - d_t) - 0.15\, r_{\text{front}}
@@ -108,25 +102,23 @@ r_t = -0.1 + 4\,(d_{t-1} - d_t) - 0.15\, r_{\text{front}}
       \end{cases}
 \]
 
-donde $d_t$ es la distancia a la meta. El término de detenerse se agregó para que la
-acción tuviera una función clara: esperar a que una persona termine de cruzar.
+Aquí $d_t$ es la distancia a la meta. El término para detenerse se agregó para que esa
+acción tuviera un uso claro, que es esperar a que una persona termine de cruzar.
 
-Para reducir la diferencia entre la simulación y el sistema real se añadió ruido de
-5\,\% a las distancias, de $2^\circ$ al ángulo de la meta y, en el 8\,\% de los rayos
-bloqueados, se reporta el alcance máximo como si estuvieran libres. Esta última
-perturbación imita lo que ocurre en el mapa real, donde un rayo delgado puede colarse
-entre dos celdas de eco separadas (Sección~\ref{sec:dev_ray}) y reportar libre un
-frente bloqueado.
+Para acercar la simulación al sistema real se agregó ruido de 5\,\% a las distancias y
+de $2^\circ$ al ángulo de la meta, y en el 8\,\% de los rayos bloqueados se reporta el
+alcance máximo como si estuvieran libres. Esto último imita lo que pasa en el mapa real,
+donde un rayo delgado puede colarse entre dos celdas de eco separadas
+(Sección~\ref{sec:dev_ray}) y reportar libre un frente bloqueado.
 
 \subsection{Entrenamiento}
 
-El agente se entrena con la implementación de PPO de Stable-Baselines3 sobre
-PyTorch, con ocho entornos en paralelo. La Tabla~\ref{tab:nav_ppo} resume los
-hiperparámetros. El modelo final se entrenó durante 8 millones de pasos. Se exporta en
-dos formatos: el archivo completo de Stable-Baselines3, que se usa en la computadora
-portátil, y un archivo con solo los pesos de la red del actor, con el que la
-Raspberry Pi ejecuta la inferencia en NumPy sin instalar PyTorch. Se verificó que
-ambos formatos eligen la misma acción en 500 observaciones aleatorias.
+El agente se entrena con la implementación de PPO de Stable-Baselines3 sobre PyTorch,
+con ocho entornos en paralelo y los hiperparámetros de la Tabla~\ref{tab:nav_ppo}. El
+modelo final se entrenó durante 8 millones de pasos y se guarda en dos formatos, el
+archivo completo de Stable-Baselines3 y un archivo con solo los pesos de la red del
+actor, con el que la Raspberry Pi hace la inferencia en NumPy sin instalar PyTorch. Se
+comprobó que ambos formatos eligen la misma acción en 500 observaciones aleatorias.
 
 \begin{table}[H]
 \centering
@@ -149,52 +141,47 @@ Recorte de PPO & 0.2 \\
 \end{tabular}
 \end{table}
 
-El modelo pasó por varias iteraciones, evaluadas siempre con el mismo protocolo. Un
-primer modelo entrenado solo en mundos generados alcanzó 99.2\,\% de éxito en ellos.
-Al incorporar los mapas de video, el peor caso fue un pasillo de oficina muy angosto y
-lleno de muebles (v09), donde varios reentrenamientos con más pasos o con otra mezcla
-de mapas no lograron superar al modelo vigente. Al revisar ese caso se encontró un
-error en el entrenador: en mapas densos el inicio o la meta podían quedar encima de un
-obstáculo, lo que producía choques imposibles de evitar. Con el muestreo corregido, el
-modelo vigente subió de 82.5 a 85\,\% en ese mapa, y se comprobó que retirar v09 del
-entrenamiento empeora el desempeño en pasillos densos, por lo que se conservó en la
-mezcla.
+El modelo pasó por varias versiones, todas evaluadas con el mismo protocolo. Uno de los
+primeros, entrenado solo en mundos generados, llegaba a la meta en el 99.2\,\% de ellos.
+Al meter los mapas de video, el caso más difícil fue un pasillo de oficina muy angosto y
+lleno de muebles (v09), y varios reentrenamientos con más pasos o con otra mezcla de
+mapas no lograron mejorarlo. Revisando ese caso apareció un error en el entrenador, ya
+que en mapas densos el inicio o la meta podían quedar encima de un obstáculo y provocar
+choques imposibles de evitar. Con el muestreo corregido, el modelo subió de 82.5 a
+85\,\% en ese mapa. También se comprobó que quitar v09 del entrenamiento empeora el
+desempeño en pasillos densos, así que se dejó en la mezcla.
 
 \subsection{Ejecución en el dispositivo}
 
 El ejecutor (\texttt{navigation/navigator.py}) es la parte del módulo que corre en el
-dispositivo. Mantiene el estado de la sesión (en espera, activa o pausada) con los
-mensajes literales del Algoritmo 11 de TT1, recibe los comandos ya interpretados por
-el PLN y, en cada ciclo, construye la observación a partir del cuadro de navegación y
-del mapa. Para que esa observación se parezca a la del entrenamiento, cada uno de los
-11 rayos es el mínimo de un abanico de tres sub-rayos separados $6^\circ$, y las
-distancias a los peligros se leen del segundo canal del mapa local.
+prototipo. Lleva el estado de la sesión (en espera, activa o pausada) con los mensajes
+literales del Algoritmo 11 de TT1, recibe los comandos que ya interpretó el PLN y, en
+cada ciclo, arma la observación con el cuadro de navegación y el mapa. Para que esa
+observación se parezca a la del entrenamiento, cada uno de los 11 rayos es el mínimo de
+un abanico de tres sub-rayos separados $6^\circ$, y las distancias a los peligros se
+leen del segundo canal del mapa local.
 
-Sobre la decisión del agente actúan varias reglas fijas:
+Sobre la decisión del agente actúan varias reglas fijas. La más importante es la capa de
+seguridad. Si el agente dice avanzar y la distancia libre al frente es menor que
+0.80~m, según el mapa o según la cámara, la orden se cambia por un giro. El umbral es el
+mismo de la alerta crítica, para que el usuario nunca escuche ``Deténgase'' y ``Avance''
+al mismo tiempo, y el sentido del giro se mantiene hasta por ocho giros seguidos (unos
+$160^\circ$) para no alternar izquierda y derecha en una esquina.
 
-\begin{itemize}
-    \item \textbf{Capa de seguridad.} Si el agente indica avanzar y la distancia libre
-    al frente es menor que 0.80~m, ya sea según el mapa o según la visión, la orden se
-    reemplaza por un giro. El umbral es el mismo de la alerta crítica, de modo que el
-    usuario nunca escucha ``Deténgase'' y ``Avance'' en el mismo instante. El sentido
-    del giro se mantiene durante un máximo de ocho giros seguidos (unos $160^\circ$),
-    para no alternar izquierda y derecha en una esquina.
-    \item \textbf{Ritmo de decisión.} El agente decide una vez por segundo, salvo que
-    haya una alerta crítica, en cuyo caso decide de inmediato.
-    \item \textbf{Frases.} Cada acción se traduce con las frases exactas de TT1:
-    ``Avance N metros'', ``Gire ligeramente a la izquierda'' (giros de hasta
-    $45^\circ$), ``Gire a la izquierda N grados'' o ``Deténgase''. La distancia de
-    avance se limita a lo que el mapa ve libre y, si la confianza del SLAM baja de
-    0.35, a un metro. El aviso ``Está cerca de su destino'' se dice una sola vez por
-    destino.
-    \item \textbf{Llegada.} La sesión termina cuando la pose queda a menos de 0.6~m de
-    la meta o cuando la cámara ve el objeto buscado a menos de 1~m enfrente. La
-    segunda condición se agregó porque, sin odometría, la pose deriva y el usuario
-    podía quedarse dando vueltas junto al objeto.
-    \item \textbf{Bloqueo.} Si en 20~s la distancia a la meta no disminuye al menos
-    30~cm, el sistema avisa que no encuentra un paso libre y sugiere pedir otra ruta.
-\end{itemize}
+El agente decide una vez por segundo, o de inmediato si llega una alerta crítica. Cada
+acción se traduce con las frases de TT1, que son ``Avance N metros'', ``Gire ligeramente
+a la izquierda'' para giros de hasta $45^\circ$, ``Gire a la izquierda N grados'' o
+``Deténgase''. La distancia de avance se limita a lo que el mapa ve libre y, si la
+confianza del SLAM baja de 0.35, a un metro. El aviso ``Está cerca de su destino'' se
+dice una sola vez por destino, y si en 20~s la distancia a la meta no baja al menos
+30~cm, el sistema avisa que no encuentra un paso libre y sugiere pedir otra ruta.
 
+La sesión termina cuando la pose queda a menos de 0.6~m de la meta o cuando la cámara ve
+el objeto buscado a menos de 1~m enfrente. Esta segunda condición existe porque, si la
+pose deriva, el usuario podría quedarse dando vueltas junto al objeto sin que el mapa lo
+reconozca como llegada. Para que un solo error de la estimación monocular no termine la
+sesión, la condición tiene que cumplirse durante tres cuadros seguidos, y si el objeto
+está dentro del cono de los ultrasónicos, además tiene que estar confirmado por ellos.
 El Algoritmo~\ref{alg:dev_nav} resume un ciclo del ejecutor.
 
 \begin{center}
@@ -210,21 +197,26 @@ El Algoritmo~\ref{alg:dev_nav} resume un ciclo del ejecutor.
 \Statex \textbf{SALIDA:} lista de mensajes para la salida de voz
 
 \Statex
-\If{sesión no está activa}
-    \State \Return []
+\If{la sesión no está activa}
+    \State \Return lista vacía
 \EndIf
 \State d $\gets$ distancia(pose, meta)
-\If{d $< 0.6$ m O la cámara ve el objeto meta a menos de 1 m}
+\If{la cámara ve el objeto meta a menos de 1 m (confirmado por el ultrasonido si está en su cono)}
+    \State cuadros\_vistos $\gets$ cuadros\_vistos + 1
+\Else
+    \State cuadros\_vistos $\gets$ 0
+\EndIf
+\If{d $< 0.6$ m O cuadros\_vistos $\geq$ 3}
     \State sesión $\gets$ ``en\_espera''
     \State \Return [``Ha llegado a su destino.'']
 \EndIf
 \If{no hay alerta crítica Y pasó menos de 1 s desde la última decisión}
-    \State \Return []
+    \State \Return lista vacía
 \EndIf
 \State obs $\gets$ construir\_observación(cuadro\_nav, mapa, meta, acción\_previa)
 \State acción $\gets$ política(obs)
 \If{acción = avanzar Y distancia\_libre\_al\_frente $< 0.80$ m}
-    \State acción $\gets$ giro\_forzado() \Comment{con histéresis de sentido}
+    \State acción $\gets$ giro\_forzado() \Comment{mantiene el sentido del giro}
 \EndIf
 \State texto $\gets$ frase(acción, d, $\phi_{\text{goal}}$, distancia\_libre, confianza)
 \If{texto es nuevo O pasaron más de 3.5 s desde la última indicación}
@@ -241,104 +233,140 @@ El Algoritmo~\ref{alg:dev_nav} resume un ciclo del ejecutor.
 
 \subsection{Planificador de ruta}
 
-El agente decide solo el siguiente paso, lo cual dificulta saber hacia dónde va.
-Para visualizarlo, el planificador (\texttt{navigation/route\_planner.py}) simula al
-agente sobre el mapa actual desde la pose del usuario, sin moverlo, y registra los
-puntos por los que pasaría hasta llegar, quedar atascado o agotar 240 pasos. La ruta
-resultante se clasifica como ``llega'', ``bloqueada'' o ``larga'' y se dibuja en la
-interfaz. Un plan tarda unos 7~ms; se recalcula cada dos segundos en un hilo aparte, o
-de inmediato si llega una alerta crítica. Como las puertas se registran sobre la
-pared, cuando la meta cae en una celda ocupada el planificador la traslada a la celda
-libre más cercana. La ruta es informativa: la decisión que se le comunica al usuario
-sigue siendo la del ejecutor.
+Como el agente decide solo el siguiente paso, no es fácil saber hacia dónde va. Para
+verlo, el planificador (\texttt{navigation/route\_planner.py}) simula al agente sobre el
+mapa actual desde la pose del usuario, sin moverlo, y anota los puntos por los que
+pasaría hasta llegar, quedarse atorado o agotar 240 pasos. La ruta se clasifica como
+``llega'', ``bloqueada'' o ``larga'' y se dibuja en la interfaz. Cada plan tarda unos
+7~ms y se recalcula cada dos segundos en un hilo aparte, o de inmediato si llega una
+alerta crítica. Como las puertas quedan registradas sobre la pared, cuando la meta cae en
+una celda ocupada el planificador la mueve a la celda libre más cercana. Además, para
+avanzar exige que quepa el cuerpo del usuario, un disco de 0.12~m de radio, y no solo
+que el rayo pase; las paredes del mapa son puntos de eco con huecos entre ellos, y sin
+esta condición la ruta llegaba a colarse por rendijas en las que una persona no cabe. La
+ruta es informativa, y lo que se le dice al usuario sigue siendo la decisión del
+ejecutor.
+
+El planificador también sirve para la ruta alternativa. Cuando el usuario pide ``busca
+otro camino'', el ejecutor toma la ruta planeada y bloquea el tramo que va de 0.6 a
+2.5~m delante del usuario con discos de 0.35~m de radio. Estos bloqueos no modifican el
+log-odds; viven en una lista aparte que el mapa consulta junto con las celdas ocupadas,
+de modo que el agente y el planificador los ven como obstáculos, y caducan solos a los
+tres minutos. Con el tramo bloqueado se vuelve a planear. Si existe otro camino, el
+sistema responde que está calculando la ruta alternativa; si no, quita los bloqueos y le
+dice al usuario ``No encuentro otra ruta disponible. Sigo por el mismo camino.'', para
+que sepa que la indicación no cambió. Los bloqueos se borran también al llegar o al
+detener la navegación. La Figura~\ref{fig:nav_ruta_alt} muestra un ejemplo en el
+cuarto simulado, en el que la ruta original pasaba junto a la mesa central y la
+alternativa rodea por la parte de arriba del cuarto.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.82\textwidth]{Capturas_TT2/nav/nav_ruta_alternativa.png}
+    \caption{Ruta planeada hacia el sillón antes y después de pedir ``busca otro
+    camino''. Los círculos rojos son los tramos bloqueados temporalmente.}
+    \label{fig:nav_ruta_alt}
+\end{figure}
 
 \subsection{Resultados}
 
-\textbf{Evaluación del modelo.} El modelo final se evaluó en 880 episodios: 40 en
-cada tipo de mundo generado y 40 en cada uno de los 19 mapas reales, con semillas
-distintas a las del entrenamiento. Llegó a la meta en el 97.8\,\% de los episodios,
-chocó en el 2.0\,\%, nunca cayó en un peligro de piso y solo un episodio agotó el
-límite de pasos. Los episodios exitosos tomaron en promedio 27 pasos. La
+\textbf{Pruebas con el prototipo.} \TODO{sesiones de navegación con el prototipo:
+destinos, número de sesiones, llegadas, distancia final al objeto, intervenciones del
+acompañante y comentarios de los participantes}.
+
+\textbf{Evaluación del modelo.} El modelo final se evaluó en 880 episodios, 40 en cada
+tipo de mundo generado y 40 en cada uno de los 19 mapas reales, con semillas distintas a
+las del entrenamiento. Llegó a la meta en el 97.8\,\% de los episodios, chocó en el
+2.0\,\%, nunca cayó en un peligro de piso y solo en un episodio se le acabaron los
+pasos. Los episodios exitosos tomaron en promedio 27 pasos. La
 Figura~\ref{fig:nav_eval} muestra el desglose por mundo; el único mapa por debajo del
-90\,\% es el pasillo denso v09 (85\,\%).
+90\,\% es el pasillo denso v09, con 85\,\%.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{Capturas_TT2/nav/nav_eval_mundos.png}
-    \caption{Porcentaje de episodios exitosos y con choque por mundo. En verde claro,
-    mundos generados; en azul, mapas obtenidos de videos reales.}
+    \caption{Porcentaje de episodios exitosos y con choque por mundo. En verde claro los
+    mundos generados y en azul los mapas obtenidos de videos reales.}
     \label{fig:nav_eval}
 \end{figure}
 
 La Figura~\ref{fig:nav_episodios} muestra un episodio de cada tipo de mundo generado.
-En el de dos cuartos, el agente se dirige primero hacia la puerta y cruza el vano; en
-el exterior se aleja de las coladeras, aunque estas no aparecen en sus rayos.
+En el de dos cuartos, el agente va primero hacia la puerta y cruza el vano; en el
+exterior se mantiene lejos de las coladeras, aunque no aparecen en sus rayos.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{Capturas_TT2/nav/nav_episodios.png}
-    \caption{Episodios del modelo final. Punto verde: inicio; estrella: meta; gris:
-    obstáculos; rojo rayado: peligros de piso; naranja: persona en movimiento y su
+    \caption{Episodios del modelo final. Punto verde, inicio; estrella, meta; gris,
+    obstáculos; rojo rayado, peligros de piso; naranja, persona en movimiento y su
     recorrido.}
     \label{fig:nav_episodios}
 \end{figure}
 
-\textbf{Sesiones completas en lazo cerrado.} La evaluación anterior mide al agente
-dentro de su propio simulador. Para probar la cadena completa se ejecutaron sesiones
-en el cuarto simulado con todos los módulos reales: sensores simulados, SLAM, mapa,
-PLN, ejecutor y salida amigable. Un usuario virtual primero recorre el cuarto para
-construir el mapa, después pide un destino por texto y a partir de ahí hace
-exactamente lo que le indica el sistema. Se realizaron 20 sesiones (cinco semillas por
-cuatro destinos) y en cada una se midió la distancia real entre el usuario y la
-superficie del objeto en el momento en que el sistema anunció la llegada.
+\textbf{Sesiones completas en lazo cerrado.} La evaluación anterior mide al agente dentro
+de su propio simulador. Para probar la cadena completa se hicieron sesiones en el cuarto
+simulado con todos los módulos del sistema funcionando juntos, desde los sensores
+simulados y el SLAM hasta el PLN, el ejecutor y la salida amigable. Un usuario virtual
+primero recorre el cuarto para que se construya el mapa, después pide un destino por
+texto y a partir de ahí hace exactamente lo que le indica el sistema. Se corrieron
+20 sesiones (cinco semillas con cuatro destinos cada una), y en cada una se midió la
+distancia real entre el usuario y la superficie del objeto en el momento en que el
+sistema anunció la llegada.
 
-El sistema anunció la llegada en las 20 sesiones y el usuario nunca chocó, pero solo
-en 7 quedó a menos de 1~m del objeto y en 12 a menos de 1.5~m. Al registrar qué
-condición disparó cada llegada se encontró la causa (Tabla~\ref{tab:nav_lazo}): en 17
-sesiones la llegada la decidió la regla de percepción, porque en un solo cuadro la
-estimación monocular ubicó al objeto a menos de 1~m cuando en realidad estaba hasta a
-2.5~m. Las tres llegadas decididas por la distancia en el mapa terminaron a menos de
-0.8~m del objeto.
-
-También se revisó si la validación con los ultrasónicos intervino en esas llegadas.
-En 16 de las 17 el objeto quedaba fuera del cono angosto de los sensores (unos
-$\pm 20^\circ$, mientras que la regla acepta objetos hasta $\pm 60^\circ$) o por
-debajo del haz, así que el ultrasonido no pudo confirmar ni contradecir la distancia.
-La única llegada con el objeto confirmado por ambos sensores terminó a 0.99~m, que es
-una llegada correcta.
+Estas sesiones sirvieron para corregir la llegada por percepción. En su primera versión,
+la regla se cumplía con un solo cuadro, y en 17 de las 20 sesiones terminaba la
+navegación antes de tiempo porque la estimación monocular ubicaba al objeto a menos de
+1~m cuando en realidad estaba hasta a 2.5~m; solo en 7 sesiones el usuario quedaba a
+menos de 1~m del objeto. Con la regla actual (tres cuadros seguidos y confirmación del
+ultrasonido dentro de su cono), los resultados son los de la Tabla~\ref{tab:nav_lazo}.
 
 \begin{table}[H]
 \centering
 \caption{Sesiones en lazo cerrado según la condición que disparó la llegada}
 \label{tab:nav_lazo}
 \renewcommand{\arraystretch}{1.2}
-\begin{tabular}{|p{5.2cm}|c|c|c|}
+\begin{tabular}{|p{5.6cm}|c|c|c|}
 \hline
 \textbf{Condición de llegada} & \textbf{Sesiones} & \textbf{Distancia real promedio}
 & \textbf{A menos de 1~m} \\
 \hline
-Pose a menos de 0.6~m de la meta & 3 & 0.55~m & 3 \\
-Objeto visto a menos de 1~m & 17 & 1.56~m & 4 \\
+Pose a menos de 0.6~m de la meta & 10 & 0.71~m & 7 \\
+Objeto visto a menos de 1~m durante tres cuadros & 10 & 0.66~m & 10 \\
 \hline
-\textbf{Total} & \textbf{20} & & \textbf{7} \\
+\textbf{Total} & \textbf{20} & & \textbf{17} \\
 \hline
 \end{tabular}
 \end{table}
 
-La regla de percepción resolvió un problema real, pero tal como está implementada es
-demasiado sensible: basta un cuadro con un error monocular de 25 a 50\,\% para terminar
-la sesión antes de tiempo. Exigir la condición durante varios cuadros seguidos, pedir
-que el ultrasonido la confirme cuando el objeto está dentro de su cono, o combinarla
-con la distancia en el mapa debería corregirlo.
+El sistema anunció la llegada en las 20 sesiones, y en 17 el usuario terminó a menos de
+1~m del objeto. En 8 de las 10 llegadas por percepción, la distancia la confirmó el
+ultrasonido. Las tres llegadas que quedaron más lejos (1.03, 1.33 y 1.39~m) las decidió
+la distancia en el mapa, y en las tres el destino era la mesa; la diferencia viene del
+error en la posición de su \emph{landmark}, estimada con distancia monocular, o en la
+pose. Las sesiones son más largas que con la regla anterior (54 pasos de mediana),
+porque el sistema ahora espera a estar seguro antes de anunciar la llegada.
 
-La Figura~\ref{fig:nav_sesion} muestra una de estas sesiones. El usuario pidió
-``llévame al sillón'' y en el paso 45 apareció una caja a 1.2~m delante de él. El
-planificador cambió la ruta para pasar por debajo de la caja y el usuario siguió las
-indicaciones hasta quedar a 0.75~m del sillón, donde la regla de percepción dio por
-terminada la sesión. En corridas anteriores de la misma prueba se observó que el
-primer plan después de la caja a veces todavía la atravesaba: el mapa necesita varios
-ecos para convertir en ocupada una celda que ya había visto libre muchas veces
-(Figura~\ref{fig:ray_logodds}).
+En una corrida anterior a los últimos ajustes hubo una sesión sin llegada que vale la
+pena contar, porque tiene que ver con la seguridad. El usuario virtual quedó pegado al
+sillón, a 3~cm, y el sistema le siguió indicando avanzar. Al revisarla se encontró que
+coincidieron tres cosas. La pose estimada estaba desplazada
+0.6~m respecto a la real, así que el mapa marcaba 0.98~m libres al frente, por encima del
+umbral de la capa de seguridad. El sillón mide 0.85~m de alto y a esa distancia queda por
+debajo del haz de los ultrasónicos, que medían la pared de atrás. Y a 3~cm la cámara
+tampoco lo ve. En el sistema real, el aviso de bloqueo (``No encuentro un paso libre'')
+se habría dado a los 20~s, pero en la simulación no sonó porque el reloj de ese aviso es
+el tiempo real y los pasos simulados corren más rápido. Este caso coincide con una de las
+limitaciones del proyecto, que es la detección de obstáculos bajos y muy cercanos, para
+los que el bastón sigue siendo indispensable. \TODO{medir el bloqueo también por número de
+ciclos sin avance o por pasos de la IMU, y no solo por tiempo, y repetir la prueba}.
+
+La Figura~\ref{fig:nav_sesion} muestra una de las sesiones. El usuario pidió ``llévame al
+sillón'' y en el paso 45 apareció una caja a 1.2~m delante de él. El planificador
+recalculó la ruta para rodear la caja por arriba, y el usuario siguió las indicaciones
+hasta quedar a 0.88~m del sillón, donde la cámara y el ultrasonido confirmaron la llegada.
+En otras corridas se vio que el primer plan después de una caja nueva todavía puede
+atravesarla, porque el mapa necesita varios ecos para convertir en ocupada una celda que
+ya había visto libre muchas veces (Figura~\ref{fig:ray_logodds}).
 
 \begin{figure}[H]
     \centering
@@ -350,9 +378,8 @@ ecos para convertir en ocupada una celda que ya había visto libre muchas veces
 \end{figure}
 
 La Figura~\ref{fig:nav_vivo} muestra la vista de ruta de la interfaz de
-\texttt{main\_nav\_lap.py} en dos momentos de esa sesión. En la segunda captura se
-aprecia otro efecto del SLAM: el mapa ligero contiene \emph{landmarks} duplicados
-(dos mesas y dos sillones en un cuarto que tiene uno de cada uno).
+\texttt{main\_nav\_lap.py} en dos momentos de esa sesión. En ella se nota otro efecto del
+SLAM, pues el mapa ligero tiene \emph{landmarks} repetidos de algunos objetos del cuarto.
 
 \begin{figure}[H]
     \centering
@@ -360,37 +387,37 @@ aprecia otro efecto del SLAM: el mapa ligero contiene \emph{landmarks} duplicado
     \hfill
     \includegraphics[width=0.48\textwidth]{Capturas_TT2/nav/nav_vivo_p52.png}
     \caption{Vista de ruta en vivo al inicio de la sesión (izquierda) y después de la
-    caja (derecha). Cian: ruta planeada; estrella magenta: meta; cruces naranjas:
-    \emph{landmarks}.}
+    caja (derecha). En cian la ruta planeada, con estrella magenta la meta y con cruces
+    naranjas los \emph{landmarks}.}
     \label{fig:nav_vivo}
 \end{figure}
 
-Durante las sesiones se observaron otros dos detalles. Como en la simulación el
-agente decide en cada ciclo, el sistema emitió en promedio una indicación cada 1.8
-pasos, lo que en uso real sería demasiado; en el dispositivo el ritmo es de una
-decisión por segundo y las indicaciones repetidas se agrupan. Además, el mensaje
-amigable de llegada dice ``¡Llegamos! Ya estás en sofa'', porque usa la etiqueta en
-inglés del \emph{landmark} en lugar del nombre que dijo el usuario.
+En las sesiones salieron otros dos detalles. Como en la simulación el agente decide en
+cada ciclo, el sistema dio en promedio una indicación cada 1.9 pasos, lo que en uso real
+sería demasiado; en el prototipo se decide una vez por segundo y las indicaciones
+repetidas se agrupan. \TODO{frecuencia de indicaciones medida con el prototipo y opinión
+de los participantes sobre el ritmo}. El mensaje de llegada repite el destino con las
+palabras del usuario; si pidió ``llévame al sillón'', el sistema responde con frases como
+``¡Llegamos! Ya estás en el sillón.'' Cuando el destino se eligió por punto o por
+\emph{landmark}, usa el nombre en español de la clase.
 
-\textbf{Costo computacional.} Construir la observación toma 0.64~ms, la inferencia
-de la política 0.06~ms con Stable-Baselines3 y 0.01~ms con NumPy, y un plan completo
-de ruta 7~ms. La navegación no limita la frecuencia del sistema.
+\textbf{Costo computacional.} Armar la observación toma 0.64~ms; la inferencia de la
+política, 0.06~ms con Stable-Baselines3 y 0.01~ms con NumPy; y un plan de ruta completo,
+7~ms. En la Raspberry Pi, con el formato de NumPy, la decisión tarda \TODO{tiempo de
+decisión en la Raspberry Pi}. La navegación no limita la frecuencia del sistema.
 
 \subsection{Limitaciones}
 
-\begin{itemize}
-    \item La llegada por percepción se dispara con un solo cuadro y termina sesiones
-    antes de tiempo.
-    \item Los resultados del 97.8\,\% corresponden al simulador del agente. En lazo
-    cerrado con el SLAM y la percepción simulados, la llegada correcta a menos de 1~m
-    bajó a 7 de 20 sesiones. Aún no se ha probado con una persona real.
-    \item El riesgo por sector se calcula distinto en entrenamiento (a partir de la
-    distancia a cualquier obstáculo) y en el sistema real (a partir de las
-    detecciones de visión). Se intentó alinear el sistema real con la regla del
-    entrenamiento y el desempeño empeoró, por lo que la corrección pendiente es del
-    lado del entrenamiento.
-    \item La solicitud de ruta alternativa reinicia el seguimiento del progreso, pero no
-    obliga al agente a tomar un camino distinto.
-    \item Los modelos de ruido del simulador se ajustaron sin los sensores físicos; al
-    montar la IMU y los MB1232 habrá que medir el ruido real y reentrenar.
-\end{itemize}
+El 97.8\,\% de llegadas corresponde al simulador del agente; con el sistema completo en
+lazo cerrado, el usuario virtual terminó a menos de 1~m del objeto en 17 de 20 sesiones.
+El riesgo por sector se calcula distinto al entrenar, a partir de la distancia a
+cualquier obstáculo, y en el sistema real, a partir de las detecciones de la cámara. Se
+intentó ajustar el sistema real a la regla del entrenamiento y el desempeño empeoró, así
+que el ajuste correspondiente es del lado del entrenamiento. \TODO{alinear el cálculo de
+riesgo del entrenamiento con el del sistema y reentrenar}.
+
+La ruta alternativa bloquea solo los siguientes 2.5~m de la ruta, así que si el paso
+cerrado está más lejos, el usuario tiene que volver a pedirla cuando se acerque. Por
+último, los niveles de ruido del simulador se fijaron antes de tener mediciones del
+hardware. \TODO{medir el ruido de la IMU y de los MB1232 en el prototipo, ajustar el
+simulador y reentrenar}.

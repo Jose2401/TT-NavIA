@@ -18,6 +18,7 @@ from navigation_feed import (CRITICAL_DISTANCE_M, effectiveFrontDistance,
                              needsReplan)
 
 ARRIVAL_RADIUS = 0.6
+BLOQUEO_ALTERNATIVA_S = 180.0   # cuanto dura el 'por ahi no'
 CUADROS_LLEGADA = 3     # cuadros seguidos viendo el destino cerca
 WAYPOINT_RADIUS = 1.0
 ACTION_NAMES = ("avanzar", "girar_izquierda", "girar_derecha", "detenerse")
@@ -107,6 +108,7 @@ class NavStatus:
     session: str = "en_espera"     # en_espera | activo | pausado
     goal: Optional[tuple] = None
     goal_label: Optional[str] = None
+    goal_nombre: Optional[str] = None   # lo que DIJO el usuario ("salida")
     d_goal: Optional[float] = None
     phi_goal: Optional[float] = None
     last_action: Optional[int] = None
@@ -302,6 +304,7 @@ class Navigator:
             if goal is None:
                 return [NavMessage(err, priority=2, kind="respuesta")]
             st.goal, st.goal_label = goal, label
+            st.goal_nombre = command.destino if command.punto is None else None
             self._cuadrosLlegada = 0
             st.waypoints = list(self._route)
             st.session = "activo"
@@ -327,17 +330,15 @@ class Navigator:
             st.session = "en_espera"
             st.goal = st.goal_label = None
             st.waypoints = []
+            self._quitarBloqueos()
             return [NavMessage("Navegación detenida.", priority=2,
                                kind="respuesta")]
         if command.tipo == "ruta_alternativa":
-            # sin módulo de rutas globales aún; el agente local ya
-            # replanifica solo
-            if st.session in ("activo", "pausado") and st.goal:
-                self._progress_ref = None
-                return [NavMessage("Calculando ruta alternativa.",
-                                   priority=2, kind="respuesta")]
-            return [NavMessage("No hay una ruta activa.", priority=2,
-                               kind="respuesta")]
+            if not (st.session in ("activo", "pausado") and st.goal):
+                return [NavMessage("No hay una ruta activa.", priority=2,
+                                   kind="respuesta")]
+            self._progress_ref = None
+            return self._rutaAlternativa()
         if command.tipo == "estado":
             return [NavMessage(self._status_text(frame), priority=2,
                                kind="respuesta")]
@@ -361,6 +362,8 @@ class Navigator:
         crítica hace que el modelo decida de inmediato."""
         st = self.status
         msgs = []
+        self._ultimoGrid = grid
+        self._ultimaPose = (frame.slam.x, frame.slam.y, frame.slam.theta)
 
         if st.session != "activo" or st.goal is None:
             st.d_goal = st.phi_goal = None
@@ -386,6 +389,7 @@ class Navigator:
             st.session = "en_espera"
             st.goal = st.goal_label = None
             st.waypoints = []
+            self._quitarBloqueos()
             self._last_instr = None
             return [NavMessage("Ha llegado a su destino.", priority=1,
                                kind="evento")]
@@ -449,6 +453,41 @@ class Navigator:
                 "Puede pedir una ruta alternativa o detener la navegación.",
                 priority=1, kind="evento"))
         return msgs
+
+    def _rutaAlternativa(self):
+        """'busca otra ruta': se bloquea un rato el tramo que el usuario
+        iba a seguir (segun el planificador) y se replanifica. si asi ya
+        no hay camino, se quita el bloqueo y se le dice la verdad."""
+        from navigation.route_planner import planear
+        grid, pose = getattr(self, "_ultimoGrid", None), getattr(self, "_ultimaPose", None)
+        if grid is None or pose is None or not hasattr(grid, "agregarBloqueo"):
+            return [NavMessage("Calculando ruta alternativa.", priority=2,
+                               kind="respuesta")]
+        goal = self.status.goal
+        actual = planear(self.policy, grid, pose, goal)
+        tramo = [p for p in actual["points"]
+                 if 0.6 <= math.hypot(p[0] - pose[0], p[1] - pose[1]) <= 2.5
+                 and math.hypot(p[0] - goal[0], p[1] - goal[1]) > 0.8]
+        if not tramo:
+            return [NavMessage("No encuentro otra ruta disponible.",
+                               priority=2, kind="respuesta")]
+        antes = len(grid.bloqueos)
+        for p in tramo[::2]:
+            grid.agregarBloqueo(p[0], p[1], radio=0.35,
+                                duracionS=BLOQUEO_ALTERNATIVA_S)
+        nueva = planear(self.policy, grid, pose, goal)
+        if nueva["estado"] != "llega":
+            grid.bloqueos = grid.bloqueos[:antes]
+            return [NavMessage("No encuentro otra ruta disponible. "
+                               "Sigo por el mismo camino.", priority=2,
+                               kind="respuesta")]
+        return [NavMessage("Calculando ruta alternativa.", priority=2,
+                           kind="respuesta")]
+
+    def _quitarBloqueos(self):
+        grid = getattr(self, "_ultimoGrid", None)
+        if grid is not None and hasattr(grid, "quitarBloqueos"):
+            grid.quitarBloqueos()
 
     def _llegadaPorPercepcion(self, frame):
         """la camara ve el destino a <1 m durante VARIOS cuadros seguidos

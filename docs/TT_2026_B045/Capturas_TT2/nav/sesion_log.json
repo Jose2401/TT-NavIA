@@ -4,19 +4,19 @@
    0,
    2,
    "respuesta",
-   "¡Claro! Vamos hacia sillon. Yo te voy diciendo por dónde."
+   "Perfecto, nos dirigimos a sillon. Camina con confianza, yo te guío."
   ],
   [
    1,
    1,
    "instruccion",
-   "Listo, da una vuelta suave a tu izquierda."
+   "Perfecto, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    2,
    1,
    "instruccion",
-   "Vas muy bien, sigue derechito unos 3 pasos."
+   "Excelente, sigue derechito unos 3 pasos."
   ],
   [
    3,
@@ -28,13 +28,13 @@
    4,
    1,
    "instruccion",
-   "Vas muy bien, continúa de frente un par de pasos."
+   "Muy bien, continúa de frente un par de pasos."
   ],
   [
    7,
    1,
    "instruccion",
-   "Muy bien, da una vuelta suave a tu izquierda."
+   "Perfecto, da una vuelta suave a tu izquierda."
   ],
   [
    8,
@@ -46,133 +46,133 @@
    10,
    1,
    "instruccion",
-   "Muy bien, desvíate un poquito hacia tu derecha."
+   "Excelente, desvíate un poquito hacia tu derecha."
   ],
   [
    11,
    1,
    "instruccion",
-   "Excelente, desvíate un poquito hacia tu izquierda."
+   "Listo, desvíate un poquito hacia tu izquierda."
   ],
   [
    12,
    1,
    "instruccion",
-   "Excelente, gira muy suavemente a tu derecha."
+   "Vas muy bien, gira muy suavemente a tu derecha."
   ],
   [
    13,
    1,
    "instruccion",
-   "Excelente, desvíate un poquito hacia tu izquierda."
+   "Muy bien, desvíate un poquito hacia tu izquierda."
   ],
   [
    14,
    1,
    "instruccion",
-   "Excelente, gira muy suavemente a tu derecha."
+   "Excelente, desvíate un poquito hacia tu derecha."
   ],
   [
    15,
    1,
    "instruccion",
-   "Perfecto, gira muy suavemente a tu izquierda."
+   "Excelente, desvíate un poquito hacia tu izquierda."
   ],
   [
    23,
    1,
    "instruccion",
-   "Vas muy bien, da una vuelta suave a tu izquierda."
+   "Muy bien, da una vuelta suave a tu izquierda."
   ],
   [
    24,
    1,
    "instruccion",
-   "Excelente, da una vuelta suave a tu izquierda."
+   "Vas muy bien, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    25,
    1,
    "instruccion",
-   "Listo, da una vuelta suave a tu izquierda."
+   "Vas muy bien, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    26,
    1,
    "instruccion",
-   "Perfecto, da vuelta completa a tu izquierda, como una esquina."
+   "Excelente, gira a tu izquierda, como al doblar una esquina."
   ],
   [
    27,
    1,
    "instruccion",
-   "Vas muy bien, gira a tu derecha, como al doblar una esquina."
+   "Muy bien, da vuelta completa a tu derecha, como una esquina."
   ],
   [
    28,
    1,
    "instruccion",
-   "Listo, da vuelta completa a tu derecha, como una esquina."
+   "Excelente, da vuelta completa a tu derecha, como una esquina."
   ],
   [
    29,
    1,
    "instruccion",
-   "Listo, da una vuelta suave a tu derecha."
+   "Perfecto, gira sin hacerlo muy cerrado hacia tu derecha."
   ],
   [
    30,
    1,
    "instruccion",
-   "Vas muy bien, gira sin hacerlo muy cerrado hacia tu derecha."
+   "Perfecto, da una vuelta suave a tu derecha."
   ],
   [
    31,
    1,
    "instruccion",
-   "Excelente, sigue derechito un par de pasos."
+   "Listo, sigue derechito un par de pasos."
   ],
   [
    32,
    1,
    "instruccion",
-   "Vas muy bien, da una vuelta suave a tu derecha."
+   "Listo, gira sin hacerlo muy cerrado hacia tu derecha."
   ],
   [
    33,
    1,
    "instruccion",
-   "Listo, gira sin hacerlo muy cerrado hacia tu derecha."
+   "Vas muy bien, da una vuelta suave a tu derecha."
   ],
   [
    34,
    1,
    "instruccion",
-   "Excelente, da una vuelta suave a tu izquierda."
+   "Listo, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    35,
    1,
    "instruccion",
-   "Listo, gira sin hacerlo muy cerrado hacia tu izquierda."
+   "Muy bien, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    36,
    1,
    "instruccion",
-   "Perfecto, gira sin hacerlo muy cerrado hacia tu izquierda."
+   "Vas muy bien, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    37,
    1,
    "instruccion",
-   "Listo, continúa de frente unos 4 pasos."
+   "Muy bien, sigue derechito unos 4 pasos."
   ],
   [
    39,
    1,
    "instruccion",
-   "Perfecto, da una vuelta suave a tu derecha."
+   "Vas muy bien, da una vuelta suave a tu derecha."
   ],
   [
    40,
@@ -184,118 +184,172 @@
    40,
    1,
    "instruccion",
-   "Muy bien, gira sin hacerlo muy cerrado hacia tu derecha."
+   "Listo, da una vuelta suave a tu derecha."
   ],
   [
    41,
    1,
    "instruccion",
-   "Muy bien, sigue derechito unos 3 pasos."
+   "Excelente, da una vuelta suave a tu derecha."
   ],
   [
    42,
    1,
    "instruccion",
-   "Excelente, gira sin hacerlo muy cerrado hacia tu derecha."
+   "Listo, sigue derechito unos 4 pasos."
   ],
   [
    43,
    1,
    "instruccion",
-   "Excelente, da una vuelta suave a tu derecha."
+   "Vas muy bien, gira sin hacerlo muy cerrado hacia tu izquierda."
   ],
   [
    44,
    1,
    "instruccion",
-   "Muy bien, da una vuelta suave a tu derecha."
+   "Excelente, da una vuelta suave a tu derecha."
   ],
   [
    45,
    1,
    "instruccion",
-   "Perfecto, continúa de frente unos 3 pasos."
+   "Vas muy bien, da una vuelta suave a tu derecha."
   ],
   [
-   47,
+   48,
    1,
    "instruccion",
-   "Vas muy bien, desvíate un poquito hacia tu derecha."
+   "Perfecto, sigue derechito unos 4 pasos."
   ],
   [
    49,
    1,
    "instruccion",
-   "Perfecto, sigue derechito unos 3 pasos."
+   "Vas muy bien, desvíate un poquito hacia tu derecha."
   ],
   [
-   51,
+   50,
    1,
    "instruccion",
-   "Listo, gira muy suavemente a tu derecha."
+   "Muy bien, sigue derechito unos 4 pasos."
+  ],
+  [
+   52,
+   1,
+   "instruccion",
+   "Excelente, desvíate un poquito hacia tu derecha."
   ],
   [
    54,
    1,
    "instruccion",
-   "Listo, continúa de frente unos 3 pasos."
+   "Perfecto, sigue derechito unos 3 pasos."
   ],
   [
    55,
    1,
    "instruccion",
-   "Listo, desvíate un poquito hacia tu izquierda."
+   "Perfecto, gira muy suavemente a tu izquierda."
   ],
   [
-   61,
+   57,
    1,
    "instruccion",
-   "Vas muy bien, gira sin hacerlo muy cerrado hacia tu derecha."
+   "Vas muy bien, sigue derechito unos 3 pasos."
   ],
   [
-   67,
-   1,
-   "instruccion",
-   "Perfecto, continúa de frente unos 3 pasos."
-  ],
-  [
-   68,
-   1,
-   "instruccion",
-   "Listo, gira muy suavemente a tu izquierda."
-  ],
-  [
-   70,
-   1,
-   "instruccion",
-   "Listo, sigue derechito unos 3 pasos."
-  ],
-  [
-   71,
-   1,
-   "instruccion",
-   "Muy bien, desvíate un poquito hacia tu izquierda."
-  ],
-  [
-   74,
-   1,
-   "instruccion",
-   "Vas muy bien, continúa de frente un par de pasos."
-  ],
-  [
-   75,
+   58,
    1,
    "instruccion",
    "Vas muy bien, gira muy suavemente a tu derecha."
   ],
   [
-   76,
+   62,
+   1,
+   "instruccion",
+   "Perfecto, gira muy suavemente a tu izquierda."
+  ],
+  [
+   69,
+   1,
+   "instruccion",
+   "Vas muy bien, da una vuelta suave a tu derecha."
+  ],
+  [
+   70,
+   1,
+   "instruccion",
+   "Perfecto, continúa de frente un par de pasos."
+  ],
+  [
+   71,
+   1,
+   "instruccion",
+   "Vas muy bien, gira muy suavemente a tu derecha."
+  ],
+  [
+   78,
+   1,
+   "instruccion",
+   "Excelente, sigue derechito unos 3 pasos."
+  ],
+  [
+   80,
+   1,
+   "instruccion",
+   "Muy bien, da una vuelta suave a tu izquierda."
+  ],
+  [
+   87,
+   1,
+   "instruccion",
+   "Excelente, continúa de frente un par de pasos."
+  ],
+  [
+   92,
+   1,
+   "instruccion",
+   "Muy bien, gira sin hacerlo muy cerrado hacia tu derecha."
+  ],
+  [
+   93,
+   1,
+   "instruccion",
+   "Vas muy bien, sigue derechito un par de pasos."
+  ],
+  [
+   96,
+   1,
+   "instruccion",
+   "Perfecto, gira sin hacerlo muy cerrado hacia tu derecha."
+  ],
+  [
+   97,
+   1,
+   "instruccion",
+   "Vas muy bien, sigue derechito un par de pasos."
+  ],
+  [
+   98,
+   1,
+   "instruccion",
+   "Perfecto, da una vuelta suave a tu derecha."
+  ],
+  [
+   99,
+   1,
+   "instruccion",
+   "Perfecto, desvíate un poquito hacia tu derecha."
+  ],
+  [
+   101,
    1,
    "evento",
-   "¡Llegamos! Ya estás en sofa."
+   "¡Llegamos! Ya estás en el sillon."
   ]
  ],
- "pasos": 76,
+ "pasos": 101,
  "llego": true,
  "bloqueos": 0
 }

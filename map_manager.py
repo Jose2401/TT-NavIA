@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from occupancy_grid import (bresenham, L_OCC, L_FREE, L_CLAMP, L_BLOCK,
+from occupancy_grid import (BloqueosTemporales, bresenham, L_OCC, L_FREE, L_CLAMP, L_BLOCK, MARGEN_LIBERAR_M,
                             OCC_THRESHOLD, HAZARD_MIN_HITS, HAZARD_MAX_HITS)
 
 
@@ -60,7 +60,7 @@ class MapChunk:
         return chunk
 
 
-class ChunkedMapManager:
+class ChunkedMapManager(BloqueosTemporales):
     def __init__(self, mapDir=None, chunkSizeM=8.0, resolution=0.05,
                  keepLoaded=25, doorRadius=0.7, doorCooldownSteps=60):
         self.resolution = resolution
@@ -97,6 +97,7 @@ class ChunkedMapManager:
         # (correcciones contra los landmarks importados) los chunks de
         # disco NO se anuncian como conocidos
         self.relocPendiente = False
+        self.bloqueos = []
         self._visitadosSesion = set()   # visits se persiste; esto es solo de esta corrida
 
     @classmethod
@@ -256,6 +257,15 @@ class ChunkedMapManager:
         chunk.logOdds[ly, lx] = min(L_CLAMP, max(-L_CLAMP, v))
         chunk.dirty = True
 
+    def _quitarHazard(self, gx, gy):
+        index, (lx, ly) = self.cellToChunk(gx, gy)
+        chunk = self.chunks.get(index)
+        if chunk is None and index in self.diskIndex:
+            chunk = self.getChunk(index)
+        if chunk is not None and chunk.hazardHits[ly, lx] > 0:
+            chunk.hazardHits[ly, lx] -= 1
+            chunk.dirty = True
+
     def _addHazard(self, gx, gy):
         chunk, (lx, ly) = self._chunkDeCelda(gx, gy)
         chunk.hazardHits[ly, lx] = min(HAZARD_MAX_HITS,
@@ -293,12 +303,21 @@ class ChunkedMapManager:
                 frac = max(0.0, (r - 2.0 * sigma) / r)
                 celdasLibres = papuRay[:int(len(papuRay) * frac)]
 
+            if getattr(obs, "label", "") == "piso_libre":
+                for (cx, cy) in celdasLibres:
+                    self._quitarHazard(cx, cy)
+                continue
+
             bloqueado = False
             for (cx, cy) in celdasLibres:
                 lo, _ = self._cellValues(cx, cy)
                 if lo > L_BLOCK:
-                    bloqueado = True
-                    break
+                    # igual que en OccupancyGrid: solo un eco preciso que
+                    # llego claramente mas lejos libera la celda
+                    detras = math.hypot(cx - gx1, cy - gy1) * self.resolution
+                    if impreciso or detras <= MARGEN_LIBERAR_M:
+                        bloqueado = True
+                        break
                 self._addLogOdds(cx, cy, L_FREE)
 
             if not bloqueado and obs.range_m <= maxRange:
@@ -321,7 +340,11 @@ class ChunkedMapManager:
 
     def isBlockedCell(self, gx, gy):
         lo, hz = self._cellValues(gx, gy)
-        return lo > OCC_THRESHOLD or hz >= HAZARD_MIN_HITS
+        if lo > OCC_THRESHOLD or hz >= HAZARD_MIN_HITS:
+            return True
+        if self.bloqueos:
+            return self._bloqueadoTemporal(*self.cellToWorld(gx, gy))
+        return False
 
     def castDistance(self, x, y, angle, maxRange=4.0):
         gx0, gy0 = self.worldToCell(x, y)
