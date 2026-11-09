@@ -1,0 +1,82 @@
+% En este archivo, incluímos cuestiones de formato, diseño, librerías, etc.
+
+% Traduce automáticamente títulos ("Tabla", "Capítulo", etc.)
+\usepackage[spanish,es-tabla]{babel}  
+
+% Codificación UTF-8 (para tildes y ñ directamente)
+\usepackage[utf8]{inputenc}    
+
+% Control del interlineado
+\usepackage{setspace}
+
+% Sangría en el primer párrafo tras cada título
+\usepackage{indentfirst} 
+
+% Evita que el texto se salga de los márgenes
+\sloppy
+
+% Interlineado 1.5
+\onehalfspacing 
+
+% Espacio vertical entre párrafos
+\setlength{\parskip}{10pt} 
+
+% Para definir los márgenes
+\usepackage{geometry}
+\newgeometry{bottom=2cm, top=2cm, left=3cm, right=2cm}
+
+% Definir el tipo de letra similar a Times New Roman
+\usepackage[T1]{fontenc}
+\usepackage{times}
+
+% Más control en tablas (alineación, columnas especiales)
+\usepackage{array}        
+
+% Colores en texto (se carga abajo con la opción table; cargarlo dos veces causaba
+% "Option clash for package xcolor")
+
+% Colores en tablas (fondo de filas/columnas)
+\usepackage[table]{xcolor}          
+
+% Personalización de listas (itemize, enumerate)
+\usepackage{enumitem}                  
+
+% Insertar imágenes
+\usepackage{graphicx}   
+
+% Controlar posición de figuras/tablas con [H]
+\usepackage{float}  
+
+% Ecuaciones avanzadas
+\usepackage{amsmath}                   
+% Mostrar URLs con saltos de línea automáticos
+\usepackage{url}       
+
+% Comentar bloques grandes de texto
+\usepackage{comment}                   
+
+% Personalizar encabezados y pies
+\usepackage{fancyhdr}      
+
+% Activar estilo fancy
+\pagestyle{fancy}                      
+% Limpiar encabezado y pie
+\fancyhf{}                         
+
+% Encabezado: capítulo (en report/book)
+\fancyhead[LE, RO]{\small\leftmark} 
+
+% Encabezado: número de página
+\fancyhead[RE,LO]{\small\thepage}      
+
+% Ajustar altura del encabezado para evitar warnings
+\setlength{\headheight}{14pt}        
+
+% Permite dibujar líneas de cualquier tamaño y colocarlas exactamente donde sea
+\usepackage{tikz}
+
+% Esta librería se usó para aumentar un poco el margen izquierdo de la portada
+\usepackage{changepage}
+
+% Comentar varias lineas
+\usepackage{comment}

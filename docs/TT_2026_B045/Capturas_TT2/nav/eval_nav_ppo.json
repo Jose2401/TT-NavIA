@@ -1,0 +1,103 @@
+{
+ "tiempo_s": 3.971569061279297,
+ "global": {
+  "success_rate": 0.9784090909090909,
+  "collision_rate": 0.020454545454545454,
+  "fall_rate": 0.0,
+  "timeout_rate": 0.0011363636363636363,
+  "avg_steps_success": 27.23925667828107,
+  "episodes": 880
+ },
+ "res": {
+  "by_world": {
+   "gen_room": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "gen_two_rooms": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "gen_outdoor": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v01_calle1": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v02_calle2": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v03_casa": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v04_pasillo": {
+    "success_rate": 0.925,
+    "collision_rate": 0.075
+   },
+   "real:maps/real/v05_plaza": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v06_oficina1": {
+    "success_rate": 0.925,
+    "collision_rate": 0.05
+   },
+   "real:maps/real/v07_oficina2": {
+    "success_rate": 0.95,
+    "collision_rate": 0.05
+   },
+   "real:maps/real/v08_vertical": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "real:maps/real/v09_oficina3": {
+    "success_rate": 0.85,
+    "collision_rate": 0.15
+   },
+   "real:maps/real/v10_oficina4": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v11_puesto": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v12_banqueta1": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "real:maps/real/v13_avenida1": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "real:maps/real/v14_avenida2": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v15_banqueta2": {
+    "success_rate": 0.975,
+    "collision_rate": 0.025
+   },
+   "real:maps/real/v16_esquina": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v17_salamaestros1": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v18_salamaestros2": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   },
+   "real:maps/real/v19_salamaestros3": {
+    "success_rate": 1.0,
+    "collision_rate": 0.0
+   }
+  }
+ }
+}

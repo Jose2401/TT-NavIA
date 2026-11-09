@@ -1,0 +1,347 @@
+% ==============================================================================
+\section{Módulo de mapeo}
+\label{sec:dev_mapeo}
+% ==============================================================================
+
+\subsection{Descripción}
+
+El módulo de mapeo mantiene la representación espacial del entorno sobre la que
+trabajan la navegación y las alertas, y atiende los requerimientos RF-15, RF-16 y
+RF-17. El diseño de TT1 contemplaba una sola retícula de ocupación local. La primera
+implementación (\texttt{occupancy\_grid.py}) siguió ese diseño con una retícula fija de
+$8 \times 8$~m, pero pronto se hicieron evidentes tres problemas: el usuario puede
+salir de un área de ocho metros en pocos segundos, una retícula más grande consumiría
+memoria aunque la mayor parte quedara vacía, y el mapa se perdía al apagar el
+dispositivo. Por ello se desarrolló el gestor de mapa por bloques
+(\texttt{map\_manager.py}), que conserva la misma interfaz de consulta de la retícula
+original, de modo que el resto del sistema no tuvo que modificarse.
+
+\subsection{Mapa global por bloques}
+
+El plano del mundo se divide en bloques cuadrados fijos (\emph{chunks}) de
+$8 \times 8$~m, anclados al marco de referencia del SLAM. Con celdas de 5~cm, cada
+bloque contiene $160 \times 160$ celdas. Los bloques se identifican con un par de
+índices enteros $(i, j)$, que pueden ser negativos, y se crean solo cuando un rayo o el
+usuario llegan a ellos, por lo que el mapa crece únicamente en la dirección en que el
+usuario camina. La conversión de un punto del mundo a su bloque y a la celda local
+dentro de él es:
+
+\[
+(g_x, g_y) = \left(\left\lfloor \frac{x}{0.05} \right\rfloor,
+                   \left\lfloor \frac{y}{0.05} \right\rfloor\right),
+\qquad
+(i, j) = \left(\left\lfloor \frac{g_x}{160} \right\rfloor,
+               \left\lfloor \frac{g_y}{160} \right\rfloor\right),
+\qquad
+(l_x, l_y) = (g_x - 160\,i,\; g_y - 160\,j)
+\]
+
+Este esquema es similar al de los submapas que emplean sistemas como Cartographer
+\cite{hess2016cartographer}, con la diferencia de que aquí los bloques tienen una
+posición fija en el mundo y no se reacomodan mediante optimización, lo cual mantiene
+el costo bajo a cambio de no corregir la deriva acumulada.
+
+Cada bloque (\texttt{MapChunk}) almacena:
+
+\begin{itemize}
+    \item una matriz de log-odds en punto flotante de 32 bits (100~KB en memoria);
+    \item una matriz de impactos de peligros de piso en enteros de 8 bits (25~KB);
+    \item la etiqueta del cuarto al que pertenece, el número de visitas y las marcas
+    de tiempo de creación y última visita;
+    \item una bandera que indica si el bloque tiene cambios sin guardar.
+\end{itemize}
+
+Para acotar la memoria en la Raspberry Pi, se mantienen a lo sumo 25 bloques cargados.
+Cuando se excede ese número, se guardan en disco y se descargan los bloques más
+alejados del bloque actual (en distancia de Chebyshev); si se vuelve a necesitar uno
+de ellos, se carga de nuevo de forma transparente. Las operaciones del Ray Casting
+cruzan las fronteras entre bloques sin recortes, ya que cada celda se resuelve a su
+bloque en el momento de leerla o escribirla, con un pequeño caché del último bloque
+consultado.
+
+\subsection{Persistencia y re-localización}
+
+Cada mapa se guarda en una carpeta con la siguiente estructura:
+
+\begin{verbatim}
+maps/<nombre>/
+    chunk_0_0.npz      log-odds (float16) + peligros + metadatos del bloque
+    chunk_0_-1.npz     ...
+    meta.json          resolución, tamaño de bloque, cuartos etiquetados
+    landmarks.json     landmarks confirmados del SLAM (posición, etiqueta,
+                       número de avistamientos)
+\end{verbatim}
+
+Los bloques se guardan comprimidos y con el log-odds en 16 bits, por lo que en los
+mapas reales ocupan entre 1 y 7~KB cada uno, y el recorrido más grande (13 bloques
+y 26 \emph{landmarks}) ocupa alrededor de 60~KB. Al abrir un mapa se verifica que su resolución y tamaño de bloque coincidan con
+la configuración actual, para evitar mezclar geometrías incompatibles. Cuando el
+sistema arranca en un lugar ya mapeado, se restauran los bloques y los
+\emph{landmarks}; estos últimos se importan al SLAM, de manera que el filtro puede
+corregir la pose contra objetos conocidos desde el primer ciclo.
+
+El SLAM arranca siempre en el origen de su propio marco de referencia, de modo que la
+re-localización funciona si el usuario inicia la sesión en el mismo punto y con la
+misma orientación que en la sesión en que se creó el mapa (por ejemplo, la entrada de
+su casa u oficina). En una primera versión, al abrir un mapa guardado los bloques del
+disco se anunciaban como ``zona conocida'' aunque el usuario estuviera en otro lugar.
+Ahora, mientras la re-localización está pendiente, todos los bloques se reportan como
+nuevos y no se adoptan etiquetas de cuarto; la re-localización se da por confirmada
+cuando el EKF acumula tres correcciones contra los \emph{landmarks} importados, y en
+ese momento el sistema lo anuncia por voz.
+
+\subsection{Eventos de cambio de zona}
+
+En cada ciclo el gestor recibe la pose y emite eventos que el módulo de interacción
+puede anunciar por voz:
+
+\begin{itemize}
+    \item \texttt{chunk\_change}: el usuario entró a otro bloque, indicando si es una
+    zona ya conocida o nueva;
+    \item \texttt{door\_crossed}: el usuario pasó a menos de 0.7~m de un
+    \emph{landmark} confirmado de tipo puerta, lo cual se interpreta como el paso a
+    otro cuarto (con un tiempo de espera de 60 ciclos para no repetir el evento);
+    \item \texttt{room\_recognized}: el bloque al que entró el usuario tiene una
+    etiqueta de cuarto guardada, por ejemplo ``cocina''.
+\end{itemize}
+
+Los cuartos se numeran automáticamente al cruzar puertas y pueden renombrarse con una
+etiqueta propia, que se guarda en \texttt{meta.json}.
+
+\subsection{Despeje de la huella del usuario}
+
+Al procesar los videos reales se observó que en pasillos sin objetos de las clases que
+reconoce la visión el mapa no registraba espacio libre, ya que sin ultrasonido no
+había rayos que lo despejaran, y el módulo de navegación no encontraba por dónde
+avanzar. Como el usuario efectivamente pasó por esos lugares, en cada ciclo se marca
+como libre un disco de 0.45~m de radio alrededor de su posición
+(\texttt{clearFootprint}). Para no borrar obstáculos reales, las celdas que ya superan
+el umbral de ocupación no se modifican.
+
+\subsection{Capa de peligros de piso}
+
+Un hoyo, una coladera, un charco o una escalera descendente no producen eco
+ultrasónico ni detienen un rayo, ya que el espacio sobre ellos está libre, pero son
+intransitables. Por ello se registran en una capa separada del log-odds, siguiendo la
+idea de los mapas de costo por capas \cite{lu2014layered}. Las detecciones provienen
+de la segmentación semántica del módulo de visión (SegFormer entrenado en ADE20K
+\cite{xie2021segformer, zhou2017ade20k}): el agua y las escaleras son clases directas,
+y un hoyo se identifica como una región no transitable rodeada de piso transitable en
+la mitad inferior de la imagen. La distancia se calcula por proyección al plano del
+piso. Cada avistamiento suma un impacto a la celda correspondiente y la celda se
+considera peligrosa a partir de dos impactos, de modo que un parpadeo de la
+segmentación no inventa un hoyo. En las consultas, una celda peligrosa se trata como
+bloqueada, por lo que la navegación la evita igual que a una pared.
+
+\subsection{Salida hacia el módulo de navegación}
+
+En cada ciclo, la función \texttt{buildNavigationFrame} reúne la información que el
+módulo de navegación necesita en una sola estructura, el cuadro de navegación, cuyos
+campos se describen en la Tabla~\ref{tab:nav_frame}.
+
+\begin{table}[H]
+\centering
+\caption{Contenido del cuadro de navegación generado por el módulo de mapeo}
+\label{tab:nav_frame}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{4.2cm}|p{10.3cm}|}
+\hline
+\textbf{Campo} & \textbf{Descripción} \\
+\hline
+Salida del SLAM & Pose, covarianza, confianza y marca de tiempo. \\
+\hline
+Mapa local & Parche egocéntrico de $4 \times 4$~m ($81 \times 81$ celdas) con dos
+canales: probabilidad de ocupación y peligros de piso. Las celdas desconocidas valen
+0.5 en el primer canal. \\
+\hline
+$d_{\text{front}}$, $d_{\text{left}}$, $d_{\text{right}}$ & Distancia libre por sector
+obtenida con los rayos de consulta (Sección~\ref{sec:dev_ray}). \\
+\hline
+$r_{\text{front}}$, $r_{\text{left}}$, $r_{\text{right}}$ & Nivel de riesgo de 0 a 3
+por sector, según la tabla de riesgo definida en TT1, a partir de las detecciones del
+ciclo a menos de 3~m. \\
+\hline
+Detecciones y \emph{landmarks} & Detecciones del ciclo y \emph{landmarks}
+etiquetados del mapa, que permiten resolver destinos como ``la salida''. \\
+\hline
+Bloque y cuarto & Índice del bloque actual y etiqueta del cuarto, si existe. \\
+\hline
+\end{tabular}
+\end{table}
+
+La Figura~\ref{fig:mapeo_costmap} muestra un ejemplo del mapa local de dos canales.
+Para hacer visible el segundo canal, en esta figura se insertó artificialmente un
+peligro de piso de $25 \times 25$~cm delante del usuario.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{Capturas_TT2/mapeo_costmap.png}
+    \caption{Mapa local de $4 \times 4$~m centrado en el usuario: probabilidad de
+    ocupación (izquierda) y peligros de piso (derecha).}
+    \label{fig:mapeo_costmap}
+\end{figure}
+
+\subsection{Del video al mapa}
+
+Para obtener mapas de lugares reales sin el prototipo físico se desarrolló el script
+\texttt{video\_a\_mapa.py}, que procesa videos grabados en primera persona con el
+mismo flujo del sistema (visión, SLAM, Ray Casting y mapa por bloques) y guarda el
+resultado. Al terminar genera un reporte que indica si el mapa tiene suficiente
+espacio libre navegable para usarse en el entrenamiento del módulo de navegación y,
+en caso contrario, sugiere grabar más pasadas por el mismo lugar. El script incluye
+recomendaciones de grabación: sostener el teléfono a la altura del pecho, caminar y
+girar despacio (el giro se estima por flujo óptico), evitar contraluces y pasar dos o
+más veces por cada zona para confirmar los \emph{landmarks}.
+
+\subsection{Resultados}
+
+\textbf{Construcción incremental.} La Figura~\ref{fig:mapeo_evolucion} muestra la
+evolución del mapa del cuarto simulado. El mapa se construye sin información previa
+(RF-15): al inicio solo se conocen las zonas alcanzadas por los primeros rayos y, al
+completar el recorrido, se distinguen el espacio libre interior, los obstáculos y las
+paredes hacia las que el usuario caminó (RF-16). Como los dos ultrasónicos miran al
+frente con un haz angosto, las paredes que solo quedan a los costados del recorrido
+casi no se registran, y buena parte del contorno del cuarto permanece gris, es decir,
+desconocido.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Capturas_TT2/mapeo_evolucion.png}
+    \caption{Mapa de ocupación del cuarto simulado en los ciclos 60, 150 y 300. Blanco:
+    libre; negro: ocupado; gris: desconocido. La línea azul es la trayectoria
+    estimada.}
+    \label{fig:mapeo_evolucion}
+\end{figure}
+
+\textbf{Aporte del ultrasonido.} El banco de simulación usa por defecto el mismo
+montaje que el prototipo: dos sensores frontales paralelos, separados 10~cm. Para
+entender el efecto de esa decisión se comparó contra otras dos disposiciones y contra
+el caso sin ultrasonido (Tabla~\ref{tab:mapeo_us}). La configuración de tres sensores
+virtuales es la que usaba el banco en una versión anterior; la de sensores laterales
+es la que sugería la descripción electrónica de TT1.
+
+\begin{table}[H]
+\centering
+\caption{Efecto de la configuración ultrasónica (promedio de seis corridas)}
+\label{tab:mapeo_us}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|p{6.2cm}|c|c|c|}
+\hline
+\textbf{Configuración} & \textbf{ATE (m)} & \textbf{Precisión} &
+\textbf{Exhaustividad} \\
+\hline
+Dos sensores frontales, como el prototipo & 0.21 & 0.60 & 0.31 \\
+Tres sensores ($0^\circ$, $\pm 40^\circ$) & 0.27 & 0.49 & 0.44 \\
+Dos sensores laterales ($\pm 90^\circ$) & 0.28 & 0.55 & 0.48 \\
+Sin ultrasonido & 0.30 & 0.60 & 0.05 \\
+\hline
+\end{tabular}
+\end{table}
+
+La configuración del prototipo obtiene la mejor localización (0.21~m) y la mejor
+precisión del mapa, porque los ecos frontales coinciden con lo que ve la cámara y sus
+paredes quedan bien ubicadas. A cambio, registra menos superficie que las
+configuraciones con sensores abiertos hacia los lados (0.31 contra 0.44 a 0.48 de
+exhaustividad). Sin ultrasonido, la exhaustividad cae a 0.05: el mapa solo registra los
+objetos anclados a \emph{landmarks} y prácticamente ninguna pared, y su precisión es
+alta únicamente porque marca muy pocas celdas. El resultado justifica los MB1232 sobre
+todo por el mapa, y sugiere que abrir un poco cada sensor hacia afuera (la geometría
+de \texttt{montaje.py} ya lo permite) podría recuperar parte de la cobertura lateral,
+a costa de perder el traslape central que hace posible el cálculo estéreo del lado.
+
+\textbf{Mapas de recorridos reales.} La Tabla~\ref{tab:mapeo_reales} resume los mapas
+obtenidos de los 19 videos y las Figuras~\ref{fig:mapeo_real_pasillo} a
+\ref{fig:mapeo_real_banqueta} muestran tres de ellos. Como en los videos no hay
+ultrasonido, el espacio libre proviene principalmente de la huella del usuario y las
+celdas ocupadas solo de los objetos anclados a \emph{landmarks}.
+
+\begin{table}[H]
+\centering
+\caption{Mapas generados a partir de videos reales}
+\label{tab:mapeo_reales}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|l|c|c|c|c|c|}
+\hline
+\textbf{Recorrido} & \textbf{Bloques} & \textbf{Landmarks} & \textbf{Puertas} &
+\textbf{Peligros} & \textbf{Libre observado (m$^2$)} \\
+\hline
+Calle 1 & 5 & 1 & 0 & 0 & 12.4 \\
+Calle 2 & 5 & 5 & 0 & 1 & 10.6 \\
+Casa & 6 & 29 & 5 & 11 & 34.5 \\
+Pasillo & 9 & 25 & 13 & 1 & 45.4 \\
+Plaza comercial & 13 & 26 & 6 & 4 & 38.5 \\
+Oficina 1 & 8 & 23 & 11 & 1 & 19.3 \\
+Oficina 2 & 4 & 12 & 9 & 0 & 20.4 \\
+Video vertical & 5 & 8 & 1 & 5 & 12.7 \\
+Oficina 3 & 8 & 28 & 12 & 2 & 16.9 \\
+Oficina 4 & 5 & 39 & 17 & 3 & 18.3 \\
+Puesto callejero & 4 & 5 & 0 & 2 & 4.2 \\
+Banqueta 1 & 5 & 9 & 0 & 8 & 8.1 \\
+Avenida 1 & 7 & 8 & 0 & 4 & 13.3 \\
+Avenida 2 & 7 & 11 & 0 & 4 & 16.1 \\
+Banqueta 2 & 8 & 16 & 0 & 13 & 37.5 \\
+Esquina & 5 & 14 & 0 & 7 & 14.0 \\
+Sala de maestros 1 & 4 & 4 & 2 & 0 & 1.1 \\
+Sala de maestros 2 & 4 & 6 & 5 & 0 & 4.2 \\
+Sala de maestros 3 & 4 & 9 & 3 & 0 & 11.5 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Capturas_TT2/mapeo_real_pasillo.png}
+    \caption{Mapa por bloques del recorrido de un pasillo. Los recuadros morados son
+    los bloques de $8 \times 8$~m; las cruces, los \emph{landmarks} por clase.}
+    \label{fig:mapeo_real_pasillo}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Capturas_TT2/mapeo_real_oficina.png}
+    \caption{Mapa por bloques del recorrido de una oficina.}
+    \label{fig:mapeo_real_oficina}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Capturas_TT2/mapeo_real_banqueta.png}
+    \caption{Mapa por bloques del recorrido de una banqueta, con numerosos peligros de
+    piso registrados.}
+    \label{fig:mapeo_real_banqueta}
+\end{figure}
+
+En los recorridos de interiores las puertas son la clase más frecuente, lo cual es
+relevante porque son los destinos naturales de la navegación (``llévame a la
+salida''). En la tabla también se aprecian falsos positivos: en las oficinas aparecen
+peligros de piso que no corresponden a hoyos reales, probablemente porque la
+segmentación confunde reflejos o cambios de textura del piso con zonas no
+transitables. Los mapas de calle tienen pocos \emph{landmarks}, porque hay pocos objetos
+estáticos de las clases detectables, y en cambio acumulan muchos peligros de piso. En
+las banquetas, esos peligros pueden corresponder a escalones y desniveles reales que
+la segmentación reconoce como escaleras, o a grietas y manchas del pavimento; con los
+datos disponibles no es posible separar unos de otros.
+
+\textbf{Persistencia.} Se verificó que los 19 mapas se cargan desde disco con sus
+bloques, \emph{landmarks} y valores de log-odds, y que pueden consultarse con la misma
+interfaz que un mapa en memoria. Las pruebas automatizadas verifican además que, tras
+guardar y volver a cargar un mapa, se conservan las celdas ocupadas, los peligros y
+las etiquetas de cuarto; que los \emph{landmarks} se restauran en el SLAM; que se
+rechaza un mapa con geometría incompatible, y que la descarga de bloques por límite
+de memoria no pierde información.
+
+\subsection{Limitaciones}
+
+\begin{itemize}
+    \item Los bloques están fijos en el mundo y no se corrigen cuando el SLAM acumula
+    deriva, por lo que un error de pose queda ``congelado'' en el mapa.
+    \item La re-localización entre sesiones exige iniciar en el mismo punto y con la
+    misma orientación con que se creó el mapa.
+    \item Hereda la limitación del Ray Casting: las celdas consolidadas no se liberan
+    cuando un obstáculo desaparece. Del mismo modo, los impactos de la capa de peligros
+    solo aumentan, de modo que un peligro registrado por error permanece en el mapa.
+    \item La detección de cruce de puertas es heurística y depende de que la puerta
+    esté confirmada como \emph{landmark}.
+    \item Sin ultrasonido, como en los mapas obtenidos de video, el mapa contiene muy
+    pocas paredes y el espacio libre se limita a la franja recorrida por el usuario.
+\end{itemize}

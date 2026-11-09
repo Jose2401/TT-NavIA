@@ -1,0 +1,45 @@
+\chapter{Análisis y diseño}
+
+%\section{Alcance del proyecto}
+%uwu
+%\subsection{Limitaciones y Consideraciones}
+
+%\subsection{¿Que puede pedir el usuario?}
+%uwu
+
+\input{Ingenieria_de_software/Casos_de_Uso}
+
+\input{Ingenieria_de_software/Diagramas_De_Flujo}
+
+\section{Arquitectura}
+
+A continuación se describe la arquitectura del sistema propuesto, la cual define los módulos que lo componen, su función dentro del flujo de procesamiento y la manera en que interactúan entre sí para lograr una navegación asistida coherente y en tiempo real.
+
+\subsection{Diagrama de arquitectura}
+
+El siguiente diagrama presenta la arquitectura modular del sistema de navegación asistida, mostrando cómo interactúan sus tres fuentes de entrada principales: la voz del usuario, la cámara y los sensores físicos. 
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=17cm]{Diagramas/DiagArquitectura2.jpg}
+    \caption{Diagrama de arquitectura general del sistema}
+    \label{fig:arquitectura}
+\end{figure}
+El sistema tiene tres entradas principales: voz, cámara y sensores. La cámara pasa por procesamiento de imagen y luego por el modelo de visión, cuya tarea clave es la segmentación: detectar objetos y extraer sus coordenadas en el espacio (básicamente "hay un obstáculo en X, Y"). Esas coordenadas son una de las dos entradas más importantes al módulo de navegación.
+\\
+La entrada dada por el mapeo es resultante de la cadena generada por SLAM donde se obtiene un mapa en 2D con ubicación actual, el flujo se basa en los sensores y el Ray Casting que construye un Occupancy Grid, es decir, una rejilla que indica las celdas libres y ocupadas. Esa matriz 2D es literalmente el terreno sobre el que se calcula la ruta.
+\\
+El módulo de navegación y rutas recibe 3 entradas:
+\begin{itemize}
+    \item La matriz 2D con el mapa del entorno
+    \item  Las coordenadas de objetos que detectó el modelo de visión (la segmentación)
+    \item  Múltiples rutas basadas en la probabilidad de pesos que le asignan costo o preferencia a distintos caminos, así el sistema no solo busca el camino más corto geométricamente sino el más probable o seguro según la posibilidad de caminos que ha evaluado previamente el modelo.
+\end{itemize}
+Con esas tres entradas se calcula la mejor ruta.
+
+
+Los sensores son alarmas en las que si detectan un obstáculo inesperado, generan una alerta que va directo al módulo de navegación para forzar un recalculado de la ruta, esto con el fin de evitar obstáculos. Esto es independiente del flujo normal, es una interrupción reactiva.
+\\
+La salida es dada con la ruta calculada, el sistema extrae las instrucciones paso a paso y las va entregando como salida de voz en tiempo real apoyado en la salida dada por el procesamiento de lenguaje que representa el sistema, también actualiza su estado interno conforme avanza, para dar las instrucciones adecuadas.
+
+\input{Ingenieria_de_software/Analisis_de_Requerimientos}

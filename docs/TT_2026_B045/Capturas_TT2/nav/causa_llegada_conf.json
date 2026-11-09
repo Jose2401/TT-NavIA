@@ -1,0 +1,287 @@
+[
+ {
+  "seed": 0,
+  "destino": "llévame al sillón",
+  "dReal": 1.994917947345211,
+  "causa": [
+   "percepcion",
+   2.04,
+   [
+    [
+     0.85,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 0,
+  "destino": "llévame a la mesa",
+  "dReal": 0.9914936796262194,
+  "causa": [
+   "percepcion",
+   1.06,
+   [
+    [
+     0.98,
+     "ambos"
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 0,
+  "destino": "llévame a la planta",
+  "dReal": 0.5979764083557151,
+  "causa": [
+   "mapa",
+   0.56,
+   []
+  ]
+ },
+ {
+  "seed": 0,
+  "destino": "ve a la silla",
+  "dReal": 1.1792380801331215,
+  "causa": [
+   "percepcion",
+   1.28,
+   [
+    [
+     0.95,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 1,
+  "destino": "llévame al sillón",
+  "dReal": 2.156384697978688,
+  "causa": [
+   "percepcion",
+   2.32,
+   [
+    [
+     0.98,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 1,
+  "destino": "llévame a la mesa",
+  "dReal": 2.494711530011017,
+  "causa": [
+   "percepcion",
+   1.74,
+   [
+    [
+     0.66,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 1,
+  "destino": "llévame a la planta",
+  "dReal": 0.309894987524937,
+  "causa": [
+   "mapa",
+   0.57,
+   []
+  ]
+ },
+ {
+  "seed": 1,
+  "destino": "ve a la silla",
+  "dReal": 1.1792380801331215,
+  "causa": [
+   "percepcion",
+   1.55,
+   [
+    [
+     0.54,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 2,
+  "destino": "llévame al sillón",
+  "dReal": 1.9512052947216125,
+  "causa": [
+   "percepcion",
+   2.07,
+   [
+    [
+     0.9,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 2,
+  "destino": "llévame a la mesa",
+  "dReal": 1.8076771305822326,
+  "causa": [
+   "percepcion",
+   2.12,
+   [
+    [
+     0.86,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 2,
+  "destino": "llévame a la planta",
+  "dReal": 0.8153178410506274,
+  "causa": [
+   "percepcion",
+   0.78,
+   [
+    [
+     0.74,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 2,
+  "destino": "ve a la silla",
+  "dReal": 1.16258595502693,
+  "causa": [
+   "percepcion",
+   1.25,
+   [
+    [
+     0.96,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 3,
+  "destino": "llévame al sillón",
+  "dReal": 1.4873401640483754,
+  "causa": [
+   "percepcion",
+   1.42,
+   [
+    [
+     0.88,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 3,
+  "destino": "llévame a la mesa",
+  "dReal": 2.189312445963131,
+  "causa": [
+   "percepcion",
+   1.61,
+   [
+    [
+     0.71,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 3,
+  "destino": "llévame a la planta",
+  "dReal": 0.7309474720605615,
+  "causa": [
+   "percepcion",
+   0.84,
+   [
+    [
+     0.97,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 3,
+  "destino": "ve a la silla",
+  "dReal": 0.7277297138865011,
+  "causa": [
+   "mapa",
+   0.49,
+   []
+  ]
+ },
+ {
+  "seed": 4,
+  "destino": "llévame al sillón",
+  "dReal": 2.1593287226428246,
+  "causa": [
+   "percepcion",
+   2.07,
+   [
+    [
+     0.92,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 4,
+  "destino": "llévame a la mesa",
+  "dReal": 2.494711530011017,
+  "causa": [
+   "percepcion",
+   1.99,
+   [
+    [
+     0.98,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 4,
+  "destino": "llévame a la planta",
+  "dReal": 0.7309474720605615,
+  "causa": [
+   "percepcion",
+   0.76,
+   [
+    [
+     0.66,
+     ""
+    ]
+   ]
+  ]
+ },
+ {
+  "seed": 4,
+  "destino": "ve a la silla",
+  "dReal": 1.0591367619060212,
+  "causa": [
+   "percepcion",
+   1.52,
+   [
+    [
+     0.98,
+     ""
+    ]
+   ]
+  ]
+ }
+]

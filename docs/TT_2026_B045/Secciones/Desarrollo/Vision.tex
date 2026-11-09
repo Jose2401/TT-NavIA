@@ -1,0 +1,221 @@
+% ==============================================================================
+\section{Módulo de visión}
+\label{sec:dev_vision}
+% ==============================================================================
+
+\subsection{Descripción}
+
+El módulo de visión recibe cada cuadro de la cámara y entrega una lista de
+detecciones. Cada detección indica qué es el objeto, en qué dirección está respecto al
+frente del usuario, a qué distancia aproximada se encuentra, si se está moviendo y, en
+el caso de las puertas, si está abierta o cerrada. Esa lista es la materia prima del
+SLAM, de las alertas y de la descripción del entorno que el usuario puede pedir por
+voz, y atiende los requerimientos RF-07 a RF-10 y RF-13.
+
+En TT1 el módulo se planteó alrededor de un solo detector, YOLOv8. Al probarlo con los
+videos reales apareció el problema principal: el conjunto COCO con el que viene
+entrenado no tiene la clase ``puerta'', ni escaleras, ni escritorios, que son
+justamente los objetos que más importan para orientarse en un edificio. La versión
+final combina tres modelos preentrenados, cada uno con una tarea distinta
+(Tabla~\ref{tab:vision_modelos}).
+
+\begin{table}[H]
+\centering
+\caption{Modelos que componen el módulo de visión}
+\label{tab:vision_modelos}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{3.4cm}|p{3.1cm}|p{2.3cm}|p{5.7cm}|}
+\hline
+\textbf{Modelo} & \textbf{Entrenamiento} & \textbf{Frecuencia} & \textbf{Uso} \\
+\hline
+YOLOv8s-seg & COCO, 80 clases & Cada cuadro & Personas, vehículos, muebles y objetos
+comunes \cite{redmon2016yolo}. \\
+\hline
+YOLOv8s & Open Images V7, 600 clases & Cada 5 cuadros (15 en la Raspberry Pi) & Solo
+las clases que COCO no tiene: puerta, escalera, ventana, bote de basura, poste,
+letrero, árbol, escritorio, archivero, mostrador, pizarrón y otras. \\
+\hline
+SegFormer-B0 & ADE20K, 150 clases & Cada 4 a 10 cuadros & Segmentación de la escena:
+piso transitable, agua, escaleras y puertas \cite{xie2021segformer,
+zhou2017ade20k}. \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Preprocesamiento y geometría de la cámara}
+
+Cada cuadro se reduce a 640 píxeles de ancho conservando la relación de aspecto.
+Durante las pruebas se encontró que la versión anterior lo forzaba a
+$640 \times 480$, lo que en los videos 16:9 estiraba la imagen en vertical, inflaba
+la altura de las cajas y acortaba las distancias cerca de un 25\,\%. Toda la geometría
+(dirección, distancia por altura típica y distancia por plano de piso) se calcula
+ahora con una sola distancia focal derivada del campo de visión horizontal. El
+sistema incluye dos perfiles de cámara: la cámara web de la computadora portátil
+($70^\circ$) y la Camera Module 3 Wide del prototipo ($102^\circ$). Las ecuaciones de
+distancia se presentaron en la Sección~\ref{sec:dev_slam}; aquí basta recordar que el
+rango estimado se acota al intervalo de 0.2 a 8~m.
+
+La igualación de histograma y el filtro gaussiano del pseudocódigo de TT1
+(Apéndice~\ref{apend:procesa}) no se implementaron. Los modelos preentrenados ya
+normalizan internamente la imagen y, en las pruebas con video, no se observó una
+mejora que justificara el costo adicional por cuadro.
+
+\subsection{Detección de objetos}
+
+El detector principal es YOLOv8s-seg con un umbral de confianza de 0.45. Algunas
+etiquetas de COCO se renombran para unificarlas con el resto del sistema (por
+ejemplo, \emph{couch} pasa a \emph{sofa} y \emph{tv} a \emph{monitor}). El detector
+extra de Open Images se ejecuta con un umbral de 0.25 y solo cada cierto número de
+cuadros, porque en CPU cuesta casi lo mismo que el principal. De sus 600 clases se
+conservan únicamente las que aportan información nueva; si una de sus cajas se
+traslapa con una caja de COCO con un índice IoU mayor a 0.55, se descarta para no
+duplicar el objeto. La lista de clases se amplió después de una prueba en la sala de
+maestros de la escuela: el sistema casi no detectaba nada porque los escritorios y
+archiveros no existían en COCO.
+
+\subsection{Puertas, piso y peligros por segmentación}
+
+La segmentación semántica de SegFormer asigna una clase a cada píxel. A partir de ese
+mapa se obtienen tres tipos de información:
+
+\begin{itemize}
+    \item \textbf{Puertas.} Cada región conexa de la clase puerta que ocupa al menos el
+    0.4\,\% de la imagen se convierte en una detección. Si dentro de su recuadro hay
+    más de 7\,\% de piso transitable, se considera abierta, porque a través del vano
+    se alcanza a ver el piso del otro lado; de lo contrario, cerrada. Si el detector
+    de Open Images ya vio una puerta en la misma dirección (menos de $8^\circ$ de
+    diferencia), se conserva solo una.
+    \item \textbf{Agua y escaleras.} Son clases directas de ADE20K. Se toman las
+    regiones que aparecen en el 55\,\% inferior de la imagen y se ubican con la
+    distancia por plano de piso.
+    \item \textbf{Hoyos y coladeras.} No existe una clase ``hoyo''. Se detectan como
+    regiones no transitables rodeadas de piso: la región debe estar en la parte baja
+    de la imagen, ocupar entre 0.15\,\% y 20\,\% del cuadro, no tocar los bordes, y al
+    menos el 55\,\% del anillo que la rodea debe ser piso transitable.
+\end{itemize}
+
+Las detecciones de peligro que coinciden en dirección y distancia con un objeto ya
+detectado por YOLO se descartan, porque suele tratarse de la sombra o la base de ese
+mismo objeto.
+
+\subsection{Objetos en movimiento}
+
+Para decidir si un objeto se mueve, el rastreador de \texttt{vision/motion.py}
+asocia las cajas entre cuadros y guarda el historial de sus centroides; si el
+desplazamiento supera 8 píxeles, el objeto se marca como móvil. Las clases que por
+naturaleza se desplazan (personas, animales y vehículos) se marcan siempre como
+móviles. En la primera versión, al girar la cabeza todo el cuarto aparecía como
+``en movimiento''. Para corregirlo, antes de comparar se desplaza el historial del
+rastreador la cantidad de píxeles que corresponde al giro medido por la odometría,
+$\Delta u = \Delta\theta \cdot W / \text{FOV}_h$, de modo que solo queda el movimiento
+propio de los objetos.
+
+\subsection{Nivel de riesgo}
+
+Cada detección recibe un nivel de riesgo de 0 a 3 según la tabla definida en TT1
+(Tabla~\ref{tabla_riesgo}): los peligros de piso y los objetos en movimiento tienen
+riesgo alto (3), los obstáculos estáticos y las puertas cerradas riesgo medio (2), y
+las puertas abiertas y las paredes riesgo bajo (1). El mapeo agrupa estos niveles por
+sector para construir $r_{\text{front}}$, $r_{\text{left}}$ y $r_{\text{right}}$.
+
+\subsection{Resultados}
+
+La Figura~\ref{fig:vision_escenas} muestra el resultado del módulo en cuatro escenas de
+los videos reales. A la izquierda se marcan las detecciones con su distancia estimada
+(verde: estático; rojo: móvil; magenta: peligro de piso) y a la derecha la
+segmentación (verde: piso transitable; azul: puerta; gris: pared).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Capturas_TT2/vision/vision_escena11.jpg}\\[2pt]
+    \includegraphics[width=\textwidth]{Capturas_TT2/vision/vision_escena14.jpg}\\[2pt]
+    \includegraphics[width=\textwidth]{Capturas_TT2/vision/vision_escena6.jpg}
+    \caption{Detecciones (izquierda) y segmentación (derecha) en tres escenas reales:
+    entrada de la sala de maestros, pasillo de oficina con una persona caminando y
+    calle con vehículos.}
+    \label{fig:vision_escenas}
+\end{figure}
+
+En la entrada de la sala de maestros se detectan las dos personas, una mochila y la
+puerta, que se clasifica como cerrada a 1.6~m. En el pasillo de oficina se detectan
+la persona que camina hacia la cámara (a 1.9~m), un monitor y dos puertas abiertas.
+La segmentación, sin embargo, etiqueta como puerta buena parte de los canceles de
+vidrio, así que al menos una de esas ``puertas'' es una mampara. La señora sentada en
+el escritorio aparece a 4.8~m cuando está a unos 2~m: la distancia se calcula con la
+altura típica de una persona de pie (1.65~m) y una persona sentada se ve más baja, lo
+que el modelo interpreta como lejanía. En la calle, todos los vehículos aparecen
+marcados como móviles y a 8~m, que es el límite del rango estimado. Más preocupante
+es que la segmentación pinta como piso transitable tanto la banqueta como el arroyo
+vehicular, porque la clase \emph{road} de ADE20K forma parte de las superficies
+transitables, y que los baches visibles en el pavimento no se reportan como
+peligro.
+
+La Figura~\ref{fig:vision_tapete} muestra un falso positivo representativo. Un tapete
+con un estampado oscuro sobre un piso claro cumple todas las condiciones de un hoyo:
+es una región que la segmentación no reconoce como piso, está en la parte baja de la
+imagen y está rodeada de piso. El sistema lo reporta como hoyo a 0.9~m.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.62\textwidth]{Capturas_TT2/vision/vision_escena16.jpg}
+    \caption{Falso positivo: un tapete estampado se detecta como hoyo a 0.9~m.}
+    \label{fig:vision_tapete}
+\end{figure}
+
+La Tabla~\ref{tab:vision_tiempos} reporta el tiempo de inferencia de cada modelo en la
+computadora portátil, medido en CPU sobre el mismo cuadro.
+
+\begin{table}[H]
+\centering
+\caption{Tiempo de inferencia por modelo (CPU Apple M4, promedio de 10 ejecuciones)}
+\label{tab:vision_tiempos}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Modelo} & \textbf{Entrada} & \textbf{Tiempo (ms)} \\
+\hline
+YOLOv8s-seg (COCO) & $640 \times 360$ & 72 \\
+YOLOv8s (Open Images V7) & $640 \times 360$ & 55 \\
+SegFormer-B0 (ADE20K) con detección de puertas y peligros & $480 \times 270$ & 293 \\
+\hline
+\end{tabular}
+\end{table}
+
+Con el detector principal en cada cuadro, el extra cada cinco y la segmentación cada
+cuatro, el costo promedio por cuadro en la computadora portátil es de alrededor de
+160~ms, es decir, unos 6 cuadros por segundo. La segmentación es el modelo más caro;
+por eso se ejecuta con menor frecuencia y sus resultados se reutilizan en los cuadros
+intermedios. En la Raspberry Pi estos tiempos serán varias veces mayores, y la
+frecuencia de cada modelo ya es configurable desde la línea de comandos.
+
+No fue posible medir la precisión de detección que exige RNF-06 (90\,\%), porque no se
+cuenta con un conjunto de imágenes etiquetadas del entorno de uso. Los modelos se usan
+tal como se distribuyen, y su precisión reportada corresponde a los conjuntos COCO,
+Open Images y ADE20K, no a los pasillos de la escuela. Para llenar ese hueco se dejó
+preparado el script \texttt{vision/finetune.py}, que reentrena YOLO con un conjunto
+propio en formato YOLO; el siguiente paso es etiquetar fotos de las puertas y
+mamparas de la escuela. El módulo cuenta con 15 pruebas automatizadas que usan
+detectores simulados para verificar la geometría, la detección de puertas, el
+detector extra y la deduplicación.
+
+\subsection{Limitaciones}
+
+\begin{itemize}
+    \item Las mamparas y los canceles de vidrio no existen como clase en ninguno de los
+    tres modelos; la segmentación a veces los marca como puertas y otras veces no los
+    detecta. Los ultrasónicos frontales compensan en parte esta carencia, porque un
+    eco sin detección visual se avisa como pared, y corrigen el estado de las puertas
+    de vidrio, pero solo dentro de su cono angosto.
+    \item El criterio geométrico de los hoyos produce falsos positivos con tapetes,
+    manchas y cambios de textura del piso.
+    \item El rastreador compensa el giro del usuario, pero no su avance. Al caminar
+    hacia adelante, las cajas de los objetos cercanos crecen y algunos objetos
+    estáticos se marcan como móviles (ver Figura~\ref{fig:cap_oficina_3}).
+    \item La distancia monocular depende de la altura típica de cada clase: una
+    persona sentada o un objeto de tamaño atípico quedan mal ubicados. Además, se
+    satura en 8~m.
+    \item La calle se considera superficie transitable igual que la banqueta, y los
+    baches poco profundos no se distinguen del pavimento. En exteriores, el sistema no
+    sabe por sí mismo que bajar al arroyo vehicular es peligroso.
+    \item La precisión en el entorno de uso no se ha medido con datos etiquetados.
+\end{itemize}

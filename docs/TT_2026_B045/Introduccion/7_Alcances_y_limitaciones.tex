@@ -1,0 +1,31 @@
+\section{Alcances y limitaciones}
+
+\subsection{Alcances}
+El presente proyecto tiene como objetivo el desarrollo de un sistema de navegación asistida que permita apoyar la movilidad de personas con visión reducida mediante el uso de tecnologías de inteligencia artificial, visión por computadora y guía auditiva.
+\begin{itemize}
+    \item Diseñar e implementar un sistema capaz de capturar información del entorno mediante una cámara integrada en un dispositivo portátil.
+    \item Desarrollar un módulo de procesamiento basado en inteligencia artificial que permita detectar objetos y obstáculos relevantes utilizando técnicas de visión por computadora y aprendizaje profundo.
+    \item Integrar un sistema de navegación basado en un mapa del entorno construido por el propio dispositivo, que permita estimar la posición del usuario, calcular rutas hacia elementos reconocidos (como puertas o salidas) y proporcionar indicaciones mediante audio.
+    \item Implementar un sistema de interacción mediante reconocimiento de voz que permita al usuario comunicarse con el sistema a través de comandos verbales.
+    \item Construir un prototipo funcional que integre hardware y software para demostrar la viabilidad del sistema propuesto.
+    \item Evaluar el desempeño del sistema mediante pruebas que permitan analizar su capacidad de detección de objetos, tiempo de respuesta y funcionamiento general.
+    \item Establecer un protocolo de interacción accesible que minimice la curva de aprendizaje del sistema, considerando que los usuarios potenciales pueden no tener experiencia previa con tecnología de asistencia basada en inteligencia artificial.
+    \item El sistema ha sido diseñado exclusivamente para la navegación peatonal, por lo que su uso en cualquier otro modo de desplazamiento queda fuera del alcance del presente proyecto.
+\end{itemize}
+
+
+\subsection{Limitaciones}
+
+Es importante reconocer que, a pesar de los alcances planteados, el desarrollo del presente proyecto presenta algunas limitaciones que deben considerarse durante su implementación.
+
+\begin{itemize}
+    \item El desempeño del sistema puede verse afectado por condiciones del entorno como la iluminación, la presencia de múltiples objetos o escenarios altamente dinámicos, lo cual puede influir en la precisión de los algoritmos de visión por computadora.
+    \item La capacidad de procesamiento del hardware utilizado en el prototipo, ya que dispositivos portátiles como microcomputadoras o sistemas embebidos tienen recursos computacionales limitados en comparación con servidores de alto rendimiento.
+    \item La estimación de la posición del usuario se basa en sensores inerciales y en la visión, por lo que acumula error en recorridos largos o en entornos con pocos objetos reconocibles. El sistema no contempla la navegación a destinos arbitrarios a escala de ciudad.
+    \item Es importante considerar que el sistema se desarrollará como un prototipo de investigación, por lo que su implementación y pruebas se realizarán en escenarios controlados y no necesariamente en todas las condiciones posibles de uso en la vida cotidiana.
+    \item El proyecto se enfocará principalmente en el desarrollo e integración de las tecnologías necesarias para el funcionamiento del sistema, por lo que aspectos relacionados con la producción a gran escala, certificaciones médicas o implementación comercial quedan fuera del alcance de la presente investigación.
+    \item El sistema constituye una herramienta de asistencia complementaria y no un sustituto de los apoyos tradicionales de movilidad. El uso del sistema no elimina la necesidad del bastón blanco ni del perro guía, los cuales siguen siendo elementos indispensables para la navegación segura e independiente. El sistema está diseñado para operar en conjunto con dichos apoyos, proporcionando una capa adicional de información auditiva sobre el entorno.
+    \item El sistema no contempla la detección de obstáculos a nivel del suelo con la misma precisión que un bastón blanco (como desniveles, bordillos o superficies irregulares), por lo que su capacidad de alerta en esos escenarios es limitada y no debe considerarse suficiente para reemplazar dicha herramienta.
+    \item La fiabilidad del reconocimiento de voz puede verse reducida en entornos con alto nivel de ruido ambiental, como zonas de tráfico intenso, espacios concurridos o áreas industriales, lo que podría limitar la capacidad del usuario para interactuar con el sistema mediante comandos verbales en dichos contextos.
+    \item El sistema identificará y notificará al usuario cuando las condiciones del entorno no sean aptas para su funcionamiento, tales como iluminación insuficiente, pérdida de señal o contextos no contemplados en su diseño como el interior de vehículos en movimiento. En dichos casos, el sistema suspenderá la emisión de instrucciones priorizando la seguridad del usuario sobre la continuidad del servicio. 
+\end{itemize}

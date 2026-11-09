@@ -1,0 +1,303 @@
+\chapter{Requerimientos del sistema}
+
+El presente capítulo describe los requerimientos que el sistema debe satisfacer para
+constituir una solución válida al problema de navegación asistida para personas con
+discapacidad visual. Estos requerimientos se derivan de las necesidades del usuario final,
+de las restricciones del entorno de operación y de las características de la arquitectura
+modular definida en el capítulo anterior. Sirven como base directa para el capítulo de
+análisis, en el cual se justifica la selección de tecnologías a partir de los criterios
+aquí establecidos.
+
+Los requerimientos se organizan en dos categorías: funcionales, que describen qué debe
+hacer el sistema, y no funcionales, que definen las restricciones de calidad bajo las
+cuales debe operar.
+
+% ==============================================================================
+\section{Requerimientos Funcionales}
+% ==============================================================================
+
+Los requerimientos funcionales se agrupan conforme a la arquitectura modular del sistema,
+siguiendo la misma organización de módulos descrita en el marco metodológico.
+
+% ------------------------------------------------------------------------------
+\subsection*{RF -- Módulos de interacción}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RF-01}] \textbf{Captura continua de voz con detección de actividad.}
+    El sistema debe capturar la entrada de audio del usuario de forma continua mediante el
+    micrófono del dispositivo y detectar automáticamente los segmentos en los que hay señal
+    de voz activa, descartando los periodos de silencio para optimizar el procesamiento.
+
+    \item[\textbf{RF-02}] \textbf{Filtrado y normalización de audio.}
+    El sistema debe aplicar supresión de ruido ambiental y normalización de nivel sobre la
+    señal de audio antes de entregarla al módulo de procesamiento de lenguaje natural, con
+    el fin de reducir errores de reconocimiento en entornos con ruido de fondo.
+
+    \item[\textbf{RF-03}] \textbf{Reconocimiento de voz e interpretación de intención.}
+    El sistema debe transcribir la señal de voz a texto, clasificar la intención del usuario
+    ---indicar un destino, solicitar descripción del entorno, controlar la sesión--- y
+    extraer las entidades relevantes para ejecutar la acción correspondiente.
+
+    \item[\textbf{RF-04}] \textbf{Síntesis y reproducción de instrucciones por voz.}
+    El sistema debe convertir en audio las instrucciones de navegación, las alertas y las
+    respuestas generadas por el sistema, reproduciéndolas al usuario mediante síntesis de
+    voz con lenguaje natural, frases cortas y referencias espaciales claras.
+
+    \item[\textbf{RF-05}] \textbf{Control de sesión por voz.}
+    El sistema debe reconocer comandos de voz para iniciar, pausar, reanudar y detener la
+    sesión de navegación, sin requerir ningún tipo de interacción física o visual por parte
+    del usuario.
+
+    \item[\textbf{RF-06}] \textbf{Exposición completa de funciones a través de voz.}
+    El módulo de interacción debe exponer la totalidad de las funciones del sistema mediante
+    comandos de voz, de forma que ninguna función quede accesible exclusivamente por medios
+    táctiles o visuales. Esto incluye iniciar y detener la navegación, indicar destinos,
+    solicitar descripciones del entorno y pedir rutas alternativas.
+
+\end{itemize}
+
+% ------------------------------------------------------------------------------
+\subsection*{RF -- Módulos de percepción}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RF-07}] \textbf{Captura continua de imágenes y preprocesamiento.}
+    El sistema debe adquirir fotogramas de forma continua mediante la cámara del dispositivo
+    y aplicar operaciones de preprocesamiento ---redimensionamiento, normalización e
+    igualación de contraste--- para estandarizar la entrada al módulo de visión.
+
+    \item[\textbf{RF-08}] \textbf{Detección de objetos con localización espacial.}
+    El módulo de visión debe detectar los objetos relevantes para la navegación presentes en
+    cada fotograma ---incluyendo al menos personas, obstáculos estáticos, puertas, escaleras
+    y desniveles--- generando para cada uno una región de interés con su nivel de confianza
+    asociado.
+
+    \item[\textbf{RF-09}] \textbf{Clasificación de objetos y estimación de nivel de riesgo.}
+    El sistema debe asignar una categoría semántica a cada objeto detectado y determinar su
+    nivel de riesgo para la trayectoria actual, distinguiendo entre elementos que representan
+    un peligro inmediato y elementos que forman parte del entorno navegable sin representar
+    una amenaza.
+
+    \item[\textbf{RF-10}] \textbf{Estimación de distancia a objetos detectados.}
+    El sistema debe estimar la distancia entre el usuario y cada objeto detectado a partir
+    de la información visual disponible y de la representación espacial del entorno, con el
+    fin de determinar la urgencia de la alerta correspondiente.
+
+    \item[\textbf{RF-11}] \textbf{Validación cruzada con sensores de proximidad.}
+    El sistema debe contrastar la información visual con las mediciones de los sensores de
+    proximidad del dispositivo para confirmar o descartar la presencia de obstáculos,
+    reduciendo la tasa de falsas alarmas antes de notificar al módulo de navegación.
+
+    \item[\textbf{RF-12}] \textbf{Generación y emisión de alerta de obstáculo.}
+    Al confirmar la presencia de un obstáculo relevante, el sistema debe notificar al usuario
+    por voz de forma inmediata, especificando la naturaleza del obstáculo y su posición
+    relativa, y enviar las coordenadas y el nivel de riesgo al módulo de navegación para
+    desencadenar el recálculo de ruta si corresponde.
+
+    \item[\textbf{RF-13}] \textbf{Inferencia de relaciones contextuales entre objetos.}
+    El sistema debe inferir relaciones espaciales y contextuales entre los elementos
+    detectados ---como el estado de una puerta o el grado de obstrucción de un pasillo---
+    para enriquecer la representación del entorno más allá de la detección individual
+    de objetos.
+
+\end{itemize}
+
+% ------------------------------------------------------------------------------
+\subsection*{RF -- Módulos de representación}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RF-14}] \textbf{Estimación continua de la posición del usuario.}
+    El sistema debe mantener y actualizar de forma continua una estimación de la posición y
+    orientación del usuario dentro del entorno, integrando el movimiento detectado con la
+    información perceptual disponible.
+
+    \item[\textbf{RF-15}] \textbf{Construcción incremental del mapa del entorno.}
+    El sistema debe construir y actualizar progresivamente un mapa del entorno a medida que
+    el usuario se desplaza, sin requerir un mapa previo del espacio como condición para
+    operar.
+
+    \item[\textbf{RF-16}] \textbf{Representación de zonas libres y ocupadas.}
+    El mapa generado debe distinguir explícitamente entre zonas navegables y zonas ocupadas
+    por obstáculos, proporcionando al módulo de planeación una estructura de datos adecuada
+    para calcular trayectorias seguras.
+
+    \item[\textbf{RF-17}] \textbf{Actualización dinámica del mapa.}
+    El mapa del entorno debe actualizarse en respuesta a los cambios detectados, reflejando
+    la aparición o desaparición de obstáculos de forma que la representación espacial
+    corresponda siempre al estado actual del entorno. La frecuencia mínima de esta
+    actualización se establece en RNF-03.
+
+\end{itemize}
+
+% ------------------------------------------------------------------------------
+\subsection*{RF -- Módulo de navegación y rutas}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RF-18}] \textbf{Cálculo de ruta óptima local.}
+    El módulo de navegación debe calcular una trayectoria que conecte la posición actual del
+    usuario con su destino, minimizando el costo del recorrido y garantizando que la ruta
+    propuesta evite todas las zonas ocupadas registradas en el mapa.
+
+    \item[\textbf{RF-19}] \textbf{Actualización periódica de la ruta durante la navegación.}
+    El sistema debe recalcular y actualizar la ruta activa de forma periódica durante una
+    sesión de navegación, incorporando los cambios detectados en el mapa para mantener la
+    trayectoria vigente coherente con el estado actual del entorno. La frecuencia mínima
+    de este recálculo se establece en RNF-04.
+
+    \item[\textbf{RF-20}] \textbf{Recálculo de ruta ante obstáculos confirmados.}
+    Cuando el módulo de percepción confirme la presencia de un obstáculo en la trayectoria
+    activa, el módulo de navegación debe generar una ruta alternativa de forma inmediata,
+    sin esperar al ciclo periódico de actualización establecido en RNF-04.
+
+    \item[\textbf{RF-21}] \textbf{Generación de instrucciones de movimiento.}
+    El módulo de dirección debe traducir cada punto de la ruta calculada en una instrucción
+    de movimiento discreta ---avanzar, girar a la derecha, girar a la izquierda,
+    detenerse--- expresada en términos de distancia y ángulo comprensibles, y entregarla
+    al módulo de salida para su emisión por voz.
+
+    \item[\textbf{RF-22}] \textbf{Resolución de destinos sobre el mapa del entorno.}
+    El sistema debe permitir que el usuario indique como destino un elemento reconocido y
+    registrado en el mapa ---por ejemplo, una puerta o la salida--- o un punto explícito,
+    y guiarlo hacia él mediante la navegación local, sin depender de servicios de
+    cartografía externos.
+
+    \item[\textbf{RF-23}] \textbf{Solicitud de ruta alternativa por voz.}
+    El usuario debe poder solicitar por voz una ruta alternativa en cualquier momento de la
+    navegación. El sistema debe analizar su viabilidad y aplicarla, o notificar al usuario
+    si no existe una alternativa disponible.
+
+\end{itemize}
+
+% ==============================================================================
+\section{Requerimientos No Funcionales}
+% ==============================================================================
+
+Los requerimientos no funcionales establecen los criterios de calidad bajo los cuales el
+sistema debe operar. Son determinantes en la selección de tecnologías, ya que imponen
+restricciones concretas sobre el rendimiento, la precisión, la portabilidad y la seguridad
+de cada módulo.
+
+% ------------------------------------------------------------------------------
+\subsection*{RNF -- Rendimiento}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RNF-01}] \textbf{Latencia de detección y alerta de obstáculos.}
+    El sistema debe detectar, clasificar y emitir la alerta de un obstáculo en un tiempo
+    máximo de 2 segundos desde la captura del fotograma en el que éste aparece, para
+    garantizar que la notificación al usuario sea útil antes de que la situación represente
+    un riesgo.
+
+    \item[\textbf{RNF-02}] \textbf{Latencia de reconocimiento de voz.}
+    El sistema debe procesar e interpretar un comando de voz en menos de 500~ms desde que
+    el usuario termina de hablar, de forma que la respuesta o acción resultante no interrumpa
+    el flujo natural de la interacción.
+
+    \item[\textbf{RNF-03}] \textbf{Frecuencia de actualización del mapa.}
+    La representación espacial del entorno debe actualizarse a una frecuencia mínima de
+    10~Hz, de modo que los cambios en el entorno queden reflejados en el mapa sin un desfase
+    perceptible entre la posición real del usuario y su posición estimada en el mapa.
+
+    \item[\textbf{RNF-04}] \textbf{Frecuencia de actualización de la ruta activa.}
+    La ruta de navegación debe recalcularse al menos una vez cada diez segundos durante una
+    sesión activa, garantizando que la trayectoria incorpore los cambios recientes del
+    entorno sin imponer una carga computacional continua al sistema. Este valor constituye
+    la restricción temporal asociada al comportamiento funcional descrito en RF-19.
+
+    \item[\textbf{RNF-05}] \textbf{Eficiencia computacional en hardware limitado.}
+    El sistema debe poder ejecutarse en hardware de propósito general con recursos limitados,
+    como los disponibles en dispositivos móviles o sistemas embebidos de bajo costo ---por
+    ejemplo, una Raspberry Pi 4 o equivalente--- cumpliendo los tiempos de respuesta
+    establecidos sin requerir infraestructura de cómputo en la nube para su operación básica.
+
+\end{itemize}
+
+% ------------------------------------------------------------------------------
+\subsection*{RNF -- Precisión y confiabilidad}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RNF-06}] \textbf{Precisión en la detección de obstáculos.}
+    El módulo de visión debe alcanzar una tasa de detección correcta mínima del 90\% bajo
+    condiciones de iluminación normales, manteniendo la tasa de falsas alarmas por debajo
+    del 5\% para evitar interrupciones innecesarias durante la navegación.
+
+    \item[\textbf{RNF-07}] \textbf{Tasa de reconocimiento correcto de comandos de voz.}
+    El módulo de procesamiento de lenguaje natural debe interpretar correctamente al menos
+    el 92\% de los comandos emitidos en condiciones de ruido ambiental de hasta 60~dB.
+
+    \item[\textbf{RNF-08}] \textbf{Disponibilidad y degradación controlada.}
+    El sistema debe permanecer operativo durante toda la sesión de navegación sin reinicios
+    no solicitados. Ante el fallo de un módulo no crítico, debe degradarse de forma
+    controlada, notificando al usuario la pérdida de funcionalidad y manteniendo operativas
+    las funciones restantes.
+
+    \item[\textbf{RNF-09}] \textbf{Comportamiento conservador ante incertidumbre.}
+    Ante cualquier situación de baja confianza en la información del entorno ---como
+    detección con umbral bajo o pérdida de señal de posicionamiento--- el sistema debe
+    optar por la acción más conservadora: advertir al usuario y sugerir detenerse hasta
+    recuperar información confiable. Es preferible una alerta de precaución adicional que
+    omitir un obstáculo real.
+
+\end{itemize}
+
+% ------------------------------------------------------------------------------
+\subsection*{RNF -- Usabilidad y accesibilidad}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RNF-10}] \textbf{Interfaz exclusivamente por voz.}
+    El sistema debe poder operarse en su totalidad mediante comandos de voz, sin requerir
+    interacción táctil o visual por parte del usuario durante la navegación. Esta restricción
+    aplica a la experiencia completa del usuario y complementa lo establecido en RF-06,
+    que define la responsabilidad funcional del módulo de interacción.
+
+    \item[\textbf{RNF-11}] \textbf{Claridad y comprensibilidad de las instrucciones.}
+    Las instrucciones generadas por el módulo de salida deben utilizar lenguaje natural,
+    frases cortas y referencias espaciales concretas ---izquierda, derecha, metros--- de
+    forma que sean comprensibles sin ambigüedad para un usuario sin conocimientos técnicos
+    y sin entrenamiento previo en el uso del sistema.
+
+    \item[\textbf{RNF-12}] \textbf{Retroalimentación proactiva ante eventos relevantes.}
+    El sistema debe emitir retroalimentación auditiva de forma proactiva ante eventos
+    significativos ---detección de un obstáculo, cambio de ruta, pérdida de señal--- sin
+    esperar a que el usuario lo solicite explícitamente.
+
+\end{itemize}
+
+% ------------------------------------------------------------------------------
+\subsection*{RNF -- Portabilidad y mantenibilidad}
+% ------------------------------------------------------------------------------
+
+\begin{itemize}
+
+    \item[\textbf{RNF-13}] \textbf{Operación autónoma sin conexión a internet.}
+    Los módulos de percepción, representación, planeación local e interacción deben
+    funcionar de forma autónoma sin requerir conexión a internet. Los componentes que
+    aprovechen la conexión para mejorar su calidad deben contar con una alternativa local
+    que se active automáticamente en ausencia de conexión, manteniendo operativas todas
+    las funciones del sistema.
+
+    \item[\textbf{RNF-14}] \textbf{Modularidad e independencia entre componentes.}
+    Los módulos de voz, visión, representación y navegación deben estar desacoplados e
+    intercomunicados mediante interfaces bien definidas, de modo que cualquiera de ellos
+    pueda ser modificado o sustituido sin afectar el funcionamiento de los demás, siempre
+    que se respeten las interfaces establecidas.
+
+    \item[\textbf{RNF-15}] \textbf{Facilidad de actualización de modelos.}
+    La arquitectura debe permitir sustituir los modelos de percepción o inferencia por
+    versiones mejoradas sin requerir cambios estructurales en el resto del sistema, de forma
+    que el desempeño pueda actualizarse conforme avance el estado del arte en las tecnologías
+    empleadas.
+
+\end{itemize}

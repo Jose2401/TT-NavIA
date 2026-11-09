@@ -1,0 +1,194 @@
+\section{Navegación digital en mapas}
+
+La navegación digital se ha convertido en una herramienta fundamental dentro de los sistemas modernos de movilidad y localización. En el contexto de aplicaciones inteligentes y dispositivos portátiles, la navegación digital permite integrar información geográfica, sistemas de posicionamiento y algoritmos de enrutamiento para asistir a los usuarios durante sus desplazamientos \cite{elhashash2022_mobilemapping}.
+
+Los sistemas de navegación digital combinan diferentes tecnologías, como bases de datos cartográficas, sensores de posicionamiento y servicios de mapas en línea, con el objetivo de guiar a un usuario desde un punto de origen hasta un destino determinado. Estos sistemas son capaces de transformar información geográfica compleja en instrucciones comprensibles para el usuario, incluyendo indicaciones paso a paso, cálculo de rutas óptimas y alertas contextuales \cite{navigation_systems_book}.
+
+La integración de sistemas de información geográfica y servicios de mapas digitales ha permitido el desarrollo de plataformas modernas de navegación capaces de representar información espacial en tiempo real. Tecnologías como OpenStreetMap, Google Maps y los sistemas GIS facilitan el análisis y visualización de datos geográficos utilizados en aplicaciones de movilidad urbana y navegación asistida \cite{haklay2008osm}.
+
+En aplicaciones de movilidad asistida y navegación inteligente, los sistemas digitales de mapas permiten integrar algoritmos de planificación de rutas, percepción del entorno y actualización dinámica de trayectorias. Esto resulta especialmente importante en sistemas portables orientados a personas con discapacidad visual, donde la navegación debe adaptarse continuamente a cambios en el entorno urbano \cite{shan2017_googlemap}.
+
+En este capítulo se revisan los principales fundamentos teóricos relacionados con la navegación digital, incluyendo los sistemas de información geográfica, las tecnologías de posicionamiento global, los servicios de mapas digitales y sus aplicaciones dentro de la movilidad urbana. Asimismo, se analizan los componentes principales de un sistema de navegación digital y su relevancia para el desarrollo de soluciones de asistencia, particularmente en dispositivos portables orientados a mejorar la accesibilidad de personas con discapacidad visual.
+
+
+\subsection{Sistemas de navegación digital}
+
+\subsubsection{Concepto de navegación digital}
+
+La navegación digital se refiere al uso de mapas electrónicos y tecnologías de posicionamiento para determinar la ubicación de un usuario y proporcionar instrucciones de ruta hacia un destino específico. Este tipo de sistemas integra información geográfica con algoritmos de cálculo de rutas para generar instrucciones de desplazamiento optimizadas.\cite{google_directions_api}
+
+En términos generales, un sistema de navegación digital recibe como entrada la ubicación actual del usuario, obtenida mediante tecnologías de posicionamiento como GPS o sensores de dispositivos móviles, así como un destino seleccionado por el usuario. Posteriormente, el sistema calcula una ruta óptima dentro de una red de calles o caminos utilizando algoritmos de búsqueda de rutas, como el cálculo de la ruta más corta o la ruta más rápida.\cite{google_directions_api}
+
+La navegación digital se refiere al uso de mapas electrónicos y tecnologías de posicionamiento, como GPS, Wi-Fi y sensores inerciales, para determinar la ubicación de un usuario y proporcionar guía de rutas. Estos sistemas transforman información geográfica y espacial en instrucciones de navegación comprensibles para el usuario, permitiendo calcular trayectorias óptimas entre un origen y un destino dentro de redes urbanas o entornos interiores. En la práctica, un sistema de navegación digital utiliza la posición actual del usuario —obtenida mediante GNSS o técnicas de posicionamiento en interiores— junto con un destino deseado para generar rutas y asistir el desplazamiento en tiempo real \cite{google_directions_api,digital_navigation_spatial}.
+
+Entre los conceptos fundamentales que componen la navegación digital se encuentran:
+
+\begin{itemize}
+\item \textbf{Positioning}: Determining real-time coordinates (latitude/longitude) via GPS or alternative systems.
+\item \textbf{Routing}: Calculating a path on a map from origin to destination using shortest-path or fastest-route algorithms.
+\item \textbf{User interface}: Presenting map views and instructions (visual or auditory) to the user.
+\end{itemize}
+
+Los sistemas de navegación digital suelen combinar estos elementos para asistir desplazamientos a pie, en automóvil, bicicleta o transporte público. En dispositivos móviles y wearables, los datos de navegación se obtienen mediante APIs de servicios de mapas o mediante mapas almacenados localmente, actualizándose de manera continua conforme el usuario se desplaza.\cite{google_directions_api}
+
+En el caso de prototipos portables, la navegación debe integrar la información proveniente de sensores como GPS o cámaras con servicios de mapas digitales, equilibrando la capacidad de respuesta en tiempo real con las limitaciones de energía y conectividad del dispositivo.
+
+\subsubsection{Componentes de un sistema de navegación}
+
+Un sistema completo de navegación digital está compuesto por varios módulos que interactúan entre sí para ofrecer orientación al usuario \cite{navigation_systems_book}.
+
+\textbf{Positioning Module}
+
+Utiliza receptores GPS/GNSS y en algunos casos sensores inerciales o redes Wi-Fi para estimar la ubicación actual del dispositivo. Una limitación importante es que el GPS funciona de forma óptima en exteriores, pero puede presentar fallas en interiores. Por esta razón, algunos sistemas incorporan sensores IMU o balizas BLE para mejorar la continuidad del posicionamiento \cite{zbotic_gnss,indoor_navigation_googlemaps}.
+
+\textbf{Map Database}
+
+Consiste en la base de datos cartográfica que contiene información sobre calles, intersecciones, puntos de interés y otros elementos geográficos. Estos datos pueden ser proporcionados por servicios como Google Maps, OpenStreetMap o Mapbox. Dependiendo del diseño del sistema, los mapas pueden almacenarse localmente o solicitarse dinámicamente a través de una API \cite{openstreetmap_about,google_directions_api}.
+
+\textbf{Routing Engine}
+
+Es el módulo encargado de calcular la mejor ruta dentro de la red vial. Puede ejecutarse en servidores remotos, como ocurre con servicios en la nube (por ejemplo Google Directions API) \cite{google_directions_api}, o directamente en el dispositivo mediante motores de enrutamiento como OSRM o GraphHopper \cite{luxen2011osrm}.
+
+\textbf{User Interface / Output}
+
+Este componente presenta las instrucciones al usuario mediante interfaces visuales, auditivas o hápticas. En dispositivos portables, las instrucciones suelen comunicarse mediante audio o vibraciones \cite{assistive_navigation_review}.
+
+\textbf{Sensors for Context}
+
+En sistemas avanzados, especialmente en dispositivos de asistencia, se incorporan sensores adicionales como cámaras o sensores de proximidad para detectar obstáculos. Estos sensores permiten modificar la navegación en tiempo real, ajustando las instrucciones o generando alertas cuando se detecta un obstáculo cercano \cite{elhashash2022_mobilemapping,assistive_navigation_review}.
+
+Cada uno de estos componentes debe optimizarse para su implementación en dispositivos portables, considerando restricciones como el consumo energético, la capacidad de procesamiento y el ancho de banda disponible.
+
+\subsection{Sistemas de información geográfica (SIG)}
+
+\subsubsection{Definición de los sistemas de información geográfica}
+
+Un Sistema de Información Geográfica (SIG) es un marco de software diseñado para capturar, almacenar, analizar y visualizar datos geográficos \cite{esri_gis}. Estos sistemas permiten integrar múltiples fuentes de información espacial, como imágenes satelitales, redes de transporte y puntos de interés, organizándolos mediante su ubicación en la superficie terrestre.
+
+According to Esri, a GIS “integrates many types of data” and organizes them into map visualizations and 3D scenes \cite{esri_gis}. Dentro de los sistemas de navegación, los SIG proporcionan la infraestructura necesaria para la gestión de bases de datos cartográficas y el análisis espacial requerido para calcular rutas o identificar ubicaciones cercanas.
+
+Entre las funciones principales de un SIG se encuentran:
+
+\begin{itemize}
+\item Integración de múltiples capas de información geográfica.
+\item Análisis espacial de datos.
+\item Visualización de mapas en dos y tres dimensiones.
+\item Análisis de redes para cálculo de rutas.
+\end{itemize}
+
+Estas capacidades permiten que los sistemas de navegación digital procesen información geográfica compleja y generen rutas optimizadas para diferentes medios de transporte.\cite{esri_gis}
+
+\subsubsection{Representación digital de mapas}
+
+Los mapas digitales representan características geográficas mediante estructuras de datos digitales. Existen dos formatos principales para representar mapas en sistemas computacionales:
+
+\textbf{Raster maps}
+
+Son representaciones basadas en una cuadrícula de píxeles, similares a una imagen. Este tipo de mapas se utiliza comúnmente en imágenes satelitales o en mapas renderizados previamente.
+
+Strengths: simple to display on any device.
+
+Weaknesses: lack flexibility (can’t change style on the fly) \cite{geoapify_tiles}.
+
+\textbf{Vector maps}
+
+Están compuestos por primitivas geométricas como puntos, líneas y polígonos, a las cuales se les asocian atributos. Esto permite modificar dinámicamente el estilo visual de los mapas \cite{geoapify_tiles}.
+
+Por ejemplo, las calles pueden representarse mediante líneas vectoriales que pueden cambiar de grosor o color dependiendo del nivel de zoom o del estilo del mapa.
+
+La mayoría de los servicios modernos utilizan un sistema basado en \textit{tiles}. En este modelo, el mapa se divide en pequeñas secciones cuadradas que se cargan dinámicamente conforme el usuario navega por el mapa.
+
+Geoapify explica que:
+
+``Map tiles are the building blocks of a digital map… generated based on GIS data, rendered by a map server, and delivered on demand'' \cite{geoapify_tiles}.
+
+Los \textit{raster tiles} son imágenes estáticas, mientras que los \textit{vector tiles} contienen información geográfica codificada que puede renderizarse dinámicamente \cite{geoapify_tiles}. Para dispositivos portables, los vector tiles suelen ser preferibles debido a su menor consumo de datos y mayor flexibilidad \cite{geoapify_tiles}.
+
+\subsection{Tecnologías utilizadas en navegación digital}
+
+\subsubsection{Sistema de posicionamiento global (GPS)}
+
+El Sistema de Posicionamiento Global (GPS) es la tecnología de posicionamiento satelital más utilizada a nivel mundial. Este sistema permite determinar la ubicación de un dispositivo con una precisión aproximada de entre 1 y 5 metros bajo condiciones normales.\cite{zbotic_gnss}
+
+Sin embargo, el GPS presenta algunas limitaciones, como la pérdida de señal en zonas urbanas densas o en interiores \cite{zbotic_gnss}. Para mejorar la precisión y disponibilidad del posicionamiento, los receptores modernos utilizan múltiples constelaciones satelitales.
+
+Entre los principales sistemas GNSS se encuentran:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\hline
+Sistema & Operador & Inicio & Precisión aproximada \\
+\hline
+GPS & Estados Unidos & 1978 & $\sim$5 m \\
+GLONASS & Rusia & 1982 & $\sim$5--10 m \\
+Galileo & Unión Europea & 2016 & $\sim$1 m \\
+BeiDou & China & 2020 & $\sim$3--5 m \\
+\hline
+\end{tabular}
+\caption{Principales sistemas GNSS utilizados en navegación digital \cite{zbotic_gnss}.}
+\end{table}
+
+Los receptores multi-GNSS pueden utilizar simultáneamente varios sistemas satelitales, lo que incrementa el número de satélites visibles y mejora la precisión del posicionamiento \cite{zbotic_gnss}.
+
+\subsubsection{Servicios de mapas digitales}
+
+Existen diversas plataformas que ofrecen servicios de mapas digitales, entre las que destacan Google Maps, OpenStreetMap, Mapbox y HERE.
+
+\textbf{Google Maps}
+
+Ofrece una base de datos cartográfica altamente detallada, con información actualizada sobre puntos de interés, tráfico y transporte público. Proporciona múltiples APIs para integración en aplicaciones móviles y web \cite{google_directions_api}.
+
+\textbf{OpenStreetMap}
+
+Es un proyecto colaborativo de código abierto que permite crear y editar mapas libremente. Su principal ventaja es que los datos pueden utilizarse sin costo y pueden adaptarse a diferentes aplicaciones \cite{haklay2008osm}.
+
+\textbf{Mapbox y HERE}
+
+Son plataformas comerciales que combinan datos abiertos con información propietaria, ofreciendo herramientas avanzadas de personalización de mapas.
+
+La elección del servicio de mapas depende de factores como el costo, la disponibilidad de APIs, la posibilidad de uso offline y la capacidad de personalización.
+
+\subsubsection{Integración de APIs de navegación}
+
+Las aplicaciones modernas de navegación suelen integrar múltiples APIs para proporcionar funcionalidades completas.
+
+\textbf{Directions API}
+
+Permite calcular rutas entre dos puntos y obtener instrucciones paso a paso \cite{google_directions_api}.
+
+\textbf{Geocoding / Places API}
+
+Convierte direcciones o nombres de lugares en coordenadas geográficas \cite{google_directions_api}.
+
+\textbf{Transit APIs}
+
+Proporcionan información sobre rutas de transporte público y horarios \cite{gtfs2024spec}.
+
+En el caso de sistemas portables, como las gafas inteligentes propuestas en este trabajo, estas APIs pueden utilizarse para solicitar rutas utilizando las coordenadas actuales del usuario y el destino seleccionado. El sistema recibe una serie de puntos intermedios y genera instrucciones de navegación que pueden comunicarse mediante audio o vibración.
+
+\subsection{Aplicaciones de la navegación digital en movilidad urbana}
+
+\subsubsection{Navegación peatonal}
+
+La navegación peatonal está diseñada específicamente para usuarios que se desplazan caminando. Este tipo de navegación considera elementos como aceras, cruces peatonales y senderos que no forman parte de las redes vehiculares.
+
+Las aplicaciones modernas de mapas ofrecen modos de navegación peatonal que proporcionan instrucciones paso a paso adaptadas a la velocidad de desplazamiento de una persona. Además, pueden incorporar información sobre escaleras, elevadores o accesos peatonales \cite{google_directions_api}.
+
+En dispositivos de asistencia, como las gafas inteligentes, la navegación peatonal puede complementarse con sensores que detecten obstáculos, permitiendo adaptar las instrucciones en tiempo real para mejorar la seguridad del usuario.
+
+\subsubsection{Navegación en transporte público}
+
+La navegación basada en transporte público combina segmentos de caminata con trayectos en autobuses, trenes o metro. Para ello, los sistemas de navegación integran datos provenientes de fuentes como el estándar GTFS (General Transit Feed Specification), que describe rutas, horarios y paradas del transporte público \cite{gtfs2024spec}.
+
+Las plataformas de mapas pueden utilizar esta información para generar rutas multimodales que incluyan caminata y transporte público, así como estimaciones de tiempo de llegada.
+
+En sistemas de asistencia personal, estas funciones permiten informar al usuario cuándo abordar un vehículo, cuándo descender y cuál es la mejor ruta para llegar a su destino final.
+
+\subsubsection{Sistemas de navegación asistida}
+
+Los sistemas de navegación asistida representan una evolución de los sistemas de navegación tradicionales, al integrar sensores adicionales y algoritmos inteligentes para adaptarse al entorno del usuario \cite{pmc_assistive_systems}.
+
+En el contexto de dispositivos portables, estos sistemas pueden combinar navegación digital con técnicas de visión por computadora para detectar obstáculos o reconocer elementos del entorno urbano. De esta forma, el sistema no solo proporciona instrucciones de ruta, sino que también ofrece información contextual que mejora la seguridad y autonomía del usuario \cite{pmc_assistive_systems}.
+
+Este enfoque es particularmente relevante en aplicaciones de asistencia para personas con discapacidad visual, donde la navegación digital puede integrarse con sensores de proximidad y procesamiento de imágenes para generar alertas sobre obstáculos cercanos o cambios en el entorno \cite{pmc_assistive_systems}.

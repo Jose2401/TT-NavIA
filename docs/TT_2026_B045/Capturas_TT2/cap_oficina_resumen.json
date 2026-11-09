@@ -1,0 +1,288 @@
+{
+ "video": "VID_20261006_082350 - Lucina Martínez.mp4",
+ "frames": 456,
+ "landmarks": [
+  {
+   "x": 3.545444551192742,
+   "y": 0.5193021078677608,
+   "label": "potted plant",
+   "seen_count": 25,
+   "required_hits": 4
+  },
+  {
+   "x": 6.257588599982592,
+   "y": 0.03150158588468887,
+   "label": "door",
+   "seen_count": 88,
+   "required_hits": 4
+  },
+  {
+   "x": 5.076811653551682,
+   "y": -1.5562512248871312,
+   "label": "door",
+   "seen_count": 20,
+   "required_hits": 4
+  },
+  {
+   "x": 6.988381176939348,
+   "y": -2.9121648290316875,
+   "label": "door",
+   "seen_count": 60,
+   "required_hits": 4
+  },
+  {
+   "x": 7.9702690980592745,
+   "y": 1.5930305056392329,
+   "label": "door",
+   "seen_count": 40,
+   "required_hits": 4
+  },
+  {
+   "x": 7.513420625477833,
+   "y": -0.2980926535507168,
+   "label": "door",
+   "seen_count": 12,
+   "required_hits": 4
+  },
+  {
+   "x": 6.510001116231432,
+   "y": 3.04746319064848,
+   "label": "fridge",
+   "seen_count": 9,
+   "required_hits": 4
+  },
+  {
+   "x": 7.330575927348349,
+   "y": 4.756071089238432,
+   "label": "escalera",
+   "seen_count": 4,
+   "required_hits": 4
+  },
+  {
+   "x": 10.263885011566325,
+   "y": 1.018180098797881,
+   "label": "door",
+   "seen_count": 8,
+   "required_hits": 4
+  },
+  {
+   "x": 9.46265555620475,
+   "y": -1.2798724592539426,
+   "label": "door",
+   "seen_count": 11,
+   "required_hits": 4
+  },
+  {
+   "x": 9.017493123645467,
+   "y": -4.896246479154839,
+   "label": "chair",
+   "seen_count": 24,
+   "required_hits": 4
+  },
+  {
+   "x": 8.847434016704547,
+   "y": -3.9132453639560554,
+   "label": "door",
+   "seen_count": 8,
+   "required_hits": 4
+  },
+  {
+   "x": 9.078411524415195,
+   "y": -5.207692945267386,
+   "label": "monitor",
+   "seen_count": 11,
+   "required_hits": 4
+  },
+  {
+   "x": 6.327273777242558,
+   "y": -5.581366514897676,
+   "label": "door",
+   "seen_count": 72,
+   "required_hits": 4
+  },
+  {
+   "x": 5.074383993155014,
+   "y": -6.090485273364506,
+   "label": "door",
+   "seen_count": 8,
+   "required_hits": 4
+  },
+  {
+   "x": 9.93930351251851,
+   "y": -8.127741988970996,
+   "label": "door",
+   "seen_count": 4,
+   "required_hits": 4
+  },
+  {
+   "x": 8.271782521157283,
+   "y": -7.651142349745488,
+   "label": "door",
+   "seen_count": 60,
+   "required_hits": 4
+  },
+  {
+   "x": 8.79745222842947,
+   "y": -11.647977905555237,
+   "label": "toilet",
+   "seen_count": 7,
+   "required_hits": 4
+  },
+  {
+   "x": 7.436635737272275,
+   "y": -9.80849331179839,
+   "label": "chair",
+   "seen_count": 28,
+   "required_hits": 4
+  },
+  {
+   "x": 6.512052845262906,
+   "y": -6.809534999508212,
+   "label": "hoyo",
+   "seen_count": 4,
+   "required_hits": 4
+  },
+  {
+   "x": 3.2275077243778223,
+   "y": -11.178329753460337,
+   "label": "chair",
+   "seen_count": 12,
+   "required_hits": 4
+  },
+  {
+   "x": 5.937372957874019,
+   "y": -7.671270585559399,
+   "label": "chair",
+   "seen_count": 6,
+   "required_hits": 4
+  },
+  {
+   "x": 5.14308950126199,
+   "y": -8.838313562446997,
+   "label": "monitor",
+   "seen_count": 17,
+   "required_hits": 4
+  },
+  {
+   "x": 4.670018378228514,
+   "y": -14.15503112874173,
+   "label": "chair",
+   "seen_count": 49,
+   "required_hits": 4
+  },
+  {
+   "x": 5.222052038467973,
+   "y": -9.041270699654856,
+   "label": "laptop",
+   "seen_count": 5,
+   "required_hits": 4
+  },
+  {
+   "x": 8.013849266756644,
+   "y": -11.103553235156529,
+   "label": "door",
+   "seen_count": 52,
+   "required_hits": 4
+  },
+  {
+   "x": 7.071227509909622,
+   "y": -13.310771279501006,
+   "label": "table",
+   "seen_count": 4,
+   "required_hits": 4
+  },
+  {
+   "x": 8.19817245358634,
+   "y": -16.59426693304,
+   "label": "chair",
+   "seen_count": 4,
+   "required_hits": 4
+  },
+  {
+   "x": 5.546085789741782,
+   "y": -13.169423708874527,
+   "label": "monitor",
+   "seen_count": 28,
+   "required_hits": 4
+  },
+  {
+   "x": 3.107851972310646,
+   "y": -13.372273329675624,
+   "label": "door",
+   "seen_count": 100,
+   "required_hits": 4
+  },
+  {
+   "x": 7.690409987370074,
+   "y": -12.072984257187422,
+   "label": "door",
+   "seen_count": 28,
+   "required_hits": 4
+  },
+  {
+   "x": 7.500973680976482,
+   "y": -15.340620868790026,
+   "label": "sofa",
+   "seen_count": 6,
+   "required_hits": 4
+  },
+  {
+   "x": 7.271898634047901,
+   "y": -12.80803475554048,
+   "label": "door",
+   "seen_count": 4,
+   "required_hits": 4
+  },
+  {
+   "x": 1.698766130227712,
+   "y": -12.578000023803769,
+   "label": "sofa",
+   "seen_count": 11,
+   "required_hits": 4
+  },
+  {
+   "x": 0.4049009870441089,
+   "y": -11.734201853174612,
+   "label": "fridge",
+   "seen_count": 8,
+   "required_hits": 4
+  },
+  {
+   "x": 3.1043587909760455,
+   "y": -12.099101130292993,
+   "label": "door",
+   "seen_count": 8,
+   "required_hits": 4
+  },
+  {
+   "x": 2.633530021603598,
+   "y": -10.35299979541672,
+   "label": "chair",
+   "seen_count": 40,
+   "required_hits": 4
+  },
+  {
+   "x": 0.46212854493341193,
+   "y": -14.440803607639538,
+   "label": "chair",
+   "seen_count": 16,
+   "required_hits": 4
+  },
+  {
+   "x": 2.558277585657365,
+   "y": -14.217859764060144,
+   "label": "chair",
+   "seen_count": 6,
+   "required_hits": 4
+  }
+ ],
+ "chunks": 7,
+ "ms_prom": {
+  "odometria_visual": 5.392599852169504,
+  "yolo": 92.4237691013555,
+  "segformer_amortizado": 77.54829322501584,
+  "ekf": 0.2696247232195578,
+  "raycasting_mapa": 0.23152495493393457,
+  "nav_frame": 0.5104813207525009
+ }
+}

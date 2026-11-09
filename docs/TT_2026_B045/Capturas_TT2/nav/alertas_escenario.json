@@ -1,0 +1,96 @@
+{
+ "emitidas": [
+  {
+   "t": 0.7000000000000001,
+   "alertas": [
+    [
+     1,
+     "Precaucion: chair cerca al frente."
+    ]
+   ]
+  },
+  {
+   "t": 2.3000000000000003,
+   "alertas": [
+    [
+     0,
+     "Atencion: obstaculo a 70 centimetros al frente. Detengase."
+    ]
+   ]
+  },
+  {
+   "t": 3.3000000000000003,
+   "alertas": [
+    [
+     1,
+     "Precaución: una persona en movimiento al frente."
+    ]
+   ]
+  },
+  {
+   "t": 7.5,
+   "alertas": [
+    [
+     0,
+     "Alto. Se acerca una persona al frente, muy cerca."
+    ]
+   ]
+  },
+  {
+   "t": 10.5,
+   "alertas": [
+    [
+     1,
+     "Precaucion: obstaculo cerca al frente."
+    ]
+   ]
+  },
+  {
+   "t": 11.600000000000001,
+   "alertas": [
+    [
+     1,
+     "Precaución: pared al frente."
+    ]
+   ]
+  },
+  {
+   "t": 13.9,
+   "alertas": [
+    [
+     0,
+     "Atención: pared al frente a 79 centímetros. Deténgase."
+    ]
+   ]
+  },
+  {
+   "t": 14.200000000000001,
+   "alertas": [
+    [
+     0,
+     "Atencion: obstaculo a 40 centimetros a la izquierda. Detengase."
+    ]
+   ]
+  },
+  {
+   "t": 16.400000000000002,
+   "alertas": [
+    [
+     0,
+     "Atención: pared al frente a 51 centímetros. Deténgase."
+    ]
+   ]
+  },
+  {
+   "t": 16.7,
+   "alertas": [
+    [
+     0,
+     "Atencion: obstaculo a 40 centimetros a la izquierda. Detengase."
+    ]
+   ]
+  }
+ ],
+ "ms_prom": 0.006725345925567137,
+ "ms_max": 0.014667020877823234
+}

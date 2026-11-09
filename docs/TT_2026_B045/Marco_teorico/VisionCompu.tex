@@ -1,0 +1,271 @@
+\section{Visión por computadora}
+
+\subsection{Fundamentos de la visión por computadora}
+La visión por computadora constituye una de las áreas más importantes dentro del campo de la inteligencia artificial, ya que permite a los sistemas informáticos interpretar información visual proveniente del entorno físico. A través de técnicas de procesamiento digital de imágenes, aprendizaje automático y reconocimiento de patrones, los sistemas computacionales pueden analizar imágenes o secuencias de video para identificar objetos, comprender escenas y tomar decisiones basadas en dicha información visual.
+
+El desarrollo de la visión por computadora ha evolucionado significativamente durante las últimas décadas gracias al avance de la capacidad de procesamiento de los computadores, la disponibilidad de grandes conjuntos de datos visuales y el progreso en algoritmos de aprendizaje profundo. Actualmente, esta tecnología se encuentra presente en múltiples aplicaciones, tales como sistemas de conducción autónoma, robótica industrial, vigilancia inteligente, diagnóstico médico asistido por computadora, realidad aumentada y sistemas de asistencia para personas con discapacidad visual.
+
+Dentro de este contexto, la visión por computadora representa un elemento fundamental para los sistemas autónomos que requieren interactuar con el entorno físico. Mediante la captura y análisis de imágenes, estos sistemas pueden percibir el ambiente que los rodea, identificar obstáculos, reconocer objetos relevantes y generar respuestas automáticas ante diferentes situaciones. Por esta razón, comprender los fundamentos teóricos y técnicos de la visión por computadora resulta esencial para el desarrollo de aplicaciones tecnológicas orientadas a la movilidad asistida y la navegación inteligente.
+
+
+
+\subsubsection{Definición de visión por computadora}
+La visión por computadora es una disciplina perteneciente al campo de la inteligencia artificial que tiene como objetivo permitir que las máquinas interpreten información visual proveniente del mundo real. Esta área combina conocimientos de informática, procesamiento digital de imágenes, aprendizaje automático y reconocimiento de patrones para desarrollar sistemas capaces de analizar imágenes y videos de manera automatizada.
+
+De acuerdo con IBM, la visión por computadora es un subcampo de la inteligencia artificial que dota a las máquinas de la capacidad de procesar, analizar e interpretar entradas visuales como imágenes y videos \cite{ibm_computervision}. Esto implica que los sistemas computacionales pueden adquirir imágenes mediante sensores o cámaras, procesarlas mediante algoritmos especializados y extraer información significativa que permita comprender la escena representada.
+
+En términos generales, la visión por computadora puede entenderse como el conjunto de métodos y técnicas que permiten a los sistemas automatizados captar imágenes del entorno, analizarlas y generar información útil a partir de ellas \cite{edsrobotics_vision}. Dicho proceso implica transformar datos visuales en conocimiento interpretable para la toma de decisiones.
+
+Entre las principales características de la visión por computadora se encuentran:
+\begin{itemize}
+    \item Permite a los sistemas informáticos capturar y procesar datos visuales como píxeles, colores, texturas y patrones, los cuales son analizados mediante algoritmos especializados para identificar estructuras relevantes dentro de la imagen \cite{ibm_computervision}\cite{edsrobotics_vision}.
+    \item A diferencia de los procesos de edición o manipulación de imágenes, la visión por computadora no busca alterar la imagen original, sino analizarla para identificar su contenido, como objetos, acciones o escenarios presentes en la escena visual \cite{ibm_computervision}\cite{fvivas_guia_cv}.
+    \item Sus aplicaciones abarcan tanto el análisis de imágenes estáticas, como fotografías o imágenes médicas, como el análisis en tiempo real de secuencias de video, lo cual resulta fundamental en sistemas de vigilancia, robótica y conducción autónoma.
+\end{itemize}
+
+Gracias a estas capacidades, la visión por computadora permite que los sistemas tecnológicos puedan percibir el entorno de una manera similar a la percepción visual humana, aunque utilizando métodos matemáticos y algoritmos computacionales para procesar la información.
+
+
+\subsubsection{Relación entre visión por computadora e inteligencia artificial}
+La visión por computadora se encuentra estrechamente relacionada con la inteligencia artificial, ya que utiliza técnicas de aprendizaje automático y aprendizaje profundo para interpretar información visual. En esencia, la visión por computadora puede considerarse una subdisciplina de la inteligencia artificial especializada en el análisis de datos visuales.
+
+Los sistemas de visión computarizada emplean algoritmos de inteligencia artificial para identificar patrones dentro de las imágenes y reconocer objetos o estructuras presentes en ellas. Según la literatura especializada, los sistemas de visión computarizada suelen apoyar su funcionamiento en algoritmos de inteligencia artificial que permiten decodificar imágenes y reconocer formas, figuras y patrones \cite{edsrobotics_vision}.
+
+Uno de los enfoques más utilizados en este campo es el aprendizaje profundo, particularmente mediante redes neuronales convolucionales (CNN). Estas redes están diseñadas específicamente para procesar datos visuales, ya que son capaces de aprender automáticamente características relevantes de las imágenes a partir de grandes conjuntos de datos etiquetados.
+
+Entre los aspectos más importantes de la relación entre la visión por computadora y la inteligencia artificial se encuentran:
+\begin{itemize}
+    \item La utilización de modelos de aprendizaje automático, como redes neuronales y algoritmos de clasificación, que permiten analizar imágenes y reconocer patrones complejos dentro de ellas \cite{ibm_computervision}\cite{edsrobotics_vision}.
+    \item La dependencia de los avances en aprendizaje profundo y arquitecturas de redes neuronales, como las redes convolucionales (CNN) y los modelos basados en transformers visuales, los cuales permiten extraer características visuales de alto nivel \cite{fvivas_guia_cv}\cite{geeksforgeeks_object_detection}.
+    \item La capacidad de entrenar modelos utilizando grandes bases de datos de imágenes etiquetadas, lo que permite que los sistemas aprendan a reconocer diferentes categorías de objetos o escenas.
+\end{itemize}
+
+La visión por computadora constituye una aplicación directa de los principios de la inteligencia artificial aplicada al procesamiento de información visual. Gracias a estos algoritmos, los sistemas computacionales pueden interpretar imágenes con niveles de precisión cada vez más cercanos a la percepción humana.
+
+\subsubsection{Importancia de la visión por computadora en sistemas autónomos}
+La visión por computadora desempeña un papel fundamental en el desarrollo de sistemas autónomos, ya que proporciona la capacidad de percibir y comprender el entorno en el que dichos sistemas operan. En este sentido, la visión artificial funciona como los “ojos” de un sistema inteligente, permitiéndole obtener información visual necesaria para la toma de decisiones.
+
+Uno de los ejemplos más representativos de esta aplicación es el caso de los vehículos autónomos. En estos sistemas, múltiples cámaras instaladas en el vehículo capturan continuamente imágenes del entorno. Estas imágenes son analizadas mediante algoritmos de visión por computadora que permiten identificar elementos importantes de la vía, como carriles, señales de tránsito, peatones y otros vehículos.
+
+De acuerdo con Amazon Web Services, la tecnología de vehículos autónomos utiliza la visión artificial para reconocer imágenes en tiempo real y crear mapas tridimensionales del entorno, lo cual permite identificar usuarios de la carretera, señales de tráfico, peatones u obstáculos presentes en la vía \cite{aws_computervision}.
+
+Otro ámbito importante es el de los robots móviles e industriales. En este caso, los robots utilizan sistemas de visión artificial para comprender el entorno que los rodea y realizar tareas de manera autónoma. Según Ultralytics, los sistemas de visión en robótica funcionan como los ojos de un robot, procesando imágenes mediante detección de objetos y análisis de profundidad, lo que permite evaluar el entorno y tomar decisiones en tiempo real \cite{ultralytics_robotics_cv}.
+
+Gracias a estas capacidades, los robots pueden:
+\begin{itemize}
+    \item Identificar objetos dentro de su entorno.
+    \item Localizar elementos específicos que deben manipular.
+    \item Evaluar distancias y evitar colisiones con obstáculos.
+    \item Tomar decisiones automáticas durante la ejecución de tareas.
+\end{itemize}
+
+En entornos dinámicos y no estructurados, como fábricas automatizadas, almacenes logísticos o espacios urbanos, la visión por computadora resulta indispensable para garantizar la operación segura de sistemas autónomos. Sin esta tecnología, los sistemas robóticos no podrían interactuar de manera efectiva con el entorno ni adaptarse a cambios inesperados.
+
+Por esta razón, la integración de cámaras y algoritmos de visión computacional constituye uno de los elementos clave para el desarrollo de tecnologías autónomas capaces de operar en el mundo real \cite{aws_computervision}\cite{ultralytics_robotics_cv}\cite{ultralytics_robotics_cv}.
+
+\subsection{Procesamiento de imágenes digitales}
+El procesamiento de imágenes digitales constituye una etapa fundamental dentro de los sistemas de visión por computadora. Este proceso implica la manipulación y análisis de imágenes digitales mediante algoritmos computacionales con el objetivo de mejorar su calidad, extraer información relevante o preparar los datos visuales para etapas posteriores de análisis.
+
+El procesamiento de imágenes se divide generalmente en varias fases, entre las que destacan la captura de imágenes, el preprocesamiento y la extracción de características visuales. Cada una de estas etapas cumple una función específica dentro del flujo de trabajo de un sistema de visión computacional.
+\subsubsection{Captura y adquisición de imágenes}
+El primer paso en cualquier sistema de visión por computadora consiste en obtener imágenes digitales del entorno mediante dispositivos de captura. Este proceso se conoce como adquisición de imágenes y se realiza utilizando cámaras o sensores capaces de transformar la información visual del mundo real en datos digitales.
+
+Las cámaras utilizadas en sistemas de visión artificial generalmente emplean sensores CCD o CMOS, los cuales convierten la luz que incide sobre ellos en señales eléctricas que posteriormente son transformadas en datos digitales. Estos datos representan la imagen mediante una matriz de píxeles, donde cada píxel contiene información sobre la intensidad de luz o color.
+
+Según la literatura especializada, la adquisición de imágenes es el primer paso en un sistema de visión artificial y consiste en capturar datos visuales mediante cámaras y sensores, siendo la calidad de estos datos un factor determinante para el rendimiento del sistema \cite{unitxlabs_processing}.
+
+Entre los principales elementos involucrados en la adquisición de imágenes se encuentran:
+\begin{itemize}
+    \item Sensores de imagen, como cámaras RGB tradicionales o sensores avanzados como RGB-D y LiDAR, que proporcionan información adicional sobre la profundidad del entorno \cite{pmc_assistive_systems}.
+    \item Parámetros técnicos como la resolución de la imagen, la frecuencia de captura de fotogramas (FPS) y el rango dinámico, los cuales influyen directamente en la calidad de los datos visuales obtenidos \cite{unitxlabs_processing}\cite{unitxlabs_prepost}.
+    \item Procesos de calibración de cámaras, necesarios para corregir distorsiones ópticas y garantizar mediciones precisas, especialmente en sistemas que utilizan múltiples cámaras o visión estéreo.
+\end{itemize}
+
+Una adecuada adquisición de imágenes resulta fundamental, ya que una mala calidad de imagen puede afectar negativamente todas las etapas posteriores del procesamiento visual.
+\subsubsection{Preprocesamiento de imágenes}
+Una vez capturada la imagen, es común que esta requiera ser procesada antes de aplicar algoritmos de análisis o reconocimiento. Esta etapa se conoce como preprocesamiento de imágenes y tiene como objetivo mejorar la calidad de los datos visuales, eliminar ruido o resaltar características importantes.
+
+El preprocesamiento permite preparar la imagen para etapas posteriores del sistema de visión por computadora. Según UnitX Labs, el preprocesamiento de imágenes transforma los datos sin procesar en un formato adecuado para el análisis posterior, eliminando distorsiones y mejorando las características visuales relevantes \cite{unitxlabs_prepost}.
+
+Entre las técnicas más comunes de preprocesamiento se encuentran:
+\begin{itemize}
+    \item Conversión a escala de grises, la cual reduce la complejidad de la imagen al eliminar la información de color y conservar únicamente los niveles de intensidad luminosa.
+    \item Filtrado y suavizado mediante filtros como el gaussiano o el filtro de mediana, utilizados para reducir el ruido presente en la imagen.
+    \item Ecualización de histograma, técnica que mejora el contraste de la imagen y permite resaltar detalles que podrían pasar desapercibidos.
+    \item Binarización o umbralización, proceso que convierte la imagen en una representación binaria para separar objetos del fondo.
+    \item Normalización de la imagen, que incluye procesos como redimensionamiento o ajuste de valores de intensidad para estandarizar las condiciones de iluminación.
+\end{itemize}
+
+Estas técnicas contribuyen a mejorar la calidad de la imagen y facilitan la posterior extracción de características visuales.
+
+\subsubsection{Extracción de características visuales}
+Después del preprocesamiento, la siguiente etapa consiste en identificar características relevantes dentro de la imagen. Este proceso se conoce como extracción de características y tiene como objetivo representar la información visual mediante descriptores numéricos que faciliten el análisis computacional.
+
+De acuerdo con la literatura, la extracción de características identifica y aísla los elementos clave presentes en una imagen para representar su contenido de manera más eficiente \cite{unitxlabs_feature_extraction}.
+
+Entre las técnicas más utilizadas se encuentran:
+\begin{itemize}
+    \item Detección de bordes mediante algoritmos como Sobel o Canny, los cuales identifican cambios abruptos de intensidad en la imagen para resaltar contornos de objetos \cite{unitxlabs_feature_extraction}.
+    \item Detección de esquinas y puntos clave mediante algoritmos como Harris o FAST.
+    \item Descriptores locales como SIFT, SURF, ORB o HOG, que generan representaciones numéricas de patrones visuales locales dentro de la imagen \cite{unitxlabs_feature_extraction}.
+    \item Técnicas de reducción de dimensionalidad como PCA o autoencoders, utilizadas para reducir la cantidad de información sin perder las características más relevantes.
+\end{itemize}
+
+La extracción de características permite simplificar la representación de la imagen y facilita tareas posteriores como la detección de objetos, el reconocimiento de patrones o la clasificación de imágenes.
+
+\subsection{Detección y reconocimiento de objetos}
+La detección y reconocimiento de objetos constituye una de las tareas centrales dentro de la visión por computadora. Esta área se enfoca en identificar automáticamente los objetos presentes dentro de una imagen o secuencia de video, así como determinar su ubicación dentro del espacio visual.
+
+El desarrollo de técnicas de detección de objetos ha permitido que los sistemas inteligentes comprendan escenas complejas del mundo real. Gracias a estas técnicas, las máquinas pueden reconocer diferentes tipos de elementos presentes en su entorno, tales como personas, vehículos, señales de tránsito, animales, productos industriales o cualquier objeto previamente aprendido durante el entrenamiento del modelo.
+
+Estas capacidades son fundamentales en múltiples aplicaciones tecnológicas, incluyendo vehículos autónomos, robótica industrial, sistemas de vigilancia inteligente, control de calidad automatizado y sistemas de asistencia para personas con discapacidad visual. En todos estos casos, la detección de objetos permite transformar información visual en conocimiento útil para la toma de decisiones automatizadas.
+\subsubsection{Concepto de detección de objetos}
+La detección de objetos es un proceso dentro de la visión por computadora que consiste en identificar y localizar múltiples objetos dentro de una imagen o video. A diferencia de otras tareas como la clasificación de imágenes, la detección de objetos no solo determina qué objetos están presentes, sino también su ubicación exacta dentro de la imagen.
+
+De acuerdo con la literatura especializada, la detección de objetos consiste en identificar y ubicar múltiples objetos dentro de una imagen o video, clasificándolos y señalando su posición mediante cajas delimitadoras \cite{geeksforgeeks_object_detection}.
+
+Estas cajas delimitadoras, conocidas como bounding boxes, son rectángulos que rodean cada objeto detectado y que indican su posición dentro de la imagen. Cada una de estas cajas se define mediante coordenadas que especifican su ubicación y tamaño dentro del plano de la imagen.
+
+Entre las características principales de la detección de objetos se encuentran:
+\begin{itemize}
+    \item  Localización espacial: cada objeto detectado se representa mediante una caja delimitadora que indica su posición dentro de la imagen utilizando coordenadas (x, y, ancho, alto) \cite{geeksforgeeks_object_detection}.
+    \item Clasificación de objetos: además de ubicar el objeto, el sistema asigna una etiqueta o clase que identifica el tipo de objeto detectado, por ejemplo “persona”, “vehículo” o “semáforo”.
+    \item Detección simultánea de múltiples objetos: los algoritmos modernos pueden identificar varios objetos diferentes dentro de una misma imagen o fotograma.
+    \item Procesamiento en tiempo real: en muchas aplicaciones, como vehículos autónomos o robótica móvil, la detección de objetos debe realizarse en tiempo real para permitir una respuesta inmediata ante cambios en el entorno.
+\end{itemize}
+
+Por ejemplo, en un sistema de conducción autónoma, un algoritmo de detección de objetos puede analizar continuamente la escena frente al vehículo e identificar elementos como automóviles, peatones, ciclistas y señales de tránsito, lo cual permite tomar decisiones de conducción seguras \cite{geeksforgeeks_object_detection}\cite{fvivas_guia_cv}.
+
+Debido a su importancia en la interpretación de escenas visuales, la detección de objetos representa uno de los pilares fundamentales de los sistemas modernos de visión por computadora.
+
+\subsubsection{Técnicas tradicionales de detección de objetos}
+Antes del desarrollo de los métodos basados en aprendizaje profundo, los sistemas de detección de objetos se basaban principalmente en técnicas clásicas de procesamiento de imágenes y reconocimiento de patrones. Estos métodos utilizaban características diseñadas manualmente para identificar patrones visuales dentro de las imágenes.
+
+Entre las técnicas tradicionales más utilizadas se encuentran las siguientes:
+
+\textbf{Cascadas de clasificadores Haar (Viola–Jones)}
+
+El algoritmo Viola–Jones es uno de los métodos más conocidos para la detección de objetos, especialmente para la detección de rostros humanos. Este enfoque utiliza características Haar, que representan diferencias de intensidad entre regiones adyacentes de la imagen. Mediante el entrenamiento de múltiples clasificadores en cascada, el sistema puede identificar patrones característicos asociados con rostros u otros objetos\cite{viola2001detection}.
+
+Este método fue ampliamente utilizado en aplicaciones de reconocimiento facial y sistemas de vigilancia debido a su eficiencia computacional y su capacidad de procesamiento en tiempo real.
+
+\textbf{HOG combinado con SVM}
+
+Otra técnica ampliamente utilizada en detección de objetos es la combinación del descriptor HOG (Histogram of Oriented Gradients) con clasificadores SVM (Support Vector Machines). Este enfoque fue utilizado principalmente en la detección de peatones dentro de imágenes.
+
+El descriptor HOG analiza la distribución de los gradientes de intensidad dentro de pequeñas regiones de la imagen, generando una representación numérica que describe la forma del objeto. Posteriormente, un clasificador SVM determina si la región analizada corresponde a un objeto específico o al fondo de la imagen\cite{dalal2005hog}.
+
+\textbf{Segmentación de regiones y análisis de contornos}
+
+Otros enfoques tradicionales se basaban en la segmentación de imágenes mediante técnicas de detección de bordes o agrupación de regiones con características similares. A partir de estas regiones segmentadas, se analizaban propiedades geométricas como tamaño, forma o relación de aspecto para determinar si correspondían a objetos de interés.
+
+\textbf{Comparación mediante plantillas}
+
+El método de template matching o comparación de plantillas consiste en comparar regiones de la imagen con ejemplos previamente almacenados de un objeto específico. Este método evalúa la similitud entre la imagen observada y las plantillas conocidas\cite{fvivas_guia_cv}.
+
+Aunque este enfoque es relativamente sencillo, presenta limitaciones importantes cuando existen variaciones en la escala, rotación o iluminación de los objetos.
+
+En general, las técnicas tradicionales dependían fuertemente de características diseñadas manualmente por expertos. Como resultado, su capacidad para adaptarse a diferentes condiciones visuales era limitada. Debido a estas limitaciones, estos métodos han sido gradualmente reemplazados por técnicas basadas en aprendizaje profundo que permiten aprender automáticamente las características relevantes a partir de grandes conjuntos de datos \cite{fvivas_guia_cv}.
+
+\subsubsection{Detección de objetos basada en aprendizaje profundo}
+El avance más significativo en la detección de objetos se produjo con la introducción de técnicas de aprendizaje profundo, particularmente mediante redes neuronales convolucionales (CNN). Estas redes permiten aprender automáticamente representaciones visuales complejas directamente a partir de los datos, eliminando la necesidad de diseñar manualmente las características.
+
+Las CNN están especialmente diseñadas para procesar imágenes, ya que utilizan filtros convolucionales que detectan patrones locales como bordes, texturas o formas dentro de la imagen. A medida que la información avanza a través de las capas de la red, estos patrones simples se combinan para formar representaciones más complejas que permiten reconocer objetos completos.
+
+Entre las principales características de los métodos basados en aprendizaje profundo se encuentran:
+\begin{itemize}
+    \item Aprendizaje automático de características visuales a partir de grandes conjuntos de datos.
+    \item Mayor capacidad para manejar variaciones en iluminación, escala, orientación y oclusión de objetos.
+    \item Mejor rendimiento en términos de precisión comparado con métodos tradicionales.
+    \item Posibilidad de procesar imágenes completas en lugar de analizar pequeñas regiones de manera independiente.
+\end{itemize}
+
+De acuerdo con estudios recientes, los sistemas modernos de visión por computadora emplean modelos de aprendizaje profundo basados en redes neuronales convolucionales para reconocer patrones complejos dentro de las imágenes \cite{fvivas_guia_cv}.
+
+Gracias a estos avances, la detección de objetos ha alcanzado niveles de precisión y velocidad que permiten su implementación en aplicaciones del mundo real.
+
+
+\subsubsection{Modelos modernos de detección de objetos (YOLO, SSD, Faster R-CNN)}
+Los algoritmos modernos de detección de objetos basados en aprendizaje profundo pueden clasificarse principalmente en dos categorías: detectores de dos etapas y detectores de una sola etapa.
+
+\textbf{Detectores de dos etapas}
+
+Los detectores de dos etapas funcionan mediante un proceso dividido en dos fases principales. En la primera etapa se generan propuestas de regiones dentro de la imagen que podrían contener objetos. Posteriormente, en la segunda etapa, cada una de estas regiones es analizada por un clasificador para determinar si contiene un objeto y cuál es su categoría.
+
+Entre los modelos más conocidos de este tipo se encuentran:
+\begin{itemize}
+    \item R-CNN
+    \item Fast R-CNN
+    \item Faster R-CNN
+\end{itemize}
+
+El modelo Faster R-CNN introdujo mejoras importantes al integrar una red de propuestas de regiones (Region Proposal Network) que permite generar regiones candidatas de manera más eficiente \cite{geeksforgeeks_object_detection}.
+
+Estos modelos suelen ofrecer una alta precisión en la detección de objetos, aunque generalmente requieren mayor tiempo de procesamiento.
+
+Detectores de una sola etapa
+
+Los detectores de una sola etapa realizan la detección de objetos en un único paso dentro de la red neuronal, lo que permite procesar imágenes con mayor velocidad. Estos modelos combinan la extracción de características y la predicción de objetos dentro de una sola arquitectura.
+
+Entre los detectores más utilizados se encuentran:
+\begin{itemize}
+    \item YOLO (You Only Look Once)
+    \item SSD (Single Shot MultiBox Detector)
+\end{itemize}
+
+El modelo YOLO divide la imagen en una cuadrícula y predice simultáneamente las cajas delimitadoras y las clases de los objetos presentes en cada región de la imagen \cite{geeksforgeeks_object_detection}.
+
+Por su parte, el modelo SSD utiliza múltiples mapas de características con diferentes resoluciones para detectar objetos de distintos tamaños.
+
+Estos modelos son ampliamente utilizados en aplicaciones que requieren procesamiento en tiempo real, como vehículos autónomos, drones, robots móviles y sistemas de vigilancia inteligente.
+
+\subsection{Aplicaciones de la visión por computadora en asistencia a la movilidad}
+La visión por computadora tiene un papel fundamental en el desarrollo de tecnologías orientadas a mejorar la movilidad y la seguridad de las personas. Gracias a la capacidad de interpretar información visual del entorno, los sistemas inteligentes pueden identificar obstáculos, analizar rutas y proporcionar asistencia durante la navegación.
+
+Las aplicaciones en asistencia a la movilidad abarcan diversos ámbitos, incluyendo robótica autónoma, transporte inteligente y tecnologías de apoyo para personas con discapacidad visual. En todos estos casos, la visión por computadora permite transformar información visual en señales que facilitan la toma de decisiones o la orientación espacial.
+
+\subsubsection{Sistemas de detección de obstáculos}
+Los sistemas de detección de obstáculos utilizan cámaras y sensores para analizar continuamente el entorno y detectar objetos que puedan interferir con el desplazamiento de un dispositivo o persona. Estos sistemas son ampliamente utilizados en robots móviles, vehículos autónomos y drones.
+
+Diversos estudios destacan que las cámaras permiten a los robots identificar y responder a obstáculos en tiempo real, facilitando así la planificación de rutas seguras durante la navegación \cite{mrdvs_robot_cameras}.
+
+Un ejemplo importante son los robots móviles autónomos (AMR) utilizados en almacenes y centros logísticos. Estos robots utilizan sistemas de visión para detectar estanterías, trabajadores u otros robots dentro de su entorno de trabajo. Con base en esta información, pueden modificar su trayectoria para evitar colisiones y optimizar su desplazamiento.
+
+De manera similar, los vehículos autónomos utilizan cámaras y algoritmos de visión por computadora para identificar automóviles, peatones, ciclistas y señales de tránsito dentro del entorno urbano. Según Amazon Web Services, estos sistemas analizan imágenes capturadas por cámaras y utilizan inteligencia artificial para identificar elementos relevantes dentro de la carretera \cite{aws_computervision}.
+
+\subsubsection{Sistemas de asistencia para personas con discapacidad visual}
+La visión por computadora también ha sido utilizada para desarrollar tecnologías que ayudan a mejorar la movilidad de personas con discapacidad visual. Estas soluciones combinan sensores, cámaras y algoritmos de inteligencia artificial para interpretar el entorno y proporcionar información al usuario mediante señales auditivas o táctiles.
+
+Entre las tecnologías más relevantes se encuentran:
+\begin{itemize}
+    \item \textbf{Bastones inteligentes}
+\\
+Los bastones inteligentes incorporan sensores ultrasónicos, cámaras o sensores LiDAR para detectar obstáculos cercanos. Cuando el sistema identifica un objeto en el camino del usuario, se genera una alerta mediante vibraciones o señales sonoras que advierten sobre la presencia del obstáculo.
+    \item \textbf{Dispositivos portátiles con cámara}
+\\
+Existen dispositivos portátiles equipados con cámaras que permiten analizar el entorno visual del usuario. Estos dispositivos pueden reconocer objetos, leer texto mediante reconocimiento óptico de caracteres (OCR) o identificar señales de tránsito.
+    \item \textbf{Aplicaciones móviles de asistencia visual}
+Algunas aplicaciones móviles utilizan la cámara del teléfono inteligente para analizar el entorno y proporcionar información auditiva al usuario. Estas aplicaciones pueden describir objetos, leer textos o identificar productos mediante reconocimiento visual.
+\end{itemize}
+
+Investigaciones recientes señalan que los sistemas de navegación asistida pueden ayudar a las personas con discapacidad visual a evitar obstáculos y recibir indicaciones precisas para desplazarse hacia un destino \cite{pmc_assistive_systems}.
+
+Gracias a estas tecnologías, las personas con discapacidad visual pueden mejorar significativamente su independencia y seguridad durante la movilidad.
+\subsubsection{Uso de visión por computadora en dispositivos portátiles inteligentes}
+Los avances en miniaturización de hardware y procesamiento de inteligencia artificial han permitido que los algoritmos de visión por computadora puedan ejecutarse directamente en dispositivos portátiles. Esto ha dado lugar al desarrollo de dispositivos inteligentes capaces de analizar el entorno visual en tiempo real.
+
+Entre estos dispositivos destacan:
+\begin{itemize}
+    \item \textbf{Smartphones}
+\\
+Los teléfonos inteligentes actuales cuentan con cámaras de alta resolución y procesadores capaces de ejecutar redes neuronales optimizadas para visión por computadora. Esto permite desarrollar aplicaciones de asistencia visual que utilizan la cámara del dispositivo para analizar el entorno y proporcionar retroalimentación al usuario.
+\item \textbf{Smart glasses}
+\\
+Las gafas inteligentes incorporan cámaras frontales y sistemas de procesamiento que permiten analizar continuamente la escena visual frente al usuario. Estas gafas pueden proporcionar instrucciones auditivas que ayudan a orientar al usuario durante la navegación.
+\item \textbf{Dispositivos vestibles}
+
+Otros dispositivos portátiles incluyen cámaras integradas en cinturones, mochilas o bastones inteligentes. Estos sistemas pueden capturar imágenes del entorno y procesarlas mediante algoritmos de inteligencia artificial para generar señales auditivas o vibraciones que guíen al usuario.
+\end{itemize}
+
+
+En conjunto, estas tecnologías demuestran el potencial de la visión por computadora para mejorar la movilidad y la autonomía de las personas. La combinación de cámaras, algoritmos de detección de objetos y sistemas de retroalimentación sensorial permite desarrollar soluciones innovadoras que facilitan la navegación segura en entornos urbanos y cotidianos.

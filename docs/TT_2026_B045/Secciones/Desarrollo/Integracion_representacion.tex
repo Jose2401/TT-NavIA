@@ -1,0 +1,183 @@
+% ==============================================================================
+\section{Integración de los módulos de representación}
+\label{sec:dev_integracion}
+% ==============================================================================
+
+Los tres módulos descritos operan en secuencia dentro del ciclo principal del
+sistema. El mismo ciclo se ejecuta en el programa de pruebas para computadora
+portátil (\texttt{main\_lap.py}, con interfaz gráfica, cámara web, video o
+simulación), en el programa de la Raspberry Pi (\texttt{main\_pi.py}, sin interfaz
+gráfica) y en el procesamiento de videos (\texttt{video\_a\_mapa.py}). El
+Algoritmo~\ref{alg:dev_representacion} resume el orden de las operaciones; este
+algoritmo sustituye al pseudocódigo integrado de representación planteado en TT1
+(Apéndice~\ref{apend:representa}).
+
+\begin{center}
+\captionof{algorithm}{Ciclo integrado de los módulos de representación}
+\label{alg:dev_representacion}
+\end{center}
+\vspace{-1.8cm}
+\rule{\textwidth}{0.4pt}
+\vspace{-0.9cm}
+\begin{algorithmic}[1]
+
+\Statex \textbf{INICIALIZACIÓN:}
+\State mapa $\gets$ abrir\_mapa\_por\_bloques(carpeta) \Comment{crea o restaura bloques}
+\State slam $\gets$ EKF en (0, 0, 0)
+\State slam.importar\_landmarks(mapa.landmarks\_guardados) \Comment{re-localización}
+
+\Statex
+\Statex \textbf{CICLO (por cada cuadro de cámara):}
+\State movimiento, pitch $\gets$ odometría.actualizar(cuadro) \Comment{IMU o flujo óptico}
+\State detecciones $\gets$ visión.procesar(cuadro, giro = movimiento.$\Delta\theta$)
+\If{toca segmentación (cada N cuadros)}
+    \State peligros $\gets$ detector\_peligros.procesar(cuadro)
+\EndIf
+\State lecturas $\gets$ ultrasónicos.leer()
+\State observaciones $\gets$ fusionar(detecciones + peligros, lecturas)
+\State salida $\gets$ slam.step(movimiento, observaciones)
+\State pose $\gets$ (salida.x, salida.y, salida.$\theta$)
+\State mapa.actualizar\_con\_rayos(pose, slam.observaciones\_para\_mapa() + rayos\_sin\_eco(lecturas))
+\State mapa.despejar\_huella(pose)
+\State eventos $\gets$ mapa.actualizar\_posición(pose, slam.landmarks)
+\State cuadro\_nav $\gets$ construir\_cuadro\_navegación(slam, mapa, detecciones)
+\State entregar cuadro\_nav y eventos a navegación, alertas e interacción
+
+\Statex
+\Statex \textbf{AL TERMINAR:}
+\State mapa.guardar\_todo();\; mapa.guardar\_landmarks(slam.exportar\_landmarks())
+
+\end{algorithmic}
+\vspace{-0.9cm}
+\rule{\textwidth}{0.4pt}
+
+\subsection{Funcionamiento con video real}
+
+Las Figuras~\ref{fig:cap_oficina_1} a \ref{fig:cap_oficina_3} muestran capturas de la
+interfaz de \texttt{main\_lap.py} al procesar el recorrido de una oficina grabado con
+un teléfono celular. Cada captura tiene tres partes: a la izquierda, la imagen de la
+cámara con las detecciones (verde: objeto estático; rojo: objeto marcado como móvil;
+se indica la clase, el estado de las puertas y la distancia estimada); a la derecha,
+el mapa global por bloques con los \emph{landmarks} etiquetados, la pose del usuario
+(punto rojo con su orientación) y su elipse de incertidumbre; y en la parte inferior,
+la barra de navegación con las distancias libres y el riesgo por sector, junto con la
+alerta vigente.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Capturas_TT2/cap_oficina_f241.jpg}
+    \caption{Inicio del recorrido: se detectan una puerta cerrada a 2.5~m y un
+    refrigerador; el mapa comienza a registrar la franja recorrida y la barra indica
+    precaución por un obstáculo a 0.75~m a la izquierda.}
+    \label{fig:cap_oficina_1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Capturas_TT2/cap_oficina_f481.jpg}
+    \caption{Al girar hacia el pasillo, el SLAM ya mantiene varias puertas como
+    \emph{landmarks} y el mapa muestra el cambio de dirección del recorrido.}
+    \label{fig:cap_oficina_2}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Capturas_TT2/cap_oficina_f901.jpg}
+    \caption{Final del recorrido: el mapa abarca siete bloques con 39 \emph{landmarks}
+    confirmados. Las sillas aparecen marcadas como móviles por un falso positivo del
+    rastreador de movimiento al avanzar el usuario.}
+    \label{fig:cap_oficina_3}
+\end{figure}
+
+Las capturas también muestran errores propios de la percepción que se propagan a la
+representación: en la Figura~\ref{fig:cap_oficina_2} se detecta un inodoro a 8~m que
+no existe, y en la Figura~\ref{fig:cap_oficina_3} dos sillas estáticas se marcan como
+móviles. El rastreador compensa el giro del usuario, pero no el desplazamiento hacia
+adelante, que hace crecer las cajas de los objetos cercanos. Gracias a las reglas del
+SLAM, los objetos marcados como móviles no se usan como \emph{landmarks}, y los falsos
+positivos aislados no alcanzan los avistamientos necesarios para confirmarse; aun así,
+estos casos se atenderán en la documentación del módulo de visión.
+
+\subsection{Tiempos de procesamiento}
+
+La Tabla~\ref{tab:tiempos_ciclo} desglosa el tiempo promedio por ciclo medido al
+procesar el video de la oficina (456 cuadros procesados, uno de cada dos del video
+original) en la computadora portátil, con todos los modelos ejecutándose en CPU.
+
+\begin{table}[H]
+\centering
+\caption{Tiempo promedio por ciclo en video real (CPU Apple M4)}
+\label{tab:tiempos_ciclo}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|p{8.2cm}|c|}
+\hline
+\textbf{Etapa} & \textbf{Tiempo (ms)} \\
+\hline
+Estimación de giro y caminata por flujo óptico & 5.4 \\
+Detección de objetos (YOLOv8s-seg) & 92.4 \\
+Segmentación de peligros y puertas (SegFormer, cada 4 cuadros, amortizado) & 77.5 \\
+\hline
+SLAM (EKF, asociación y gestión de \emph{landmarks}) & 0.27 \\
+Ray Casting y actualización del mapa por bloques & 0.23 \\
+Construcción del cuadro de navegación (rayos de consulta y mapa local) & 0.51 \\
+\hline
+\textbf{Subtotal de los módulos de representación} & \textbf{1.01} \\
+\hline
+\end{tabular}
+\end{table}
+
+Los módulos de representación consumen alrededor de un milisegundo por ciclo, es
+decir, menos del 1\,\% del tiempo total. Por sí solos podrían operar a varios cientos
+de hertz, muy por encima de los 10~Hz que exige RNF-03. El cuello de botella del
+sistema es la percepción visual, cuyos tiempos en la Raspberry Pi serán
+considerablemente mayores; por esa razón el diseño permite que el SLAM y el mapa sigan
+actualizándose con la odometría en los ciclos en que la visión no entrega resultados,
+y que la segmentación se ejecute solo cada cierto número de cuadros. La evaluación del
+cumplimiento de RNF-03 en el hardware final se realizará con el prototipo ensamblado.
+
+\subsection{Cumplimiento de requerimientos}
+
+La Tabla~\ref{tab:req_representacion} relaciona los requerimientos de los módulos de
+representación con su estado al cierre de esta etapa.
+
+\begin{longtable}{|p{1.6cm}|p{4.2cm}|p{2.4cm}|p{6.2cm}|}
+\caption{Estado de los requerimientos de los módulos de representación}
+\label{tab:req_representacion} \\
+\hline
+\textbf{Req.} & \textbf{Descripción breve} & \textbf{Estado} & \textbf{Evidencia} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Req.} & \textbf{Descripción breve} & \textbf{Estado} & \textbf{Evidencia} \\
+\hline
+\endhead
+RF-14 & Estimación continua de la pose & Cumplido & EKF con ATE de 0.21~m en
+simulación; error acotado con odometría sesgada (Tabla~\ref{tab:slam_deriva}). \\
+\hline
+RF-15 & Mapa incremental sin mapa previo & Cumplido &
+Figura~\ref{fig:mapeo_evolucion}; mapas de 19 videos reales. \\
+\hline
+RF-16 & Zonas libres y ocupadas & Cumplido & Mapa log-odds con tres estados y capa
+de peligros; mapa local de dos canales. \\
+\hline
+RF-17 & Actualización dinámica & Parcial & Los obstáculos nuevos aparecen en el mapa;
+los obstáculos que desaparecen no se liberan una vez consolidados
+(Sección~\ref{sec:dev_ray}). \\
+\hline
+RNF-03 & Mapa a 10~Hz o más & Parcial & Los módulos de representación toman 1~ms
+por ciclo (Tabla~\ref{tab:tiempos_ciclo}); falta medir el ciclo completo con la
+percepción en la Raspberry Pi. \\
+\hline
+RNF-05 & Hardware limitado & En evaluación & Estado de pose de tamaño fijo, memoria
+acotada a 25 bloques (alrededor de 3~MB). \\
+\hline
+RNF-09 & Comportamiento conservador & Cumplido & Confianza decreciente sin
+correcciones (Figura~\ref{fig:slam_incertidumbre}); distancia mínima por sector. \\
+\hline
+RNF-13 & Operación sin internet & Cumplido & Ningún módulo de representación requiere
+conexión; los mapas se guardan localmente. \\
+\hline
+RNF-14 & Modularidad & Cumplido & Comunicación únicamente por las estructuras de
+\texttt{interfaces.py}; el mismo código opera con cámara, video y simulación. \\
+\hline
+\end{longtable}

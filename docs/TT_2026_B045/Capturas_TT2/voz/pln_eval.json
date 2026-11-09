@@ -1,0 +1,931 @@
+{
+ "resumen": {
+  "n": 102,
+  "exactitud": 0.7843137254901961,
+  "exactitud_accion": 0.7843137254901961,
+  "destino_ok": 16,
+  "destino_n": 21,
+  "ms_prom": 2.83366585391181,
+  "ms_max": 7.096749992342666
+ },
+ "filas": [
+  {
+   "texto": "llévame a la salida",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "salida",
+   "okDest": true,
+   "ms": 3.9704580267425627
+  },
+  {
+   "texto": "quiero ir a la puerta",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.963,
+   "destino": "la puerta",
+   "okDest": true,
+   "ms": 4.637167003238574
+  },
+  {
+   "texto": "me puedes llevar a la entrada por favor",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "entrada",
+   "okDest": true,
+   "ms": 7.096749992342666
+  },
+  {
+   "texto": "ayúdame a llegar a la salida",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.955,
+   "destino": "salida",
+   "okDest": true,
+   "ms": 5.587999999988824
+  },
+  {
+   "texto": "guíame hacia la silla",
+   "esperada": "DESTINO",
+   "pred": "CONFIRMAR",
+   "conf": 0.92,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.5657089902088046
+  },
+  {
+   "texto": "vamos a la mesa",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "la mesa",
+   "okDest": true,
+   "ms": 3.678250010125339
+  },
+  {
+   "texto": "quiero llegar al baño",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.959,
+   "destino": "banos",
+   "okDest": true,
+   "ms": 4.30174998473376
+  },
+  {
+   "texto": "llévame al refri",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "refri",
+   "okDest": true,
+   "ms": 3.4206660056952387
+  },
+  {
+   "texto": "necesito ir a las escaleras",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.963,
+   "destino": "escaleras",
+   "okDest": true,
+   "ms": 5.201417021453381
+  },
+  {
+   "texto": "dirígeme a la ventana",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "la ventana",
+   "okDest": true,
+   "ms": 4.594792000716552
+  },
+  {
+   "texto": "ve a la planta",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.944,
+   "destino": "la planta",
+   "okDest": true,
+   "ms": 3.446499991696328
+  },
+  {
+   "texto": "llévame al escritorio",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "escritorio",
+   "okDest": true,
+   "ms": 3.954916028305888
+  },
+  {
+   "texto": "quiero ir al bote de basura",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.957,
+   "destino": "bote basura",
+   "okDest": false,
+   "ms": 5.468125018524006
+  },
+  {
+   "texto": "me llevas a la banca",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "llevas banca",
+   "okDest": false,
+   "ms": 4.371999995782971
+  },
+  {
+   "texto": "navega hacia el elevador",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.903,
+   "destino": "elevador",
+   "okDest": true,
+   "ms": 4.550207988359034
+  },
+  {
+   "texto": "oye llévame a la salida de emergencia",
+   "esperada": "DESTINO",
+   "pred": "EMERGENCIA",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.010458985343575478
+  },
+  {
+   "texto": "quiero que me lleves al sillón",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "lleves sillon",
+   "okDest": false,
+   "ms": 5.613332992652431
+  },
+  {
+   "texto": "llevame a la puerta",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "la puerta",
+   "okDest": true,
+   "ms": 3.970333986217156
+  },
+  {
+   "texto": "ir a la cafetería",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.963,
+   "destino": "cafeteria",
+   "okDest": true,
+   "ms": 3.878999996231869
+  },
+  {
+   "texto": "vamos para la biblioteca",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.946,
+   "destino": "biblioteca",
+   "okDest": true,
+   "ms": 4.484667006181553
+  },
+  {
+   "texto": "me puedes guiar a la mesa",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.778,
+   "destino": "guiar mesa",
+   "okDest": false,
+   "ms": 5.200042010983452
+  },
+  {
+   "texto": "quiero ir a donde está la puerta",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.949,
+   "destino": "donde esta la puerta",
+   "okDest": false,
+   "ms": 6.217417016159743
+  },
+  {
+   "texto": "llévame",
+   "esperada": "DESTINO",
+   "pred": "DESTINO",
+   "conf": 0.9995597783427522,
+   "destino": null,
+   "okDest": true,
+   "ms": 1.8388750031590462
+  },
+  {
+   "texto": "espérame tantito",
+   "esperada": "PAUSA",
+   "pred": "PAUSA",
+   "conf": 0.92,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.6002079830504954
+  },
+  {
+   "texto": "pausa un momento",
+   "esperada": "PAUSA",
+   "pred": "PAUSA",
+   "conf": 0.972,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.8581249935086817
+  },
+  {
+   "texto": "pon pausa",
+   "esperada": "PAUSA",
+   "pred": "PAUSA",
+   "conf": 0.959,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.083375002257526
+  },
+  {
+   "texto": "detente un momento por favor",
+   "esperada": "PAUSA",
+   "pred": "DETENER",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.007833004929125309
+  },
+  {
+   "texto": "espera voy a amarrarme las agujetas",
+   "esperada": "PAUSA",
+   "pred": "ESTADO",
+   "conf": 0.702,
+   "destino": null,
+   "okDest": null,
+   "ms": 5.137792002642527
+  },
+  {
+   "texto": "haz una pausa",
+   "esperada": "PAUSA",
+   "pred": "PAUSA",
+   "conf": 1.0,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.615167002659291
+  },
+  {
+   "texto": "dame un momento",
+   "esperada": "PAUSA",
+   "pred": "PAUSA",
+   "conf": 0.871,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.7467079926282167
+  },
+  {
+   "texto": "espérate ahí",
+   "esperada": "PAUSA",
+   "pred": "PAUSA",
+   "conf": 0.946,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.29108301573433
+  },
+  {
+   "texto": "ya podemos seguir",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.84,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.9542090196628124
+  },
+  {
+   "texto": "continúa por favor",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.972,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.060957998968661
+  },
+  {
+   "texto": "sigue guiándome",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.946,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.5595829938538373
+  },
+  {
+   "texto": "reanuda la ruta",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.948,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.689666987862438
+  },
+  {
+   "texto": "vamos sigue",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.725,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.2153329919092357
+  },
+  {
+   "texto": "ok continúa con la navegación",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.963,
+   "destino": null,
+   "okDest": null,
+   "ms": 4.43766699754633
+  },
+  {
+   "texto": "avanza",
+   "esperada": "REANUDAR",
+   "pred": "REANUDAR",
+   "conf": 0.999,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.4729590038768947
+  },
+  {
+   "texto": "ya estoy listo sigamos",
+   "esperada": "REANUDAR",
+   "pred": "DESCONOCIDO",
+   "conf": 0.623,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.6961250007152557
+  },
+  {
+   "texto": "detente",
+   "esperada": "DETENER",
+   "pred": "DETENER",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.005999987479299307
+  },
+  {
+   "texto": "alto ahí",
+   "esperada": "DETENER",
+   "pred": "DETENER",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.005917012458667159
+  },
+  {
+   "texto": "para ya",
+   "esperada": "DETENER",
+   "pred": "DETENER",
+   "conf": 0.897,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.847750012530014
+  },
+  {
+   "texto": "frena",
+   "esperada": "DETENER",
+   "pred": "DETENER",
+   "conf": 0.938,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.426875009201467
+  },
+  {
+   "texto": "ya no quiero seguir",
+   "esperada": "DETENER",
+   "pred": "REANUDAR",
+   "conf": 0.788,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.2576250087004155
+  },
+  {
+   "texto": "deja de guiarme",
+   "esperada": "DETENER",
+   "pred": "DESCONOCIDO",
+   "conf": 0.455,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.7874999796040356
+  },
+  {
+   "texto": "termina la navegación",
+   "esperada": "DETENER",
+   "pred": "PAUSA",
+   "conf": 0.687,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.2874169992282987
+  },
+  {
+   "texto": "stop",
+   "esperada": "DETENER",
+   "pred": "DETENER",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.004417001036927104
+  },
+  {
+   "texto": "cancela la ruta",
+   "esperada": "CANCELAR",
+   "pred": "CANCELAR",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.005667010555043817
+  },
+  {
+   "texto": "olvídalo",
+   "esperada": "CANCELAR",
+   "pred": "CANCELAR",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.004583009285852313
+  },
+  {
+   "texto": "ya no quiero ir",
+   "esperada": "CANCELAR",
+   "pred": "DESTINO",
+   "conf": 0.968,
+   "destino": "ya no",
+   "okDest": null,
+   "ms": 3.6925000022165477
+  },
+  {
+   "texto": "cancela el destino",
+   "esperada": "CANCELAR",
+   "pred": "CANCELAR",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.006583984941244125
+  },
+  {
+   "texto": "abandona la ruta",
+   "esperada": "CANCELAR",
+   "pred": "CANCELAR",
+   "conf": 0.997,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.7860830014105886
+  },
+  {
+   "texto": "busca otro camino",
+   "esperada": "RUTA_ALTERNATIVA",
+   "pred": "RUTA_ALTERNATIVA",
+   "conf": 0.998,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.926749992184341
+  },
+  {
+   "texto": "hay otra ruta",
+   "esperada": "RUTA_ALTERNATIVA",
+   "pred": "RUTA_ALTERNATIVA",
+   "conf": 0.915,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.5428750086575747
+  },
+  {
+   "texto": "por aquí no se puede cambia la ruta",
+   "esperada": "RUTA_ALTERNATIVA",
+   "pred": "RUTA_ALTERNATIVA",
+   "conf": 0.888,
+   "destino": null,
+   "okDest": null,
+   "ms": 5.507916008355096
+  },
+  {
+   "texto": "recalcula",
+   "esperada": "RUTA_ALTERNATIVA",
+   "pred": "RUTA_ALTERNATIVA",
+   "conf": 0.999,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.7444579862058163
+  },
+  {
+   "texto": "dame una ruta diferente",
+   "esperada": "RUTA_ALTERNATIVA",
+   "pred": "DESTINO",
+   "conf": 0.935,
+   "destino": "dame diferente",
+   "okDest": null,
+   "ms": 4.460583004401997
+  },
+  {
+   "texto": "llévame por otro lado",
+   "esperada": "RUTA_ALTERNATIVA",
+   "pred": "DESTINO",
+   "conf": 0.949,
+   "destino": "otro lado",
+   "okDest": null,
+   "ms": 4.165541002294049
+  },
+  {
+   "texto": "auxilio",
+   "esperada": "EMERGENCIA",
+   "pred": "EMERGENCIA",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.004792003892362118
+  },
+  {
+   "texto": "ayuda me caí",
+   "esperada": "EMERGENCIA",
+   "pred": "AYUDA",
+   "conf": 0.727,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.482582989614457
+  },
+  {
+   "texto": "es una emergencia",
+   "esperada": "EMERGENCIA",
+   "pred": "EMERGENCIA",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.006375019438564777
+  },
+  {
+   "texto": "me siento mal necesito ayuda",
+   "esperada": "EMERGENCIA",
+   "pred": "EMERGENCIA",
+   "conf": 0.866,
+   "destino": null,
+   "okDest": null,
+   "ms": 4.2674590076785535
+  },
+  {
+   "texto": "socorro",
+   "esperada": "EMERGENCIA",
+   "pred": "EMERGENCIA",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.004750007065013051
+  },
+  {
+   "texto": "estoy en peligro",
+   "esperada": "EMERGENCIA",
+   "pred": "EMERGENCIA",
+   "conf": 0.99,
+   "destino": null,
+   "okDest": null,
+   "ms": 0.00566698145121336
+  },
+  {
+   "texto": "llama a alguien rápido",
+   "esperada": "EMERGENCIA",
+   "pred": "DESTINO",
+   "conf": 0.6,
+   "destino": "llama alguien rapido",
+   "okDest": null,
+   "ms": 4.427375009981915
+  },
+  {
+   "texto": "dónde estoy",
+   "esperada": "UBICACION",
+   "pred": "UBICACION",
+   "conf": 0.999,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.1570409880951047
+  },
+  {
+   "texto": "en qué parte estoy",
+   "esperada": "UBICACION",
+   "pred": "UBICACION",
+   "conf": 0.848,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.1722089916002005
+  },
+  {
+   "texto": "dime mi ubicación",
+   "esperada": "UBICACION",
+   "pred": "UBICACION",
+   "conf": 0.945,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.8736670210491866
+  },
+  {
+   "texto": "en qué cuarto estoy",
+   "esperada": "UBICACION",
+   "pred": "UBICACION",
+   "conf": 0.87,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.3140000014100224
+  },
+  {
+   "texto": "dónde me encuentro",
+   "esperada": "UBICACION",
+   "pred": "UBICACION",
+   "conf": 0.777,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.029125015018508
+  },
+  {
+   "texto": "qué hay enfrente",
+   "esperada": "ENTORNO",
+   "pred": "ENTORNO",
+   "conf": 1.0,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.8283330029807985
+  },
+  {
+   "texto": "qué tengo adelante",
+   "esperada": "ENTORNO",
+   "pred": "ENTORNO",
+   "conf": 0.983,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.943166997283697
+  },
+  {
+   "texto": "describe lo que hay alrededor",
+   "esperada": "ENTORNO",
+   "pred": "ENTORNO",
+   "conf": 0.945,
+   "destino": null,
+   "okDest": null,
+   "ms": 4.33208400500007
+  },
+  {
+   "texto": "hay obstáculos",
+   "esperada": "ENTORNO",
+   "pred": "ENTORNO",
+   "conf": 0.971,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.4254169838968664
+  },
+  {
+   "texto": "qué ves",
+   "esperada": "ENTORNO",
+   "pred": "DESCONOCIDO",
+   "conf": 0.583,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.7914580239448696
+  },
+  {
+   "texto": "qué hay a mi alrededor",
+   "esperada": "ENTORNO",
+   "pred": "ENTORNO",
+   "conf": 0.97,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.7790420174133033
+  },
+  {
+   "texto": "repite",
+   "esperada": "REPETIR",
+   "pred": "REPETIR",
+   "conf": 0.996,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.5077079879119992
+  },
+  {
+   "texto": "no te entendí repítelo",
+   "esperada": "REPETIR",
+   "pred": "NEGAR",
+   "conf": 0.937,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.5066249838564545
+  },
+  {
+   "texto": "otra vez por favor",
+   "esperada": "REPETIR",
+   "pred": "REPETIR",
+   "conf": 0.97,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.141583001706749
+  },
+  {
+   "texto": "qué dijiste",
+   "esperada": "REPETIR",
+   "pred": "DESCONOCIDO",
+   "conf": 0.533,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.1631249983329326
+  },
+  {
+   "texto": "vuelve a decirlo",
+   "esperada": "REPETIR",
+   "pred": "REPETIR",
+   "conf": 0.928,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.7380420069675893
+  },
+  {
+   "texto": "ayuda",
+   "esperada": "AYUDA",
+   "pred": "EMERGENCIA",
+   "conf": 0.733,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.375124993501231
+  },
+  {
+   "texto": "qué puedo decirte",
+   "esperada": "AYUDA",
+   "pred": "AYUDA",
+   "conf": 0.814,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.852041012374684
+  },
+  {
+   "texto": "cuáles son los comandos",
+   "esperada": "AYUDA",
+   "pred": "AYUDA",
+   "conf": 0.935,
+   "destino": null,
+   "okDest": null,
+   "ms": 3.632249980000779
+  },
+  {
+   "texto": "cómo te uso",
+   "esperada": "AYUDA",
+   "pred": "DESCONOCIDO",
+   "conf": 0.625,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.3640000144951046
+  },
+  {
+   "texto": "qué opciones tengo",
+   "esperada": "AYUDA",
+   "pred": "AYUDA",
+   "conf": 0.588,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.964082988910377
+  },
+  {
+   "texto": "sí",
+   "esperada": "CONFIRMAR",
+   "pred": "CONFIRMAR",
+   "conf": 0.996,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.1538329999893904
+  },
+  {
+   "texto": "sí correcto",
+   "esperada": "CONFIRMAR",
+   "pred": "CONFIRMAR",
+   "conf": 0.971,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.134375012246892
+  },
+  {
+   "texto": "está bien",
+   "esperada": "CONFIRMAR",
+   "pred": "CONFIRMAR",
+   "conf": 0.998,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.9854169804602861
+  },
+  {
+   "texto": "claro que sí",
+   "esperada": "CONFIRMAR",
+   "pred": "CONFIRMAR",
+   "conf": 0.944,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.488541998900473
+  },
+  {
+   "texto": "afirmativo",
+   "esperada": "CONFIRMAR",
+   "pred": "CONFIRMAR",
+   "conf": 0.996,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.8527079955674708
+  },
+  {
+   "texto": "ok",
+   "esperada": "CONFIRMAR",
+   "pred": "DESCONOCIDO",
+   "conf": 0.292,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.1098750110249966
+  },
+  {
+   "texto": "no",
+   "esperada": "NEGAR",
+   "pred": "NEGAR",
+   "conf": 0.998,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.1004169937223196
+  },
+  {
+   "texto": "no gracias",
+   "esperada": "NEGAR",
+   "pred": "NEGAR",
+   "conf": 0.945,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.071542025078088
+  },
+  {
+   "texto": "negativo",
+   "esperada": "NEGAR",
+   "pred": "NEGAR",
+   "conf": 0.996,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.6607909929007292
+  },
+  {
+   "texto": "eso no",
+   "esperada": "NEGAR",
+   "pred": "NEGAR",
+   "conf": 0.969,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.7127910105045885
+  },
+  {
+   "texto": "no es correcto",
+   "esperada": "NEGAR",
+   "pred": "CONFIRMAR",
+   "conf": 0.732,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.601874992251396
+  },
+  {
+   "texto": "cuánto falta",
+   "esperada": "ESTADO",
+   "pred": "ESTADO",
+   "conf": 0.998,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.2812089882791042
+  },
+  {
+   "texto": "ya casi llegamos",
+   "esperada": "ESTADO",
+   "pred": "CONFIRMAR",
+   "conf": 0.721,
+   "destino": null,
+   "okDest": null,
+   "ms": 2.831332996720448
+  },
+  {
+   "texto": "cómo voy",
+   "esperada": "ESTADO",
+   "pred": "ESTADO",
+   "conf": 0.999,
+   "destino": null,
+   "okDest": null,
+   "ms": 1.8851660133805126
+  },
+  {
+   "texto": "falta mucho para llegar",
+   "esperada": "ESTADO",
+   "pred": "DESTINO",
+   "conf": 0.966,
+   "destino": "falta mucho",
+   "okDest": null,
+   "ms": 4.479791008634493
+  },
+  {
+   "texto": "cuánto me falta para la salida",
+   "esperada": "ESTADO",
+   "pred": "ESTADO",
+   "conf": 0.999,
+   "destino": null,
+   "okDest": null,
+   "ms": 4.64045797707513
+  }
+ ]
+}

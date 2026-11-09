@@ -1,0 +1,60 @@
+\chapter{Estado del arte: Trabajos previos}
+\section{Trabajos academicos}
+La mayoría de los trabajos académicos se centran en prototipos experimentales que emplean visión computacional y retroalimentación sonora con el objetivo de evitar obstáculos y mejorar la orientación de personas con discapacidad visual. No obstante, la propuesta desarrollada en este trabajo se diferencia al integrar un lente adaptado con inteligencia artificial junto con un sistema de rutas optimizado en tiempo real.
+
+En la Tabla~\ref{tab:estado_arte} se presenta una comparación general entre diversas soluciones existentes y la propuesta planteada.
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de trabajos previos en asistencia para navegación de personas con discapacidad visual}
+\label{tab:estado_arte}
+\begin{tabular}{|p{3cm}|p{3cm}|p{4cm}|p{4cm}|}
+\hline
+\textbf{Sistema / Proyecto} & \textbf{Dispositivo} & \textbf{Función principal} & \textbf{Observaciones} \\
+\hline
+Cinvestav (2019) \cite{cinestavlentes} & Lentes inteligentes con IA & Reconocimiento del entorno y asistencia visual & Desarrollo académico enfocado en guía para personas con discapacidad visual \\
+\hline
+IPN (2020) \cite{IPN_invidentes} & Arnés con sensores ultrasónicos & Alerta vibratoria/sonora de obstáculos & Prototipo nacional; no integrado en gafas ni navegación con rutas \\
+\hline
+IPN “Guía Robot” \cite{AhorraSeguros2025_guia} & Robot móvil con cámaras e IA & Guía autónomo similar a perro guía & Prototipo avanzado desarrollado por estudiantes del IPN \\
+\hline
+BCNMob (UPC) \cite{CIT2024_gafas} & Gafas Biel 3D (5G + XR) & Detección de escaleras, pasos y señales & Pilotaje en Barcelona; navegación precisa basada en IA \\
+\hline
+Lazarillo App \cite{Lazarillo2023_app} & Smartphone (GPS + audio) & Navegación GPS con guía por voz & Aplicación móvil basada en comunidad de mapas \\
+\hline
+Eye in AI (MIT) \cite{eyeAI2023} & Gafas con IA & Descripción auditiva del entorno & Prototipo de bajo costo enfocado en accesibilidad \\
+\hline
+VR con gafas (China) \cite{Bordonaba2025_navegador} & Gafas 3D + sistema háptico & Guía mediante retroalimentación sensorial & Investigación basada en realidad virtual aplicada a navegación \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Análisis crítico y limitaciones de los trabajos existentes}
+
+A partir de la revisión de los trabajos presentados, se observa que existen múltiples propuestas orientadas a la asistencia de personas con discapacidad visual.
+
+En primer lugar, varios sistemas se enfocan únicamente en la detección de obstáculos mediante sensores o visión artificial, sin considerar la planificación de rutas completas o la integración con sistemas de navegación global. Esto limita su utilidad en entornos reales, donde no solo es necesario evitar obstáculos, sino también llegar a un destino específico de manera eficiente \cite{IPN_invidentes}.
+
+Por otro lado, las aplicaciones móviles como Lazarillo dependen fuertemente de la información de mapas digitales y del GPS, lo cual reduce su efectividad en entornos interiores o en zonas con baja precisión de posicionamiento \cite{Lazarillo2023_app}. Asimismo, estos sistemas no suelen incorporar mecanismos avanzados de percepción del entorno inmediato.
+
+En el caso de dispositivos más avanzados, como gafas inteligentes o sistemas basados en realidad aumentada, se observa un alto nivel de complejidad tecnológica y, en muchos casos, costos elevados o dependencia de infraestructura adicional, lo que dificulta su adopción masiva \cite{CIT2024_gafas}.
+
+Por otro lado, se observa que la interacción con el usuario es un área donde aún se puede profundizar, especialmente en la creación de instrucciones claras y accesibles para personas con discapacidad visual, un elemento clave para lograr una usabilidad real.
+
+De igual forma, el campo presenta el reto de integrar la percepción, el mapeo y la navegación de manera más fluida. Actualmente, es común que estos componentes se desarrollen de forma independiente, por lo que existe una valiosa oportunidad de unificarlos para responder mejor a las exigencias de los entornos reales.
+
+Estas limitaciones evidencian la necesidad de desarrollar un sistema integral que combine visión artificial, mapeo dinámico del entorno, planificación de rutas y comunicación efectiva con el usuario, como se propone en el presente trabajo.
+
+\section{Tendencias actuales en tecnologías de asistencia visual}
+
+En los últimos años, el desarrollo de tecnologías de asistencia para personas con discapacidad visual ha evolucionado significativamente gracias al avance en inteligencia artificial, visión por computadora y sistemas embebidos.
+
+Una de las principales tendencias es el uso de modelos de aprendizaje profundo para la detección y reconocimiento de objetos en tiempo real. Modelos como YOLO han permitido implementar sistemas capaces de identificar elementos del entorno con alta precisión y baja latencia, facilitando su integración en dispositivos portátiles \cite{redmon2016yolo}.
+
+Asimismo, se ha incrementado el uso de dispositivos inteligentes como gafas con cámara integrada, los cuales permiten una interacción más natural y manos libres con el entorno. Estos dispositivos buscan reemplazar o complementar herramientas tradicionales como el bastón blanco \cite{cinestavlentes}.
+
+Otra tendencia relevante es la incorporación de sistemas de navegación híbridos, que combinan información global (GPS y mapas digitales) con percepción local mediante sensores y visión artificial, lo cual permite una navegación más robusta en entornos dinámicos y no estructurados.
+
+Finalmente, se observa un creciente interés en la integración de interfaces de voz y procesamiento de lenguaje natural, con el objetivo de mejorar la interacción humano-máquina y proporcionar instrucciones más intuitivas y accesibles para los usuarios \cite{eyeAI2023}.
+
+Estas tendencias reflejan un enfoque hacia sistemas más integrales, autónomos y centrados en el usuario, lo cual motiva el desarrollo de la propuesta presentada en este trabajo.

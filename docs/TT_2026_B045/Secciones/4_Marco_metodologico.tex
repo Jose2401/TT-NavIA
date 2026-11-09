@@ -1,0 +1,83 @@
+\chapter{Marco metodológico}
+
+\section{Enfoque metodológico}
+
+El presente trabajo se desarrolla bajo un enfoque aplicado, orientado al diseño e implementación de un prototipo funcional de un sistema de navegación asistida para personas con discapacidad visual. Este tipo de enfoque es adecuado cuando el objetivo principal no es generar conocimiento teórico nuevo, sino producir una solución técnica concreta que pueda ser evaluada y validada en condiciones reales \cite{hernandez2014metodologia}.
+
+Dado que el sistema involucra múltiples componentes tecnológicos que deben integrarse de forma coherente, se adopta una \textbf{metodología de desarrollo incremental} \cite{sommerville2011software}. Este modelo permite construir y validar cada módulo del sistema de manera progresiva, reduciendo el riesgo de fallos en la integración final y facilitando la detección temprana de problemas en etapas intermedias. A diferencia de un enfoque en cascada, el desarrollo incremental permite retroalimentar el diseño de etapas anteriores conforme avanza la implementación, lo cual es especialmente relevante en proyectos con componentes de percepción e inteligencia artificial, donde el comportamiento del sistema depende fuertemente de la interacción entre módulos \cite{pressman2014ingenieria}.
+
+El enfoque combina técnicas de inteligencia artificial, procesamiento de imágenes, planificación de rutas y sistemas de interacción humano-máquina, con el objetivo de construir una solución integral capaz de operar en tiempo real en entornos urbanos y espacios interiores.
+
+\section{El sistema}
+
+El sistema propuesto se basa en una arquitectura modular que permite la integración de múltiples tecnologías para la percepción, representación y navegación del entorno. Este diseño facilita el desarrollo independiente de cada componente, así como su posterior integración en un sistema funcional unificado \cite{bass2012software}.
+
+La arquitectura se divide en los siguientes módulos principales:
+
+\begin{itemize}
+    \item Adquisición de datos
+    \item Percepción del entorno
+    \item Representación espacial
+    \item Planeación de rutas
+    \item Interacción con el usuario
+\end{itemize}
+
+Cada módulo cumple una función específica dentro del sistema, permitiendo transformar la información capturada del entorno en instrucciones comprensibles para el usuario final.
+
+\section{Metodología de desarrollo}
+
+El desarrollo del sistema se lleva a cabo mediante un enfoque incremental dividido en etapas, permitiendo validar cada componente de forma independiente antes de su integración final. Esta estrategia ha sido ampliamente utilizada en el desarrollo de sistemas embebidos y de asistencia tecnológica, donde la complejidad de los componentes hace inviable una validación conjunta sin haber verificado primero el comportamiento individual de cada módulo \cite{pressman2014ingenieria}.
+
+Las etapas principales son:
+
+\begin{enumerate}
+    \item \textbf{Adquisición y preprocesamiento de datos:} Captura de información visual y de proximidad del entorno mediante los sensores del sistema. Se aplican técnicas de preprocesamiento para normalizar y acondicionar los datos antes de ser procesados por los módulos posteriores.
+
+    \item \textbf{Percepción visual del entorno:} Implementación de un módulo de visión por computadora capaz de identificar elementos relevantes del entorno en tiempo real, tales como obstáculos, personas y estructuras de interés.
+
+    \item \textbf{Inferencia contextual:} Incorporación de un modelo de razonamiento probabilístico para inferir relaciones entre los objetos detectados y mejorar la comprensión del entorno más allá de la detección individual de elementos.
+
+    \item \textbf{Construcción del mapa:} Generación de una representación espacial del entorno que permita distinguir zonas libres de obstáculos y zonas ocupadas, habilitando la navegación segura del usuario.
+
+    \item \textbf{Planeación de rutas:} Implementación de un algoritmo de búsqueda de caminos óptimos sobre el mapa generado, permitiendo calcular trayectorias que eviten obstáculos y se adapten a cambios dinámicos en el entorno. Los destinos se resuelven a partir de los elementos reconocidos y registrados en el propio mapa, como puertas o salidas.
+
+    \item \textbf{Interfaz de usuario:} Desarrollo de un módulo de generación de lenguaje natural que traduce las instrucciones de navegación en mensajes auditivos claros y comprensibles para el usuario.
+\end{enumerate}
+
+\section{Descripción de módulos}
+
+\subsection{Módulos de percepción}
+
+Los módulos de percepción se encargan de adquirir e interpretar la información proveniente del entorno. Esto incluye el procesamiento de las imágenes capturadas por la cámara del dispositivo, la interpretación visual del entorno para detectar objetos y estructuras relevantes para la navegación, y la lectura de los sensores de proximidad que complementan la información visual con datos de distancia. En conjunto, estos submódulos proporcionan al sistema una representación multisensorial del espacio inmediato que rodea al usuario.
+
+\subsection{Módulos de representación}
+
+Los módulos de representación tienen como objetivo construir y mantener un modelo del entorno a partir de la información percibida. Para ello, se implementan mecanismos de localización y mapeo simultáneo que permiten estimar la posición del usuario dentro del espacio, así como técnicas de proyección espacial para generar una representación del entorno en forma de malla de ocupación. Esta representación distingue entre zonas libres y zonas ocupadas, y sirve como base para el módulo de planeación de rutas.
+
+\subsection{Módulo de navegación y rutas}
+
+Este módulo se encarga de calcular y gestionar la trayectoria que debe seguir el usuario para llegar a su destino. Incluye un modelo general de navegación que decide los movimientos del usuario a partir del mapa local y del destino, un submódulo de dirección que genera instrucciones de movimiento paso a paso, y un módulo de alerta de obstáculos que detecta y notifica la presencia de elementos que puedan representar un riesgo en la trayectoria calculada.
+
+\subsection{Módulos de interacción}
+
+Los módulos de interacción constituyen la interfaz entre el sistema y el usuario. Comprenden un módulo de reconocimiento de voz que permite al usuario comunicarse con el sistema de forma natural, un módulo de procesamiento de lenguaje natural que interpreta las instrucciones recibidas y genera respuestas adecuadas, y un módulo de salida que transmite las instrucciones de navegación y alertas al usuario mediante síntesis de voz. Esta combinación permite una interacción fluida y accesible sin requerir el uso de interfaces visuales.
+
+\section{Integración del sistema}
+
+La integración del sistema se realiza mediante la conexión secuencial y coordinada de los módulos descritos, permitiendo el flujo continuo de información desde la adquisición de datos hasta la generación de instrucciones para el usuario. El diseño modular facilita esta integración, ya que cada componente expone interfaces bien definidas que permiten sustituir o actualizar implementaciones internas sin afectar al resto del sistema \cite{bass2012software}.
+
+El sistema opera en tiempo real, procesando continuamente la información del entorno y actualizando la ruta en función de los cambios detectados. Esta integración permite que el sistema opere sin depender de servicios externos, proporcionando una solución adaptable a distintos tipos de entornos.
+
+\section{Pruebas y validación}
+
+Para validar el funcionamiento del sistema, se realizarán pruebas en escenarios controlados y entornos reales, siguiendo una estrategia de validación incremental acorde con la metodología de desarrollo adoptada \cite{sommerville2011software}. Los aspectos a evaluar son:
+
+\begin{itemize}
+    \item Precisión en la detección de objetos y obstáculos
+    \item Capacidad de evitar obstáculos de forma segura
+    \item Eficiencia y corrección en la generación de rutas
+    \item Tiempo de respuesta del sistema en condiciones de operación real
+    \item Claridad y comprensibilidad de las instrucciones auditivas
+\end{itemize}
+
+Los resultados obtenidos permitirán evaluar el desempeño global del sistema e identificar áreas de mejora en cada uno de sus componentes antes de considerarlo apto para uso en entornos no controlados.

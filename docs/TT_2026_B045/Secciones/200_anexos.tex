@@ -1,0 +1,508 @@
+\appendix
+\chapter{Pseudocódigos auxiliares}
+\label{anexo:Pseudocodigo}
+
+\section{Pseudocódigo del procesamiento de imágenes}
+\label{apend:procesa}
+\begin{center}
+\captionof{algorithm}{Pseudo código del procesamiento de imágenes}
+\label{alg:pdi}
+\end{center}
+\vspace{-1.6cm}
+\rule{\textwidth}{0.4pt}
+\vspace{-0.9cm}
+
+\begin{algorithmic}[1]
+
+\Statex \textbf{ENTRADA:}
+\Statex fotograma\_crudo
+\Comment{imagen capturada directamente por la cámara}
+
+\Statex
+\Statex \textbf{SALIDA:}
+\Statex imagen\_lista
+\Comment{imagen normalizada y preprocesada}
+
+\Statex
+\Statex \textbf{PROCESO}
+\State Verificar que el fotograma no esté vacío
+
+\If{fotograma\_crudo está vacío}
+
+    \State registrar error y terminar
+
+\EndIf
+
+\Statex
+\State Redimensionar la imagen al tamaño objetivo (ancho x alto)
+
+\State imagen\_redimensionada $\gets$
+redimensionar(fotograma\_crudo, ancho, alto)
+
+\Statex
+\State Convertir a espacio de color normalizado (escala [0, 1])
+
+\State imagen\_normalizada $\gets$
+imagen\_redimensionada / 255.0
+
+\Statex
+\State Aplicar igualación de histograma para mejorar contraste
+
+\State imagen\_ecualizada $\gets$
+ecualizar\_histograma(imagen\_normalizada)
+
+\Statex
+\State Aplicar filtro gaussiano para suavizar ruido
+
+\State imagen\_lista $\gets$
+filtro\_gaussiano(imagen\_ecualizada, sigma=0.5)
+
+\Statex
+\State \Return imagen\_lista
+
+\end{algorithmic}
+\vspace{-0.9cm}
+\rule{\textwidth}{0.4pt}
+
+\section{Pseudocódigo del módulo de Ray Casting}
+\label{apend:ray}
+\begin{center}
+\captionof{algorithm}{Pseudocódigo del módulo de Ray Casting}
+\label{alg:raycasting}
+\end{center}
+\vspace{-1.6cm}
+\rule{\textwidth}{0.4pt}
+\vspace{-0.9cm}
+
+\begin{algorithmic}[1]
+
+\Statex \textbf{ENTRADA:}
+
+\Statex pose
+\Comment{[x, y, theta] del usuario}
+
+\Statex angulos\_rayos
+\Comment{lista de ángulos relativos a theta}
+
+\Statex distancias
+\Comment{distancia de impacto para cada rayo}
+
+\Statex \hspace{0.5cm}
+// Variables a inicializar
+
+\Statex reticula
+\Comment{mapa de ocupación en log-odds}
+
+\Statex resolucion
+\Comment{tamaño de cada celda en metros}
+
+\Statex incremento\_libre
+\Comment{incremento log-odds para celda libre (negativo)}
+
+\Statex incremento\_ocup
+\Comment{incremento log-odds para celda ocupada (positivo)}
+
+\Statex lo\_min, lo\_max
+\Comment{límites de saturación}
+
+\Statex
+\Statex \textbf{SALIDA:}
+
+\State reticula
+\Comment{mapa actualizado}
+
+\Statex
+\Statex \textbf{PROCESO}
+\For{cada rayo i EN angulos\_rayos}
+
+    \State Calcular dirección absoluta del rayo
+
+    \State angulo\_abs $\gets$
+    pose.theta + angulos\_rayos[i]
+
+    \State distancia\_impacto $\gets$
+    distancias[i]
+
+    \Statex
+
+    \State Obtener secuencia de celdas con algoritmo de Bresenham
+
+    \State celda\_origen $\gets$
+    convertir\_a\_celda(pose.x, pose.y, resolucion)
+
+    \State celda\_fin $\gets$
+    convertir\_a\_celda(
+
+    \Statex \hspace{1.3cm}
+    pose.x + distancia\_impacto * coseno(angulo\_abs),
+
+    \Statex \hspace{1.3cm}
+    pose.y + distancia\_impacto * seno(angulo\_abs),
+
+    \Statex \hspace{1.3cm}
+    resolucion)
+
+    \State celdas\_rayo $\gets$
+    bresenham(celda\_origen, celda\_fin)
+
+    \Statex
+
+    \State Marcar todas las celdas antes del impacto como libres
+
+    \For{cada celda c EN celdas\_rayo excepto la última}
+
+        \State reticula[c] $\gets$
+        saturar(reticula[c] + incremento\_libre,
+
+        \Statex \hspace{2.2cm}
+        lo\_min, lo\_max)
+
+    \EndFor
+
+    \Statex
+
+    \State Si hubo impacto (distancia menor a la máxima), marcar la celda:
+
+    \If{distancia\_impacto < distancia\_maxima}
+
+        \State celda\_impacto $\gets$
+        celdas\_rayo[última]
+
+        \State reticula[celda\_impacto] $\gets$
+        saturar(
+
+        \Statex \hspace{2.2cm}
+        reticula[celda\_impacto] + incremento\_ocup,
+
+        \Statex \hspace{2.2cm}
+        lo\_min, lo\_max)
+
+    \EndIf
+
+\EndFor
+
+\Statex
+\State \Return reticula
+
+\end{algorithmic}
+\vspace{-0.9cm}
+\rule{\textwidth}{0.4pt}
+
+% -
+\section{Pseudocódigo integrado de los módulos de representación}
+\label{apend:representa}
+% -
+
+El siguiente pseudocódigo describe el ciclo completo de operación de los módulos de
+representación, integrando SLAM y Ray Casting en un bucle continuo que corre mientras
+el sistema está activo.
+
+\begin{center}
+\captionof{algorithm}{Pseudocódigo de representación}
+\label{alg:representacion}
+\end{center}
+\vspace{-1.8cm}
+\rule{\textwidth}{0.4pt}
+\vspace{-0.9cm}
+
+\begin{algorithmic}[1]
+
+\Statex \textbf{INICIALIZACIÓN:}
+
+\State pose $\gets$ [0, 0, 0]
+\Comment{posición y orientación inicial}
+
+\State covarianza $\gets$
+matriz\_identidad * varianza\_inicial
+
+\State reticula $\gets$
+inicializar\_con\_log\_odds(0)
+
+\Comment{todo desconocido}
+
+\Statex
+
+\While{sistema\_activo}
+
+    \Statex \hspace{0.5cm}
+    // Adquisición de datos del ciclo actual
+
+    \State odometria $\gets$
+    leer\_odometria()
+
+    \Comment{(delta\_d, delta\_theta)}
+
+    \State mediciones $\gets$
+    leer\_sensores()
+
+    \Comment{distancias por ángulo}
+
+    \Statex
+
+    \Statex \hspace{0.5cm}
+    // Predicción de pose
+
+    \State pose\_pred $\gets$
+    aplicar\_modelo\_movimiento(pose, odometria)
+
+    \State F $\gets$
+    jacobiano\_movimiento(pose, odometria)
+
+    \State covarianza\_pred $\gets$
+    F * covarianza * F\textsuperscript{T} + Q
+
+    \Statex
+
+    \Statex \hspace{0.5cm}
+    // Corrección con mediciones
+
+    \State medicion\_esperada $\gets$
+    modelo\_observacion(pose\_pred, reticula)
+
+    \State innovacion $\gets$
+    mediciones - medicion\_esperada
+
+    \State H $\gets$
+    jacobiano\_observacion(pose\_pred)
+
+    \State S $\gets$
+    H * covarianza\_pred * H\textsuperscript{T} + R
+
+    \State K $\gets$
+    covarianza\_pred * H\textsuperscript{T} * inversa(S)
+
+    \State pose $\gets$
+    pose\_pred + K * innovacion
+
+    \State covarianza $\gets$
+    (I - K * H) * covarianza\_pred
+
+    \Statex
+
+    \Statex \hspace{0.5cm}
+    // Actualización del mapa con Ray Casting
+
+    \For{cada rayo i}
+
+        \State celdas $\gets$
+        bresenham(pose, angulo[i], mediciones[i], resolucion)
+
+        \For{c EN celdas excepto la última}
+
+            \State reticula[c] $\gets$
+            saturar(reticula[c] + lo\_libre, lo\_min, lo\_max)
+
+        \EndFor
+
+        \If{mediciones[i] < distancia\_maxima}
+
+            \State reticula[celdas[última]] $\gets$
+            saturar(
+
+            \Statex \hspace{2.2cm}
+            reticula[celdas[última]] + lo\_ocupado,
+
+            \Statex \hspace{2.2cm}
+            lo\_min, lo\_max)
+
+        \EndIf
+
+    \EndFor
+
+    \Statex
+
+    \Statex \hspace{0.5cm}
+    // Publicar resultados para los demás módulos
+
+    \State publicar(pose)
+
+    \State publicar(reticula)
+
+\EndWhile
+\end{algorithmic}
+\vspace{-0.9cm}
+\rule{\textwidth}{0.4pt}
+
+\section{Pseudocódigos Voz}
+
+\subsubsection{Algoritmo 1: Detección de actividad de voz (VAD)}
+\label{apend:vad}
+
+La detección de actividad de voz separa los segmentos de audio que contienen voz de
+los periodos de silencio o ruido de fondo, evitando procesar señal irrelevante.
+
+\begin{center}
+\captionof{algorithm}{Pseudocódigo VAD}
+\label{alg:vad}
+\end{center}
+\vspace{-1.8cm}
+\rule{\textwidth}{0.4pt}
+\vspace{-0.9cm}
+
+\begin{algorithmic}[1]
+
+\Statex \textbf{ENTRADA:}
+\Statex \hspace{0.5cm} flujo\_audio \Comment{flujo continuo de muestras de audio}
+
+\Statex
+\Statex \textbf{SALIDA:}
+\Statex \hspace{0.5cm} segmentos\_voz \Comment{lista de fragmentos de audio con voz activa}
+
+\Statex
+\Statex \textbf{PROCESO}
+\State Inicializar:
+\State \hspace{0.5cm} buffer\_acumulado   $\gets$ vacío
+\State \hspace{0.5cm} segmentos\_voz      $\gets$ []
+\State \hspace{0.5cm} en\_voz             $\gets$ falso
+\State \hspace{0.5cm} silencio\_acumulado $\gets$ 0 ms
+
+\Statex
+\For{cada bloque de 512 muestras EN flujo\_audio}
+
+    \State Calcular energía del bloque
+    \State energia $\gets$ promedio(cuadrado(muestras))
+
+    \Statex
+    \If{energia $>$ umbral\_inicio Y NO en\_voz}
+        \State en\_voz             $\gets$ verdadero
+        \State inicio\_segmento    $\gets$ tiempo\_actual()
+        \State buffer\_acumulado   $\gets$ [bloque]
+        \State silencio\_acumulado $\gets$ 0
+
+    \Statex
+    \ElsIf{en\_voz}
+        \State agregar bloque a buffer\_acumulado
+
+        \If{energia $<$ umbral\_fin}
+
+            \State silencio\_acumulado $\gets$ silencio\_acumulado + duracion(bloque)
+
+            \If{silencio\_acumulado $>$ pausa\_maxima (700 ms)}
+
+                \State agregar buffer\_acumulado a segmentos\_voz
+                \State en\_voz             $\gets$ falso
+                \State silencio\_acumulado $\gets$ 0
+                \State buffer\_acumulado   $\gets$ vacío
+
+            \EndIf
+
+        \Else
+
+            \State silencio\_acumulado $\gets$ 0 \Comment{la voz continuó, reinciar pausa}
+
+        \EndIf
+\Statex
+    \EndIf
+\Statex
+\EndFor
+\Statex
+\State \Return segmentos\_voz
+
+\end{algorithmic}
+\vspace{-0.9cm}
+\rule{\textwidth}{0.4pt}
+
+\subsubsection{Algoritmo 2: Reducción de ruido (Filtro de Wiener)}
+\label{apend:wiener}
+Sobre cada segmento de voz detectado se aplica un filtro espectral que estima el ruido
+de fondo y lo elimina, mejorando la calidad de la señal antes de transcribirla.
+
+Sea $X(f)$ el espectro del audio capturado, $N(f)$ el espectro estimado del ruido de
+fondo y $G(f)$ la ganancia de Wiener aplicada a cada frecuencia $f$:
+\[
+G(f) = \frac{|X(f)|^2 - |N(f)|^2}{|X(f)|^2}
+\]
+La señal limpia se obtiene como:
+\[
+Y(f) = G(f) \cdot X(f)
+\]
+y se recupera mediante la transformada inversa.
+
+\begin{center}
+\captionof{algorithm}{Pseudocódigo reducción de ruido}
+\label{alg:rudio}
+\end{center}
+\vspace{-1.8cm}
+\rule{\textwidth}{0.4pt}
+\vspace{-0.9cm}
+
+\begin{algorithmic}[1]
+
+\Statex \textbf{ENTRADA:}
+\Statex segmento\_audio \Comment{fragmento de audio con voz}
+
+\Statex
+\Statex \textbf{SALIDA:}
+\Statex audio\_limpio \Comment{audio con ruido reducido}
+
+\Statex
+\Statex \textbf{PROCESO}
+\State Calcular el espectro de frecuencias del segmento
+\State espectro $\gets$ transformada\_fourier(segmento\_audio)
+
+\Statex
+\State Estimar el espectro del ruido de fondo
+\Comment{usando los primeros 100 ms sin voz activa}
+\State ruido\_estimado $\gets$ estimar\_ruido\_fondo(espectro)
+
+\Statex
+\For{cada frecuencia f EN espectro}
+
+    \State potencia\_señal $\gets$ $|espectro[f]|^2$
+    \State potencia\_ruido $\gets$ $|ruido\_estimado[f]|^2$
+
+    \Statex \hspace{0.5cm} // Calcular ganancia de Wiener (mínimo 0 para evitar amplificación)
+
+    \State ganancia[f] $\gets$ maximo(0,
+    \Statex \hspace{2.2cm} (potencia\_señal - potencia\_ruido) / potencia\_señal)
+
+    \State espectro\_filtrado[f] $\gets$ ganancia[f] * espectro[f]
+
+\EndFor
+
+\Statex
+\State Reconstruir señal en el dominio del tiempo
+\State audio\_limpio $\gets$ transformada\_fourier\_inversa(espectro\_filtrado)
+
+\Statex
+\State \Return audio\_limpio
+
+\end{algorithmic}
+\vspace{-0.9cm}
+\rule{\textwidth}{0.4pt}
+
+OpenCV construye internamente una máscara gaussiana \(5 \times 5\) utilizando la siguiente ecuación:
+
+\[
+G(x,y)=\frac{1}{2\pi\sigma^2}e^{-\frac{x^2+y^2}{2\sigma^2}}
+\]
+
+donde:
+
+\begin{itemize}
+\item \(\sigma = 0.5\)
+\item \(x,y\) representan las posiciones relativas respecto al centro del kernel
+\end{itemize}
+
+Para un kernel \(5 \times 5\) con \(\sigma = 0.5\), la distribución de pesos aproximada queda de la siguiente manera:
+
+\[
+\frac{1}{273}
+\begin{bmatrix}
+1 & 4 & 7 & 4 & 1 \\
+4 & 16 & 26 & 16 & 4 \\
+7 & 26 & 41 & 26 & 7 \\
+4 & 16 & 26 & 16 & 4 \\
+1 & 4 & 7 & 4 & 1
+\end{bmatrix}
+\]
+
+\[
+\begin{bmatrix}
+0.0037 & 0.0147 & 0.0256 & 0.0147 & 0.0037 \\
+0.0147 & 0.0586 & 0.0952 & 0.0586 & 0.0147 \\
+0.0256 & 0.0952 & 0.1502 & 0.0952 & 0.0256 \\
+0.0147 & 0.0586 & 0.0952 & 0.0586 & 0.0147 \\
+0.0037 & 0.0147 & 0.0256 & 0.0147 & 0.0037
+\end{bmatrix}
+\]

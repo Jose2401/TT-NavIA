@@ -1,0 +1,202 @@
+{
+ "escenas": [
+  {
+   "escena": "entrada de la sala de maestros",
+   "video": "20261029_152751.mp4",
+   "ms_yolo_coco_oiv7": 256.45416698534973,
+   "ms_segformer": 556.9281660136767,
+   "detecciones": [
+    {
+     "label": "person",
+     "estado": "",
+     "m": 1.85,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "person",
+     "estado": "",
+     "m": 1.91,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "backpack",
+     "estado": "",
+     "m": 3.12,
+     "movil": false,
+     "peligro": false
+    },
+    {
+     "label": "door",
+     "estado": "cerrada",
+     "m": 1.63,
+     "movil": false,
+     "peligro": false
+    }
+   ]
+  },
+  {
+   "escena": "oficina con una persona caminando",
+   "video": "IMG_6524 - medusa zoomby.mov",
+   "ms_yolo_coco_oiv7": 183.76820802222937,
+   "ms_segformer": 298.05387498345226,
+   "detecciones": [
+    {
+     "label": "person",
+     "estado": "",
+     "m": 1.92,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "person",
+     "estado": "",
+     "m": 4.81,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "monitor",
+     "estado": "",
+     "m": 5.49,
+     "movil": false,
+     "peligro": false
+    },
+    {
+     "label": "book",
+     "estado": "",
+     "m": 8.0,
+     "movil": false,
+     "peligro": false
+    },
+    {
+     "label": "door",
+     "estado": "abierta",
+     "m": 2.38,
+     "movil": false,
+     "peligro": false
+    },
+    {
+     "label": "door",
+     "estado": "abierta",
+     "m": 3.93,
+     "movil": false,
+     "peligro": false
+    }
+   ]
+  },
+  {
+   "escena": "calle con baches",
+   "video": "20261022_141726.mp4",
+   "ms_yolo_coco_oiv7": 127.45179201010615,
+   "ms_segformer": 224.1329999815207,
+   "detecciones": [
+    {
+     "label": "bus",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    },
+    {
+     "label": "car",
+     "estado": "",
+     "m": 8.0,
+     "movil": true,
+     "peligro": false
+    }
+   ]
+  },
+  {
+   "escena": "piso con un tapete",
+   "video": "VID_20261005_155416 - Anaid Espinosa.mp4",
+   "ms_yolo_coco_oiv7": 148.39845898677595,
+   "ms_segformer": 307.1685000031721,
+   "detecciones": [
+    {
+     "label": "hoyo",
+     "estado": "",
+     "m": 0.87,
+     "movil": false,
+     "peligro": true
+    }
+   ]
+  }
+ ],
+ "ms_por_modelo": {
+  "yolov8s_seg_coco": 71.64435840095393,
+  "yolov8s_oiv7": 55.482975000631995,
+  "segformer_b0": 293.46686660137493
+ }
+}

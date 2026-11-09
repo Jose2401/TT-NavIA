@@ -1,0 +1,37 @@
+[
+ {
+  "caso": "vigente",
+  "prec": 0.6049470642027514,
+  "rec": 0.3067750677506775,
+  "ocupadas": 151.5,
+  "falsas": 60.0
+ },
+ {
+  "caso": "sin L_block",
+  "prec": 0.5775194824275507,
+  "rec": 0.3046070460704607,
+  "ocupadas": 172.0,
+  "falsas": 73.0
+ },
+ {
+  "caso": "rango monocular crudo marca ocupado",
+  "prec": 0.5988508708939757,
+  "rec": 0.31598915989159887,
+  "ocupadas": 156.83333333333334,
+  "falsas": 63.166666666666664
+ },
+ {
+  "caso": "sin anclar a landmarks",
+  "prec": 0.6191383305691814,
+  "rec": 0.3092140921409214,
+  "ocupadas": 150.0,
+  "falsas": 57.166666666666664
+ },
+ {
+  "caso": "sin las tres reglas",
+  "prec": 0.5734043473182869,
+  "rec": 0.3509485094850948,
+  "ocupadas": 191.83333333333334,
+  "falsas": 82.16666666666667
+ }
+]

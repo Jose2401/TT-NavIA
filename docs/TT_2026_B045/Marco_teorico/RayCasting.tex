@@ -1,0 +1,166 @@
+\section{Ray casting}
+
+El ray casting es una técnica ampliamente utilizada en gráficos por computadora, robótica y sistemas de percepción espacial para determinar la interacción entre rayos proyectados y objetos dentro de un entorno \cite{stackoverflow_raycasting}. En aplicaciones de navegación y mapeo, esta técnica permite estimar distancias, detectar obstáculos y construir representaciones del entorno a partir de sensores.
+
+Dentro del contexto de sistemas de asistencia y navegación inteligente, como el prototipo de gafas inteligentes propuesto en este trabajo terminal, el ray casting puede utilizarse para modelar el entorno cercano del usuario y detectar espacios transitables. Al proyectar rayos desde la posición del usuario hacia diferentes direcciones, es posible identificar obstáculos y actualizar mapas locales que faciliten la toma de decisiones de navegación.
+
+En este capítulo se presentan los fundamentos teóricos del ray casting, su relación con otras técnicas como el ray tracing, así como sus principales aplicaciones en gráficos por computadora, simulación y robótica. Finalmente, se analiza su utilización en sistemas de mapeo y navegación en tiempo real.
+
+\subsection{Fundamentos del ray casting}
+
+\subsubsection{Definición de ray casting}
+
+El ray casting es una técnica computacional que consiste en proyectar rayos desde un punto de origen hacia diferentes direcciones dentro de un entorno para detectar la primera intersección con un objeto u obstáculo. Este método permite calcular distancias, verificar visibilidad y estimar la estructura espacial de un entorno \cite{stackoverflow_raycasting}.
+
+A diferencia de técnicas más complejas de renderizado, el ray casting no calcula reflexiones ni interacciones de luz complejas. Su principal objetivo es determinar si un rayo intersecta con un objeto y, en caso afirmativo, identificar la distancia al primer punto de contacto \cite{stackoverflow_raycasting}.
+
+Debido a su simplicidad computacional, el ray casting es ampliamente utilizado en sistemas que requieren procesamiento en tiempo real, como motores de videojuegos, simuladores de sensores y algoritmos de mapeo robótico \cite{wikipedia_wolfenstein}.
+
+En sistemas de navegación, esta técnica puede emplearse para simular sensores de distancia, detectar obstáculos en mapas digitales y construir representaciones espaciales del entorno \cite{elfes1989}.
+
+\subsubsection{Principios matemáticos del trazado de rayos}
+
+Desde el punto de vista matemático, un rayo puede representarse como una función paramétrica que describe la trayectoria de un punto en el espacio a partir de un origen y una dirección.
+
+Sea un punto de origen $(x_0, y_0)$ y un ángulo de dirección $\theta$. La trayectoria del rayo puede describirse mediante las ecuaciones:
+
+\[
+x = x_0 + t\cos(\theta)
+\]
+
+\[
+y = y_0 + t\sin(\theta)
+\]
+
+donde $t$ representa la distancia recorrida a lo largo del rayo.
+
+En sistemas discretos como los mapas de cuadrícula utilizados en robótica y navegación, el espacio se divide en celdas. El algoritmo de ray casting recorre progresivamente estas celdas a lo largo de la trayectoria del rayo hasta encontrar la primera celda ocupada o alcanzar una distancia máxima \cite{elfes1989}.
+
+Para implementar este proceso de forma eficiente se utilizan algoritmos de recorrido de líneas en cuadrículas, como el algoritmo de Bresenham \cite{bresenham1965} o el método Digital Differential Analyzer (DDA) \cite{wikipedia_dda}. Estos algoritmos permiten identificar las celdas atravesadas por el rayo utilizando operaciones aritméticas simples.
+
+En aplicaciones de mapeo y navegación, el ray casting puede utilizarse para simular sensores como LIDAR o cámaras de profundidad, proyectando múltiples rayos en distintas direcciones para reconstruir la geometría del entorno \cite{elfes1989}.
+
+\subsection{Diferencias entre ray casting y ray tracing}
+
+\subsubsection{Definición de ray tracing}
+
+El ray tracing es una técnica de renderizado utilizada principalmente en gráficos por computadora para generar imágenes realistas mediante la simulación del comportamiento físico de la luz.
+
+A diferencia del ray casting, el ray tracing sigue múltiples trayectorias de rayos después de cada interacción con un objeto, considerando fenómenos como reflexión, refracción y dispersión de la luz \cite{stackoverflow_raycasting}. Esto permite generar efectos visuales complejos, como sombras suaves, reflejos y transparencia.
+
+Sin embargo, debido a la gran cantidad de cálculos requeridos para simular estas interacciones, el ray tracing presenta un costo computacional considerablemente mayor que el ray casting \cite{stackoverflow_raycasting}.
+
+\subsubsection{Comparación entre ray casting y ray tracing}
+
+Las principales diferencias entre ambas técnicas pueden observarse en la Tabla~\ref{tabla_raycasting}.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\hline
+Aspecto & Ray Casting & Ray Tracing \\
+\hline
+Propósito & Detección de visibilidad y distancia & Renderizado realista \\
+Profundidad del rayo & Una sola intersección & Múltiples reflexiones \\
+Complejidad computacional & Baja & Alta \\
+Latencia & Baja, apta para tiempo real & Alta, requiere GPU \\
+Aplicaciones & Robótica, simulación de sensores & Gráficos fotorrealistas \\
+\hline
+\end{tabular}
+\caption{Comparación entre ray casting y ray tracing \cite{stackoverflow_raycasting}.}
+\label{tabla_raycasting}
+\end{table}
+
+Como puede observarse, el ray casting resulta significativamente más eficiente desde el punto de vista computacional, ya que cada rayo se procesa una sola vez hasta encontrar el primer obstáculo \cite{stackoverflow_raycasting}.
+
+\subsubsection{Ventajas del ray casting en sistemas en tiempo real}
+
+Debido a su simplicidad algorítmica, el ray casting es particularmente adecuado para sistemas que requieren procesamiento en tiempo real \cite{stackoverflow_raycasting}.
+
+Entre sus principales ventajas se encuentran:
+
+\begin{itemize}
+\item Bajo costo computacional.
+\item Fácil implementación en sistemas embebidos.
+\item Capacidad de ejecutarse en CPU sin necesidad de GPU.
+\item Compatibilidad con mapas discretos basados en cuadrículas \cite{elfes1989}.
+\end{itemize}
+
+Estas características lo convierten en una técnica ideal para aplicaciones de robótica móvil, sistemas de navegación autónoma y dispositivos portables con recursos computacionales limitados.
+
+\subsection{Aplicaciones del ray casting}
+
+\subsubsection{Ray casting en gráficos por computadora}
+
+En el ámbito de los gráficos por computadora, el ray casting se ha utilizado históricamente para determinar la visibilidad de objetos dentro de una escena tridimensional \cite{stackoverflow_raycasting}.
+
+Uno de los usos más conocidos fue en los primeros motores gráficos de videojuegos en primera persona, donde el ray casting se utilizaba para calcular la distancia entre el jugador y las paredes del entorno \cite{wikipedia_wolfenstein}. A partir de esta información, el sistema generaba una representación tridimensional simulada utilizando un entorno bidimensional.
+
+Aunque en la actualidad muchos motores gráficos utilizan técnicas más avanzadas como ray tracing o rasterización acelerada por GPU, el ray casting sigue siendo relevante para cálculos rápidos de visibilidad y detección de colisiones \cite{stackoverflow_raycasting}.
+
+\subsubsection{Ray casting en simulación y videojuegos}
+
+En simulación y videojuegos, el ray casting se utiliza para diversas tareas relacionadas con la interacción entre objetos y el entorno \cite{wikipedia_wolfenstein}.
+
+Entre sus aplicaciones se incluyen:
+
+\begin{itemize}
+\item Detección de colisiones.
+\item Simulación de sensores virtuales.
+\item Cálculo de visibilidad entre personajes.
+\item Sistemas de iluminación simplificados.
+\end{itemize}
+
+La capacidad de proyectar rayos en múltiples direcciones permite simular sensores de distancia o verificar si existe una línea de visión directa entre dos puntos del entorno \cite{stackoverflow_raycasting}.
+
+\subsubsection{Ray casting en robótica y percepción espacial}
+
+En robótica móvil, el ray casting se emplea frecuentemente para modelar sensores de distancia y actualizar mapas del entorno \cite{elfes1989}.
+
+Un uso común es la simulación de sensores LIDAR dentro de mapas de ocupación. En este contexto, se proyectan múltiples rayos desde la posición del robot hacia distintas direcciones. Cada rayo se detiene cuando detecta una celda ocupada, permitiendo estimar la distancia a los obstáculos cercanos \cite{elfes1989}.
+
+Esta técnica forma parte de algoritmos de mapeo y localización utilizados en sistemas de navegación autónoma y en métodos de SLAM (Simultaneous Localization and Mapping) \cite{wikipedia_slam}.
+
+\subsection{Uso del ray casting en mapeo y navegación en tiempo real}
+
+\subsubsection{Construcción de mapas de ocupación}
+
+Los mapas de ocupación representan el entorno mediante una cuadrícula de celdas donde cada celda almacena la probabilidad de estar ocupada por un obstáculo.
+
+Este concepto fue introducido por Elfes en 1989 \cite{elfes1989} y constituye uno de los métodos más utilizados en robótica para representar entornos desconocidos.
+
+Cada celda de la cuadrícula puede contener uno de tres estados principales:
+
+\begin{itemize}
+\item Libre
+\item Ocupada
+\item Desconocida
+\end{itemize}
+
+El ray casting permite actualizar estas celdas mediante la proyección de rayos que atraviesan el mapa. Las celdas recorridas por el rayo se marcan como libres, mientras que la celda donde el rayo se detiene se marca como ocupada \cite{elfes1989}. Para recorrer las celdas de forma eficiente se emplean algoritmos como el de Bresenham \cite{bresenham1965} o el DDA \cite{wikipedia_dda}.
+
+Este proceso se repite continuamente a medida que el sistema recibe nuevos datos de sensores.
+
+\subsubsection{Detección de espacios transitables}
+
+Una de las aplicaciones más importantes del ray casting en sistemas de navegación es la detección de espacios transitables \cite{elfes1989}.
+
+Al proyectar rayos en diferentes direcciones desde la posición del usuario o robot, es posible identificar áreas libres de obstáculos dentro del entorno. Esta información puede utilizarse para:
+
+\begin{itemize}
+\item Identificar rutas seguras
+\item Evitar colisiones
+\item Ajustar la trayectoria de navegación
+\end{itemize}
+
+En entornos urbanos o interiores, esta capacidad resulta fundamental para garantizar una navegación segura y eficiente \cite{wikipedia_slam}.
+
+\subsubsection{Aplicación en sistemas de navegación asistida}
+
+En sistemas de asistencia para movilidad, el ray casting puede utilizarse para complementar la información proporcionada por mapas digitales.
+
+En el caso del prototipo de gafas inteligentes propuesto en este trabajo, la técnica de ray casting puede emplearse para analizar el entorno inmediato del usuario y detectar obstáculos cercanos. Esta información puede integrarse con datos de navegación provenientes de servicios de mapas digitales \cite{zbotic_gps} para generar instrucciones más seguras y contextualizadas.
+
+Por ejemplo, si el sistema detecta un obstáculo en la trayectoria prevista, puede ajustar las instrucciones de navegación o emitir una alerta para que el usuario modifique su dirección de movimiento.
+
+De esta forma, la integración del ray casting con sensores y sistemas de navegación digital permite construir soluciones de asistencia más robustas, capaces de mejorar la autonomía y seguridad de los usuarios durante sus desplazamientos \cite{elfes1989, wikipedia_slam}.

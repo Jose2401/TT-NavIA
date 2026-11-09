@@ -1,0 +1,14 @@
+[
+ {
+  "seed": 4,
+  "destino": "llévame al sillón",
+  "dReal": 0.7524563479919939,
+  "causa": [
+   "percepcion",
+   0.81,
+   [
+    0.7986525903593216
+   ]
+  ]
+ }
+]

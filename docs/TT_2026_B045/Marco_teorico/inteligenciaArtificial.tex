@@ -1,0 +1,190 @@
+% ======
+
+\chapter{Marco teórico}
+\section{Inteligencia Artificial (IA) y rutas}
+\subsection{Definición y fundamentos de la inteligencia artificial}
+
+La inteligencia artificial es una rama de la informática que desarrolla sistemas capaces de realizar tareas que normalmente requieren inteligencia humana, como aprender, razonar, tomar decisiones y resolver problemas complejos. En el contexto de la robótica y los sistemas de navegación, la IA permite que una máquina analice su entorno, interprete información sensorial y determine acciones adecuadas para alcanzar un objetivo \cite{ganesan2025_common_ai_cheatsheet}.
+
+\subsubsection{Concepto de IA}
+
+De acuerdo con IBM, la inteligencia artificial es una tecnología que permite a las computadoras y máquinas simular capacidades cognitivas humanas, tales como el aprendizaje, la comprensión, la resolución de problemas, la toma de decisiones y la creatividad. Estos sistemas pueden analizar datos, aprender de la experiencia y actuar de manera autónoma para resolver tareas complejas \cite{ibm2025_ai_types}.
+
+Google define la inteligencia artificial como el conjunto de técnicas que permiten a las máquinas imitar la inteligencia humana, especialmente en tareas como el reconocimiento de voz, la interpretación de imágenes, el procesamiento del lenguaje natural y la toma de decisiones automatizada. Estas tecnologías permiten que los sistemas aprendan a partir de datos y mejoren su desempeño con el tiempo \cite{googlecloud2025_que_es_ia}.
+
+La NASA define la inteligencia artificial como el campo de la informática orientado a crear sistemas capaces de realizar tareas que, de ser ejecutadas por humanos, requerirían inteligencia \cite{NASA_ia}.
+
+Investigadores de Stanford University describen la inteligencia artificial como una disciplina de la informática que busca desarrollar sistemas capaces de percibir su entorno, razonar sobre la información y actuar de manera inteligente para alcanzar objetivos específicos. Este enfoque resalta el papel de la percepción, el aprendizaje y la toma de decisiones dentro de los sistemas inteligentes.\cite{stone2016ai100}
+
+El término inteligencia artificial fue acuñado en 1956 por el científico John McCarthy, quien la definió como la ciencia y la ingeniería de crear máquinas inteligentes, especialmente programas informáticos capaces de realizar tareas que requieren inteligencia humana.\cite{mccarthy1955dartmouth}
+
+Mientras tanto, Amazon Web Services menciona que es una tecnología con capacidades de resolución de problemas similares a las de las personas \cite{aws2025_que_es_ia}.
+
+La Association for the Advancement of Artificial Intelligence establece que la inteligencia artificial es el campo de estudio dedicado a desarrollar sistemas computacionales que pueden realizar tareas que normalmente requieren inteligencia humana, como el aprendizaje, la planificación, el razonamiento, la percepción y la comprensión del lenguaje.\cite{aaai2024about}
+
+Por último, la European Commission define la inteligencia artificial como sistemas diseñados por humanos que, dado un objetivo complejo, perciben su entorno mediante la adquisición de datos, interpretan la información y toman decisiones o acciones que influyen en dicho entorno.\cite{ec_hleg2019definition}
+
+\subsection{IA aplicada a sistemas de navegación}
+
+La aplicación de inteligencia artificial en sistemas de navegación ha permitido el desarrollo de robots móviles, drones y vehículos autónomos capaces de desplazarse de manera independiente en entornos complejos. Estos sistemas utilizan algoritmos que analizan continuamente el entorno para determinar la mejor trayectoria hacia un destino.
+
+En robótica móvil, la navegación autónoma consiste en determinar cómo desplazarse desde una posición inicial hasta un punto objetivo dentro de un entorno que puede contener obstáculos o cambios dinámicos. Este proceso incluye la localización del robot, la construcción de mapas del entorno y la planificación de trayectorias seguras \cite{thrun2005probabilistic}.
+
+Los sistemas de navegación pueden dividirse en dos tipos principales: navegación global y navegación local. La navegación global se basa en un conocimiento previo del entorno y utiliza algoritmos de planificación de rutas para determinar una trayectoria óptima. Por otro lado, la navegación local se basa en sensores que permiten detectar obstáculos en tiempo real y ajustar la trayectoria durante el desplazamiento \cite{fox1997dynamic}.
+
+En aplicaciones de asistencia para personas con discapacidad visual, estos sistemas pueden combinar cámaras y algoritmos de visión por computadora para identificar obstáculos, calcular rutas seguras y proporcionar indicaciones auditivas o táctiles al usuario.
+
+\subsubsection{Componentes de un sistema inteligente de navegación}
+
+Un sistema de navegación inteligente está compuesto por varios módulos que trabajan conjuntamente para permitir el desplazamiento autónomo dentro de un entorno.
+
+\begin{itemize}
+    \item La percepción consiste en obtener información del entorno mediante sensores. En muchos sistemas modernos se utilizan cámaras o sensores láser que permiten detectar obstáculos, identificar superficies transitables y analizar la geometría del entorno \cite{thrun2005probabilistic}.
+
+    \item Modelado del entorno: una vez obtenida la información sensorial, el sistema genera una representación del entorno que puede utilizarse para la planificación de rutas. Esta representación suele adoptar la forma de un mapa digital que contiene información sobre obstáculos y espacios transitables.
+
+    El proceso mediante el cual un robot construye o utiliza mapas del entorno se conoce como mapeo robótico. Este proceso permite que un sistema autónomo pueda localizarse dentro del entorno y planificar trayectorias adecuadas \cite{elfes1989nav}.
+
+    \item La planificación de rutas consiste en calcular la trayectoria que conecta la posición actual con el destino. Este proceso implica evaluar diferentes rutas posibles y seleccionar aquella que optimice ciertos criterios como distancia o tiempo \cite{lavalle2006planning}.
+
+    \item Toma de decisiones en tiempo real: el sistema debe ser capaz de reaccionar ante cambios en el entorno. Para ello, los sistemas de navegación autónoma utilizan sensores que detectan obstáculos y permiten recalcular la ruta durante el desplazamiento \cite{fox1997dynamic}.
+\end{itemize}
+
+\subsection{Representación del entorno para planificación de rutas}
+
+Antes de calcular una trayectoria, el sistema necesita contar con una representación computacional del entorno que permita analizar posibles rutas.
+
+\subsubsection{Modelado del entorno mediante grafos}
+
+Una de las representaciones más utilizadas en planificación de rutas es el modelo basado en grafos. En este modelo, el entorno se representa como un conjunto de nodos conectados mediante aristas. Cada nodo representa una posición dentro del espacio y cada arista representa un camino posible entre dos posiciones.
+
+A cada arista se le asigna un costo que puede representar la distancia, el tiempo o el riesgo asociado con desplazarse entre dos nodos. Este enfoque permite aplicar algoritmos de búsqueda que determinan la ruta óptima entre un nodo inicial y un nodo destino \cite{lavalle2006planning}.
+
+\subsubsection{Mapas de ocupación}
+
+Otra técnica común es el uso de mapas de ocupación. En este modelo, el espacio se divide en una cuadrícula de celdas donde cada celda puede clasificarse como libre o ocupada por un obstáculo \cite{elfes1989nav}.
+
+Este tipo de representación permite que un robot identifique las zonas transitables dentro de un entorno y evite regiones donde existan obstáculos.
+
+Los mapas de ocupación son ampliamente utilizados en robótica móvil debido a su simplicidad y eficiencia para representar entornos complejos \cite{elfes1989nav}.
+
+\subsubsection{Mapas dinámicos del entorno}
+
+En muchos entornos reales, la configuración del espacio puede cambiar constantemente. Por ejemplo, pueden aparecer personas, vehículos o nuevos obstáculos que modifiquen la ruta inicialmente calculada.
+
+Por esta razón, los sistemas de navegación modernos utilizan mapas dinámicos que se actualizan continuamente mediante la información obtenida por sensores \cite{fox1997dynamic}.
+
+Estos mapas permiten que el sistema adapte su trayectoria cuando se detectan cambios en el entorno.
+
+\subsection{Algoritmos de búsqueda de caminos}
+
+Los algoritmos de búsqueda de caminos permiten determinar la ruta óptima entre dos puntos dentro de un grafo o mapa \cite{lavalle2006planning}.
+
+\subsubsection{Problema del camino más corto}
+
+El problema del camino más corto consiste en encontrar una secuencia de nodos que conecte un punto inicial con un destino minimizando un costo determinado, como la distancia o el tiempo de desplazamiento.
+
+Este problema es uno de los más estudiados dentro de la inteligencia artificial y la robótica, ya que constituye la base para la planificación de trayectorias en sistemas autónomos \cite{lavalle2006planning}.
+
+\subsubsection{Algoritmo de Dijkstra}
+
+El algoritmo de Dijkstra es uno de los métodos clásicos utilizados para resolver el problema del camino más corto \cite{dijkstra1959}. Este algoritmo explora el grafo desde el nodo inicial y calcula la distancia mínima hacia todos los demás nodos.
+
+El algoritmo garantiza encontrar la ruta óptima siempre que los costos de las aristas sean positivos. Debido a esta característica, ha sido ampliamente utilizado en sistemas de navegación y aplicaciones como sistemas de mapas digitales \cite{dijkstra1959}.
+
+Sin embargo, su principal limitación es que puede resultar computacionalmente costoso en entornos grandes, ya que evalúa múltiples rutas antes de encontrar la mejor solución \cite{lavalle2006planning}.
+
+\subsubsection{Algoritmo A*}
+
+El algoritmo A* es una mejora del algoritmo de Dijkstra que utiliza una heurística para estimar la distancia restante hasta el destino \cite{hart1968astar}.
+
+La función de evaluación del algoritmo se expresa como:
+
+\[
+f(n) = g(n) + h(n)
+\]
+
+donde $g(n)$ representa el costo desde el nodo inicial hasta el nodo actual y $h(n)$ representa una estimación del costo desde el nodo actual hasta el destino.
+
+El uso de esta heurística permite reducir el número de nodos explorados y acelerar el proceso de búsqueda. Por esta razón, el algoritmo A* es ampliamente utilizado en robótica, videojuegos y sistemas de navegación autónoma \cite{hart1968astar, lavalle2006planning}.
+
+\subsection{Planificación de rutas seguras mediante inteligencia artificial}
+
+Los algoritmos tradicionales de planificación de rutas se enfocan principalmente en optimizar la distancia o el tiempo de desplazamiento. Sin embargo, en aplicaciones de movilidad asistida es necesario considerar factores adicionales relacionados con la seguridad \cite{thrun2005probabilistic}.
+
+La inteligencia artificial permite integrar múltiples variables en el proceso de toma de decisiones, como la presencia de obstáculos, la accesibilidad del terreno o el nivel de riesgo asociado con una determinada ruta \cite{ganesan2025_common_ai_cheatsheet}.
+
+En sistemas avanzados de navegación, la IA puede analizar información proveniente de sensores para evaluar el entorno y determinar cuál de las rutas posibles ofrece las mejores condiciones de seguridad \cite{fox1997dynamic}.
+
+\subsection{Replanificación dinámica de rutas en tiempo real}
+
+En entornos reales, los obstáculos pueden aparecer de forma inesperada. Por ejemplo, una persona puede cruzar el camino o un objeto puede bloquear la trayectoria inicialmente calculada.
+
+Por esta razón, los sistemas de navegación deben ser capaces de recalcular la ruta durante el desplazamiento.
+
+La replanificación dinámica consiste en actualizar la trayectoria cuando se detectan cambios en el entorno. Este proceso implica detectar el obstáculo, actualizar el mapa del entorno y calcular una nueva ruta alternativa hacia el destino.
+
+Los sistemas modernos de navegación utilizan sensores y algoritmos de planificación que permiten realizar este proceso de forma continua mientras el sistema se encuentra en movimiento \cite{fox1997dynamic}.
+
+\subsection{Ray tracing aplicado a la navegación y detección de obstáculos}
+
+El ray tracing es una técnica originalmente utilizada en gráficos por computadora para simular el comportamiento de la luz mediante el trazado de rayos en un entorno tridimensional \cite{lavalle2006planning}.
+
+En sistemas de navegación, este principio puede utilizarse para analizar posibles trayectorias y detectar intersecciones entre el camino proyectado y los obstáculos detectados por sensores.
+
+Mediante el uso de rayos virtuales proyectados desde la posición del agente, el sistema puede evaluar diferentes direcciones y determinar cuáles de ellas están libres de obstáculos.
+
+Este enfoque permite detectar colisiones potenciales y seleccionar trayectorias alternativas en tiempo real \cite{fox1997dynamic}.
+
+\subsection{Sistemas de navegación inteligente para personas con discapacidad visual}
+
+Los sistemas de navegación asistida utilizan inteligencia artificial y sensores para proporcionar información sobre el entorno a personas con discapacidad visual.
+
+Estos sistemas pueden detectar obstáculos, identificar rutas transitables y proporcionar instrucciones auditivas o hápticas para guiar al usuario hacia su destino \cite{thrun2005probabilistic}.
+
+La combinación de visión por computadora, algoritmos de planificación de rutas y sensores de proximidad permite desarrollar sistemas capaces de mejorar la movilidad y la seguridad durante el desplazamiento \cite{fox1997dynamic, lavalle2006planning}.
+
+\subsection{Modelos de entrenamiento de la IA}
+
+Los modelos modernos de inteligencia artificial se basan principalmente en enfoques estadísticos y probabilísticos. En particular, los modelos de aprendizaje automático (machine learning) permiten que los sistemas informáticos aprendan patrones a partir de datos sin necesidad de ser programados explícitamente con reglas detalladas para cada tarea.
+
+A diferencia de los sistemas tradicionales basados en reglas —propios de la inteligencia artificial simbólica—, los modelos de aprendizaje automático utilizan algoritmos matemáticos capaces de identificar patrones en los datos y generar predicciones o decisiones a partir de la experiencia obtenida durante el proceso de entrenamiento. Este enfoque permite que los sistemas mejoren su desempeño conforme se exponen a mayores volúmenes de información y ejemplos de entrenamiento \cite{ibm2025aimodel}.
+
+De acuerdo con IBM, el aprendizaje automático es un subconjunto de la inteligencia artificial que se centra en el desarrollo de algoritmos capaces de aprender patrones a partir de datos de entrenamiento y posteriormente realizar inferencias o predicciones sobre nuevos datos sin instrucciones explícitas programadas previamente \cite{ibm2025aimodel}.
+
+Según IBM, las técnicas de aprendizaje automático pueden clasificarse en cinco categorías principales: aprendizaje supervisado, aprendizaje no supervisado, aprendizaje autosupervisado, aprendizaje por refuerzo y aprendizaje semisupervisado \cite{ibm2025_mltypes}.
+
+\begin{itemize}
+
+\item \textbf{Aprendizaje supervisado}
+
+El aprendizaje supervisado consiste en entrenar un modelo utilizando un conjunto de datos previamente etiquetado, en el cual cada instancia de entrada está asociada con una salida conocida. Durante el entrenamiento, el algoritmo aprende la relación entre las variables de entrada y la salida esperada, con el objetivo de poder predecir correctamente nuevos casos.
+
+Este tipo de aprendizaje es ampliamente utilizado en problemas de clasificación y regresión, tales como reconocimiento de imágenes, detección de fraude o análisis predictivo. Algunos de los algoritmos más comunes incluyen regresión lineal, árboles de decisión, Naive Bayes, redes neuronales y bosques aleatorios \cite{ibm2025_mltypes}.
+
+\item \textbf{Aprendizaje no supervisado}
+
+El aprendizaje no supervisado utiliza conjuntos de datos que no contienen etiquetas previamente definidas. En este enfoque, el algoritmo analiza los datos con el objetivo de identificar patrones, relaciones o estructuras ocultas dentro del conjunto de datos.
+
+Este tipo de aprendizaje es comúnmente utilizado para tareas de agrupamiento o clustering, reducción de dimensionalidad y análisis exploratorio de datos. Entre los algoritmos más utilizados se encuentran el algoritmo k-means, el clustering jerárquico y los modelos de mezcla gaussiana \cite{ibm2025_mltypes}.
+
+\item \textbf{Aprendizaje autosupervisado}
+
+El aprendizaje autosupervisado es una técnica en la cual los modelos se entrenan utilizando datos sin etiquetar, pero generando automáticamente sus propias etiquetas a partir de los datos disponibles. En este enfoque, el modelo aprende a predecir una parte de los datos a partir de otra parte de los mismos.
+
+Este tipo de aprendizaje se ha vuelto especialmente relevante en áreas como la visión por computadora y el procesamiento del lenguaje natural, donde la generación manual de grandes conjuntos de datos etiquetados puede resultar costosa o inviable \cite{ibm2025_mltypes}.
+
+
+\item \textbf{Aprendizaje por refuerzo}
+
+El aprendizaje por refuerzo es un enfoque en el cual un agente aprende a tomar decisiones mediante la interacción con su entorno. Durante el proceso de entrenamiento, el agente realiza acciones y recibe retroalimentación en forma de recompensas o penalizaciones.
+
+El objetivo del algoritmo es aprender una política de acción que maximice la recompensa acumulada a lo largo del tiempo. Este enfoque se utiliza frecuentemente en áreas como robótica, videojuegos y sistemas de navegación autónoma \cite{ibm2025_mltypes}.
+
+\item \textbf{Aprendizaje semisupervisado}
+
+El aprendizaje semisupervisado combina características del aprendizaje supervisado y del aprendizaje no supervisado. En este enfoque, el modelo se entrena utilizando una pequeña cantidad de datos etiquetados junto con un conjunto más grande de datos sin etiquetar.
+
+Los datos etiquetados sirven como guía para que el algoritmo pueda identificar patrones en el conjunto completo de datos, permitiendo mejorar el desempeño del modelo incluso cuando la disponibilidad de datos etiquetados es limitada \cite{ibm2025_mltypes}.
+
+\end{itemize}

@@ -1,0 +1,272 @@
+\section{Sensores y cámaras para percepción del entorno}
+
+Los sistemas de navegación asistida requieren la capacidad de percibir el entorno físico para detectar obstáculos, estimar distancias y reconocer elementos relevantes durante el desplazamiento del usuario. En dispositivos portables como gafas inteligentes, esta percepción del entorno debe realizarse mediante sensores compactos y de bajo consumo energético.
+
+La electrónica utilizada en este tipo de sistemas generalmente combina sensores de distancia, cámaras y unidades de procesamiento capaces de analizar la información capturada en tiempo real. Estos componentes permiten construir modelos del entorno cercano y generar alertas o instrucciones de navegación para el usuario.
+
+En el contexto del presente trabajo terminal, el sistema propuesto busca integrar sensores de detección de obstáculos junto con una cámara que permita realizar procesamiento visual mediante técnicas de inteligencia artificial. Por ello, resulta necesario analizar los distintos tipos de sensores disponibles, sus características técnicas y su viabilidad para ser integrados en un dispositivo portable como unas gafas inteligentes.
+
+En este capítulo se revisan los principales tipos de sensores de distancia utilizados en robótica y sistemas de percepción, así como las características de cámaras compactas empleadas en aplicaciones de visión por computadora. Asimismo, se analiza la factibilidad de utilizar plataformas comerciales de gafas inteligentes como base para el desarrollo del prototipo.
+
+\subsection{Sensores para detección de obstáculos}
+
+\subsubsection{Importancia de los sensores en sistemas de navegación}
+
+Los sensores constituyen uno de los componentes fundamentales en los sistemas de navegación asistida, ya que permiten detectar objetos, medir distancias y obtener información del entorno físico. En aplicaciones de movilidad asistida, los sensores deben proporcionar mediciones confiables que permitan identificar obstáculos con suficiente anticipación para evitar colisiones.
+
+En dispositivos portables, la selección del sensor se vuelve particularmente importante debido a las limitaciones de tamaño, peso, consumo energético y capacidad de procesamiento. Un sensor adecuado debe ofrecer un balance entre precisión, alcance y tamaño físico para poder integrarse en estructuras compactas como monturas de gafas.
+
+Además, el sensor debe ser capaz de funcionar en diferentes condiciones ambientales, incluyendo variaciones de iluminación, presencia de ruido o interferencias, y distintos tipos de superficies.
+
+\subsubsection{Sensores ultrasónicos}
+
+Los sensores ultrasónicos son dispositivos que utilizan ondas sonoras de alta frecuencia para medir distancias. Su funcionamiento se basa en el principio de eco: el sensor emite un pulso ultrasónico que se propaga en el aire y rebota al encontrarse con un objeto. El sensor mide el tiempo que tarda el eco en regresar y calcula la distancia al obstáculo \cite{hcsr04_datasheet}.
+
+La distancia puede calcularse mediante la ecuación:
+
+\[
+d = \frac{v \cdot t}{2}
+\]
+
+donde $d$ representa la distancia al objeto, $v$ la velocidad del sonido en el aire y $t$ el tiempo transcurrido entre la emisión y la recepción del eco \cite{hcsr04_datasheet}.
+
+Los sensores ultrasónicos presentan varias ventajas, entre ellas su bajo costo, facilidad de implementación y relativa precisión para distancias cortas y medias. Sin embargo, también presentan limitaciones importantes, como la sensibilidad a superficies absorbentes o irregulares y un ángulo de detección relativamente amplio que puede dificultar la identificación precisa de obstáculos.
+
+Un ejemplo básico ampliamente utilizado en prototipos electrónicos es el sensor HC-SR04, el cual puede medir distancias aproximadas entre 2~cm y 4~m \cite{hcsr04_datasheet}. No obstante, para aplicaciones que demandan mayor precisión, mayor alcance y resistencia al ruido eléctrico y acústico, existen sensores ultrasónicos industriales con prestaciones considerablemente superiores.
+
+\subsubsection{Sensor ultrasónico MB1232 (I2CXL-MaxSonar-EZ3)}
+
+El sensor MB1232, perteneciente a la familia I2CXL-MaxSonar-EZ de MaxBotix, representa una alternativa de alto desempeño dentro de la categoría de sensores ultrasónicos \cite{mb1232_datasheet}. A diferencia de los sensores básicos como el HC-SR04, el MB1232 incorpora algoritmos de procesamiento de señal en tiempo real que lo hacen especialmente adecuado para entornos ruidosos y aplicaciones de detección precisa de obstáculos.
+
+El MB1232 opera a una frecuencia ultrasónica de 42~kHz y es capaz de medir distancias desde 20~cm hasta 765~cm (7.65~m) con una resolución de 1~cm \cite{mb1232_datasheet}. Su tasa de actualización puede alcanzar hasta 40~Hz para objetos cercanos y 15~Hz para el rango completo, lo que permite una detección fluida de obstáculos en movimiento.
+
+Entre sus características más destacadas para aplicaciones de navegación asistida se encuentran \cite{mb1232_datasheet}:
+
+\begin{itemize}
+\item Interfaz de comunicación I2C, que permite controlar múltiples sensores mediante únicamente dos cables y conectar hasta 127 unidades sobre un mismo bus
+\item Calibración automática en tiempo real para compensar variaciones de voltaje, temperatura y ruido acústico o eléctrico del entorno
+\item Algoritmos de análisis de forma de onda y rechazo de ruido que producen lecturas prácticamente libres de interferencias
+\item Haz acústico estrecho con alta sensibilidad, adecuado para detectar objetos pequeños y medianos a distancias medias y largas
+\item Voltaje de operación de 3~V a 5.5~V con consumo de corriente promedio muy bajo, lo que facilita su uso en dispositivos alimentados por batería
+\item Tamaño físico inferior a un pulgada cúbica, con orificios de montaje integrados en la placa de circuito
+\item Rango de temperatura operacional de 0°C a 65°C
+\end{itemize}
+
+El bajo consumo energético y el tamaño compacto del MB1232 lo convierten en una opción especialmente adecuada para integrarse en dispositivos portables como gafas inteligentes. Además, su interfaz I2C simplifica la conexión con plataformas de procesamiento como Raspberry Pi o microcontroladores embebidos, reduciendo el número de pines necesarios y facilitando el uso simultáneo de múltiples sensores \cite{mb1232_datasheet}.
+
+\subsubsection{Sensores ToF (Time of Flight)}
+
+Los sensores Time of Flight (ToF) utilizan luz infrarroja para medir distancias mediante el cálculo del tiempo que tarda un pulso de luz en reflejarse en un objeto y regresar al sensor.
+
+A diferencia de los sensores ultrasónicos, los sensores ToF ofrecen mayor precisión y una respuesta más rápida, lo que los hace especialmente útiles en aplicaciones de robótica y dispositivos móviles \cite{vl53l1x_product}.
+
+Entre sus principales características se encuentran:
+
+\begin{itemize}
+\item Alta precisión en mediciones de corta y media distancia
+\item Tamaño compacto
+\item Alta frecuencia de actualización
+\item Menor interferencia con el ruido ambiental
+\end{itemize}
+
+Sensores populares de este tipo incluyen el VL53L0X \cite{vl53l0x_datasheet} y el VL53L1X \cite{vl53l1x_datasheet}, desarrollados por STMicroelectronics, los cuales pueden medir distancias de hasta aproximadamente 4~metros dependiendo de las condiciones de iluminación y reflectividad del objeto.
+
+\subsubsection{Sensores LiDAR compactos}
+
+Los sensores LiDAR (Light Detection and Ranging) utilizan pulsos de luz láser para medir distancias con alta precisión. Estos sensores son ampliamente utilizados en robótica autónoma, vehículos autónomos y sistemas de mapeo tridimensional.
+
+Los sistemas LiDAR generan múltiples mediciones de distancia en diferentes direcciones, permitiendo construir representaciones tridimensionales del entorno.
+
+Entre las ventajas de los sensores LiDAR se encuentran:
+
+\begin{itemize}
+\item Alta precisión
+\item Mayor alcance que sensores ultrasónicos o ToF
+\item Capacidad de generar mapas detallados del entorno
+\end{itemize}
+
+Sin embargo, los sensores LiDAR suelen presentar un mayor costo, mayor consumo energético y un tamaño físico mayor, lo que puede dificultar su integración en dispositivos como gafas inteligentes \cite{tfmini_datasheet, lidarliitev3_manual}.
+
+\subsubsection{Comparación entre sensores de distancia}
+
+La Tabla~\ref{tabla_sensores} presenta una comparación general entre los sensores más comunes utilizados para detección de obstáculos.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\hline
+Tipo de sensor & Alcance típico & Tamaño & Precisión \\
+\hline
+Ultrasónico básico & 2~cm -- 4~m   & Medio       & Media \\
+Ultrasónico avanzado (MB1232) & 20~cm -- 7.65~m & $14.4x15.5x15.5mm$ & $1mm$ \\
+ToF            & hasta 4~m    & Muy pequeño & Alta \\
+LiDAR compacto & 10~m -- 40~m & Medio       & Muy alta \\
+\hline
+\end{tabular}
+\caption{Comparación entre diferentes tipos de sensores de distancia \cite{hcsr04_datasheet, mb1232_datasheet, vl53l1x_datasheet, lidarliitev3_manual}.}
+\label{tabla_sensores}
+\end{table}
+
+Para dispositivos portables como gafas inteligentes, el sensor MB1232 representa la solución más equilibrada dentro de la categoría ultrasónica, gracias a su tamaño reducido, alcance de hasta 7.65~m, resolución centimétrica, interfaz I2C y robusta resistencia al ruido. Estas características lo hacen especialmente adecuado para la detección confiable de obstáculos en entornos urbanos con presencia de ruido acústico y eléctrico \cite{mb1232_datasheet}.
+
+\subsection{Cámaras para visión por computadora}
+
+\subsubsection{Importancia de las cámaras en sistemas inteligentes}
+
+Las cámaras desempeñan un papel fundamental en los sistemas de visión por computadora, ya que permiten capturar imágenes del entorno que posteriormente pueden ser analizadas mediante algoritmos de inteligencia artificial.
+
+En el caso de sistemas de navegación asistida, las cámaras pueden utilizarse para:
+
+\begin{itemize}
+\item Detectar objetos
+\item Reconocer señales o puntos de referencia
+\item Analizar el entorno urbano
+\item Complementar la información proporcionada por sensores de distancia
+\end{itemize}
+
+La integración de cámaras con algoritmos de visión por computadora permite construir sistemas capaces de interpretar el entorno visual y tomar decisiones basadas en esta información \cite{raspberrypi_camera_doc}.
+
+\subsubsection{Características importantes en cámaras para dispositivos portables}
+
+Al seleccionar una cámara para un dispositivo portable, deben considerarse varios factores técnicos.
+
+\textbf{Resolución}
+
+La resolución determina la cantidad de detalle presente en la imagen capturada. Una mayor resolución permite mejorar la precisión de los algoritmos de detección de objetos, aunque también incrementa los requerimientos de procesamiento.
+
+\textbf{Tamaño físico}
+
+Para integrarse en unas gafas inteligentes, la cámara debe ser lo suficientemente pequeña para no afectar la ergonomía del dispositivo.
+
+\textbf{Consumo energético}
+
+El consumo energético es un factor crítico en dispositivos portables alimentados por baterías.
+
+\textbf{Campo de visión}
+
+El campo de visión (Field of View, FOV) determina el área del entorno que puede capturar la cámara. Para aplicaciones de navegación se suelen preferir cámaras con campos de visión amplios \cite{arducam_imx219, raspberrypi_camera_doc}.
+
+\textbf{Autofoco y rango dinámico}
+
+En aplicaciones de visión artificial para navegación asistida, el autofoco resulta fundamental para mantener la nitidez de los objetos detectados a distintas distancias. Asimismo, un rango dinámico elevado permite obtener imágenes utilizables tanto en interiores con poca iluminación como en exteriores con luz solar intensa.
+
+\subsubsection{Módulos de cámara compactos}
+
+Existen diversos módulos de cámara diseñados específicamente para sistemas embebidos.
+
+Entre los más utilizados se encuentran:
+
+\begin{itemize}
+\item \textbf{Raspberry Pi Camera Module 3 (IMX708)} \cite{raspberrypi_camera_doc3}
+\item \textbf{Arducam Mini Camera} \cite{arducam_imx219}
+\item \textbf{OV2640} \cite{ov2640_datasheet}
+\item \textbf{IMX219} \cite{arducam_imx219}
+\end{itemize}
+
+Estos módulos ofrecen resoluciones que van desde 2 hasta 12 megapíxeles y se integran fácilmente con plataformas como Raspberry Pi, Jetson Nano o microcontroladores compatibles \cite{raspberrypi_camera_doc, arducam_imx219}.
+
+\subsubsection{Raspberry Pi Camera Module 3 (sensor IMX708)}
+
+El Raspberry Pi Camera Module 3 es la tercera generación del módulo de cámara oficial de Raspberry Pi, lanzado en 2023 \cite{raspberrypi_camera_doc}. Incorpora el sensor Sony IMX708, un sensor CMOS de back-illuminated y arquitectura apilada (stacked) de 12 megapíxeles con resolución máxima de 4608$\times$2592 píxeles, lo que lo posiciona como uno de los módulos de cámara compactos de mayor resolución disponibles para plataformas embebidas.
+
+El IMX708 incorpora un modo HDR (High Dynamic Range) que permite capturar imágenes de alta calidad en condiciones de iluminación variadas, lo cual resulta especialmente valioso en entornos de navegación urbana donde la iluminación cambia drásticamente entre espacios interiores y exteriores \cite{raspberrypi_camera_doc3}.
+
+Entre las características técnicas más relevantes del Raspberry Pi Camera Module 3 se encuentran \cite{raspberrypi_camera_doc}:
+
+\begin{itemize}
+\item Sensor Sony IMX708 de 12~MP (4608$\times$2592 píxeles), tipo back-illuminated stacked CMOS
+\item Sistema de autoenfoque por detección de fase (PDAF) combinado con detección por contraste (CDAF), que permite ajustar el foco de manera rápida y precisa sobre objetos a distintas distancias
+\item Modo HDR disponible para capturas de hasta 3~MP, útil en entornos con alta variación de iluminación
+\item Grabación de video Full HD a 50~fps, con tasas de fotogramas superiores disponibles a resoluciones menores
+\item Campo de visión diagonal de 75° en la versión estándar y de 120° en la versión Wide, esta última especialmente adecuada para navegación asistida al capturar un área del entorno más amplia
+\item Interfaz MIPI CSI-2 de 2 carriles, compatible con todos los modelos de Raspberry Pi equipados con conector CSI
+\item Factor de forma compacto, con dimensiones de placa iguales a las del Camera Module 2, lo que simplifica su integración en estructuras mecánicas de dispositivos portables
+\item Filtro de corte de infrarrojos integrado en la versión estándar; disponible también en versión NoIR para aplicaciones nocturnas con iluminación infrarroja
+\end{itemize}
+
+Su compatibilidad nativa con las bibliotecas \texttt{libcamera} y \texttt{Picamera2} de Raspberry Pi simplifica el desarrollo de aplicaciones de visión por computadora, eliminando la necesidad de controladores adicionales \cite{raspberrypi_camera_doc}.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\hline
+Modelo & Resolución & Tamaño & Uso común \\
+\hline
+OV2640 \cite{ov2640_datasheet} & 2 MP & Muy pequeño & IoT y microcontroladores \\
+IMX219 \cite{arducam_imx219}  & 8 MP & Pequeño & Raspberry Pi \\
+IMX477 \cite{raspberrypi_camera_doc} & 12 MP & Medio & Visión avanzada \\
+IMX708 (Camera Module 3) \cite{raspberrypi_camera_doc} & 12 MP & Pequeño & Visión avanzada, PDAF, HDR \\
+\hline
+\end{tabular}
+\caption{Comparación de módulos de cámara compactos.}
+\end{table}
+
+\subsection{Integración en gafas inteligentes}
+
+\subsubsection{Diseño de hardware personalizado}
+
+Una opción para implementar el sistema consiste en diseñar un prototipo de gafas inteligentes desde cero. En este enfoque, los sensores, cámaras y procesadores se integran directamente en una estructura personalizada.
+
+Este enfoque permite mayor flexibilidad en el diseño del sistema, ya que se pueden seleccionar los componentes electrónicos más adecuados para la aplicación. Sin embargo, también implica mayores desafíos de diseño mecánico, distribución de energía y miniaturización.
+
+\subsubsection{Uso de gafas inteligentes comerciales}
+
+Otra alternativa consiste en utilizar plataformas comerciales de gafas inteligentes como base para el prototipo. Entre las opciones disponibles actualmente destacan las gafas Ray-Ban Meta \cite{raybanmeta_official}, las cuales incorporan cámaras, micrófonos y conectividad inalámbrica.
+
+Estas gafas ofrecen ventajas importantes, como un diseño ergonómico optimizado y una integración electrónica ya probada \cite{raybanmeta_official}. No obstante, presentan ciertas limitaciones para proyectos de investigación, ya que su hardware y software suelen ser sistemas cerrados que restringen el acceso directo a los sensores y componentes internos.
+
+Modificar este tipo de dispositivos puede resultar complejo debido a las restricciones del fabricante y a la dificultad de acceder a los circuitos internos sin afectar el funcionamiento del sistema \cite{raybanmeta_official}.
+
+\subsubsection{Comparación de enfoques}
+
+La Tabla~\ref{tabla_lentes} muestra una comparación entre desarrollar un prototipo y modificar gafas comerciales.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+Característica & Prototipo & Gafas comerciales \\
+\hline
+Control del hardware & Alto & Bajo \\
+Facilidad de desarrollo & Media & Alta \\
+Flexibilidad & Alta & Baja \\
+Tiempo de desarrollo & Mayor & Menor \\
+Acceso a sensores & Completo & Limitado \\
+\hline
+\end{tabular}
+\caption{Comparación entre prototipo y uso de gafas comerciales \cite{raybanmeta_official}.}
+\label{tabla_lentes}
+\end{table}
+
+Para proyectos académicos y de investigación, el desarrollo de un prototipo, suele ser la opción más viable, ya que permite integrar sensores específicos como el MB1232 y el módulo de cámara IMX708, experimentar con diferentes configuraciones y adaptar el sistema a los objetivos del proyecto.
+
+\subsection{Análisis de viabilidad de plataformas de gafas inteligentes}
+
+Para implementar el sistema de navegación asistida propuesto, existen dos enfoques principales: desarrollar un prototipo de gafas inteligentes desde cero o utilizar plataformas comerciales existentes.
+
+Entre las plataformas comerciales disponibles actualmente destacan dispositivos como las gafas Ray-Ban Meta \cite{raybanmeta_official}, que integran cámaras, micrófonos y conectividad inalámbrica dentro de un diseño ergonómico.
+
+Sin embargo, estas plataformas suelen utilizar sistemas cerrados que limitan el acceso directo a los sensores y componentes electrónicos internos, lo que dificulta su modificación para proyectos de investigación \cite{raybanmeta_official}.
+
+La Tabla~\ref{tabla_plataformas} presenta una comparación entre ambos enfoques.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+Característica & Prototipo & Ray-Ban Meta \\
+\hline
+Acceso al hardware & Completo & Muy limitado \\
+Flexibilidad de sensores & Alta & Baja \\
+Capacidad de modificación & Alta & Muy baja \\
+Tiempo de desarrollo & Mayor & Menor \\
+Costo de desarrollo & Medio & Alto \\
+Uso en investigación & Adecuado & Limitado \\
+\hline
+\end{tabular}
+\caption{Comparación entre desarrollo y uso de gafas comerciales \cite{raybanmeta_official}.}
+\label{tabla_plataformas}
+\end{table}
+
+Para proyectos académicos y de investigación, el desarrollo de un prototipo suele ser la alternativa más adecuada, ya que permite seleccionar componentes específicos como el sensor ultrasónico MB1232 y el módulo de cámara Raspberry Pi Camera Module 3 con sensor IMX708, integrar diferentes módulos electrónicos y adaptar el sistema a los objetivos del proyecto.
+

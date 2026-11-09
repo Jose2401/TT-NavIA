@@ -1,0 +1,131 @@
+% En este archivo, se encuentra el diseño e información de la portada
+
+% Para evitar que ponga numeración en esta página
+\thispagestyle{empty}
+
+% Diseño de la parte izquierda
+
+% Dibujamos encima de la página con coordenadas absolutas
+\begin{tikzpicture}[remember picture,overlay]
+
+    % Línea vertical en el margen izquierdo
+    \draw[line width=1.5pt, color=black] 
+    ([xshift=3cm,yshift=5cm]current page.south west) -- 
+    ([xshift=3cm,yshift=-5cm]current page.north west);
+
+    % Línea vertical en el margen izquierdo
+    \draw[line width=1.5pt, color=black] 
+    ([xshift=3.15cm,yshift=5cm]current page.south west) -- 
+    ([xshift=3.15cm,yshift=-5cm]current page.north west);
+
+    % Línea vertical en el margen izquierdo
+    \draw[line width=1.5pt, color=black] 
+    ([xshift=3.3cm,yshift=5cm]current page.south west) -- 
+    ([xshift=3.3cm,yshift=-5cm]current page.north west);
+
+    % Línea vertical en el margen izquierdo
+    \draw[line width=1.5pt, color=black] 
+    ([xshift=3.45cm,yshift=5cm]current page.south west) -- 
+    ([xshift=3.45cm,yshift=-5cm]current page.north west);
+
+    % Línea vertical en el margen izquierdo
+    \draw[line width=1.5pt, color=black] 
+    ([xshift=3.6cm,yshift=5cm]current page.south west) -- 
+    ([xshift=3.6cm,yshift=-5cm]current page.north west);
+
+    % Imagen en la esquina inferior izquierda 
+    \node at ([xshift=3.3cm,yshift=3.7cm]current page.south west) 
+    {\includegraphics[width=3cm]{Logos/escom.png}};
+        
+    % Imagen en la esquina superior izquierda 
+    \node at ([xshift=3.3cm,yshift=24.7cm]current page.south west) 
+    {\includegraphics[width=6cm]{Logos/ipn.png}};
+
+    
+\end{tikzpicture}
+
+\begin{adjustwidth}{1.8cm}{0cm} 
+
+
+    
+    % Aquí va la información xd
+    {\fontsize{20pt}{14pt}\selectfont
+    \begin{center}
+    \textbf{INSTITUTO POLITÉCNICO NACIONAL}
+    \end{center}
+    }
+    
+    \vspace{-0.5cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{16pt}{14pt}\selectfont
+    \begin{center}
+    \textbf{ESCUELA SUPERIOR DE CÓMPUTO}
+    \end{center}
+    }
+    
+    \vspace{0.5cm} % Ps pa dar espacio pa q más
+    
+    
+    {\fontsize{16pt}{14pt}\selectfont
+    \begin{center}
+    \textbf{ESCOM}
+    \end{center}
+    }
+    
+    \vspace{0cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{14pt}{14pt}\selectfont
+    \begin{center}
+    \textit{Trabajo Terminal}
+    \end{center}
+    }
+    
+    \vspace{0cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{16pt}{14pt}\selectfont
+    \begin{center}
+        \textbf{"Navegación con asistencia auditiva en tiempo real para personas con visión reducida, mediante el uso de lentes adaptados e inteligencia artificial, para el manejo de siniestros"}
+    \end{center}
+    }
+    
+    \vspace{-1cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{14pt}{14pt}\selectfont
+    \begin{center}
+    \textit{2026-B045}
+    \end{center}
+    }
+    
+    \vspace{0.3cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{14pt}{14pt}\selectfont
+    \begin{center}
+    \textit{Presentan}\\
+    \bf{Thania Paola Esquivel García}\\
+    \bf{José Carlos Espinosa Martínez}
+    \end{center}
+    }
+
+    \begin{center}
+    \textit{Carrera}\\
+        \bf{Ingeniería en Inteligencia Artifical}
+    \end{center}
+    \vspace{0.5cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{14pt}{14pt}\selectfont
+    \begin{center}
+    \textit{Director}\\
+    \bf {M. en C. Cristhian Alejandro Ávila Sánchez}
+    \end{center}
+    }
+    
+    \vspace{1.5cm} % Ps pa dar espacio pa q más
+    
+    {\fontsize{12pt}{14pt}\selectfont
+    \begin{flushright}
+    Mayo, 2026
+    \end{flushright}
+    }
+
+\end{adjustwidth}
+

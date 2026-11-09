@@ -1,0 +1,114 @@
+% Definir el tipo de documento y tamaño de letra por defecto
+\documentclass[12pt,letterpaper]{report}
+
+% Agregamos el archivo de las librerías y estilos
+\input{Formato/preambulo}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{caption}
+\usepackage{longtable}
+
+
+\floatname{algorithm}{\textbf{Algoritmo}}
+\algrenewcommand\algorithmicif{\textbf{SI}}
+\algrenewcommand\algorithmicelse{\textbf{SINO}}
+\algrenewcommand\algorithmicthen{\textbf{entonces:}}
+\algrenewcommand\algorithmicfor{\textbf{PARA}}
+\algrenewcommand\algorithmicwhile{\textbf{MIENTRAS}}
+\algrenewcommand\algorithmicdo{\textbf{hacer:}}
+\algrenewcommand\algorithmicreturn{\textbf{RETORNAR}}
+
+\algrenewtext{EndIf}{\textbf{Fin SI}}
+\algrenewtext{EndFor}{\textbf{Fin PARA}}
+\algrenewtext{EndWhile}{\textbf{Fin MIENTRAS}}
+\algrenewcommand\algorithmicfunction{\textbf{FUNCIÓN}}
+\algrenewtext{EndFunction}{\textbf{Fin FUNCIÓN}}
+\begin{document}
+
+% Incluir secciones y aśi xd
+
+
+% Secciones iniciales
+
+\include{Secciones/0_Portada_1} %listo
+
+\include{Secciones/0_Portada_2} %listo
+
+\include{Secciones/0_Advertencia} %listo
+
+\include{Secciones/0_Agradecimientos} %listo
+
+\include{Introduccion/0_Resumen} %falta
+
+\include{Secciones/0_Indice} % solito
+
+\include{Secciones/1_Introduccion_general}
+
+
+
+
+
+% Secciones del protocolo:
+\include{Introduccion/2_Planteamiento_del_problema}
+
+\include{Introduccion/3_Preguntas_de_investigacion}
+
+\include{Introduccion/4_Objetivos}
+
+% \include{Introduccion/5_Hipotesis}
+
+\include{Introduccion/6_Justificacion}
+
+\include{Introduccion/7_Alcances_y_limitaciones}
+
+\include{Secciones/2_Estado_del_arte}
+
+% Secciones del marco teórico
+\input{Marco_teorico/inteligenciaArtificial}
+
+\input{Marco_teorico/VisionCompu}
+
+\input{Marco_teorico/tablasHardware}
+
+\input{Marco_teorico/DiscapacidadVisual}
+
+% Se retiró en TT2: la navegación global con mapas/GPS ya no forma parte del sistema
+% \input{Marco_teorico/Maps}
+
+\input{Marco_teorico/RayCasting}
+
+%\include{Marco_teorico/ASR}
+
+%\include{Marco_teorico/AlgoritmosRutas}
+
+
+
+% Secciones Desarrollo
+\include{Secciones/4_Marco_metodologico}
+
+\include{Secciones/7_Requerimientos_del_sistema}
+
+\include{Secciones/5_Analisis_y_diseño}
+
+\include{Secciones/6_Implementacion_de_modulos}
+
+% Desarrollo realizado en TT2
+\include{Secciones/9_Desarrollo_del_sistema}
+
+
+
+% Conclusiones de TT1 (escritas antes del desarrollo); las sustituye el capítulo
+% de resultados y conclusiones de TT2. Se conserva el archivo por si se requiere.
+% \include{Secciones/8_Tf_Conclusiones}
+
+
+
+% Secciones finales TT 2
+\include{Secciones/100_Conclusiones_generales}
+
+\include{Secciones/102_Referencias}
+
+
+\include{Secciones/200_anexos}
+\newpage
+\end{document}

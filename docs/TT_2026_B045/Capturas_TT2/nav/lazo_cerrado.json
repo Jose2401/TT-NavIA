@@ -1,0 +1,182 @@
+[
+ {
+  "seed": 0,
+  "destino": "llévame al sillón",
+  "llego": true,
+  "pasos": 81,
+  "instrucciones": 42,
+  "bloqueos": 0,
+  "dReal": 0.7290739909215802
+ },
+ {
+  "seed": 0,
+  "destino": "llévame a la mesa",
+  "llego": true,
+  "pasos": 36,
+  "instrucciones": 19,
+  "bloqueos": 0,
+  "dReal": 0.9914936796262194
+ },
+ {
+  "seed": 0,
+  "destino": "llévame a la planta",
+  "llego": true,
+  "pasos": 4,
+  "instrucciones": 3,
+  "bloqueos": 0,
+  "dReal": 0.5979764083557151
+ },
+ {
+  "seed": 0,
+  "destino": "ve a la silla",
+  "llego": true,
+  "pasos": 3,
+  "instrucciones": 2,
+  "bloqueos": 0,
+  "dReal": 1.1792380801331215
+ },
+ {
+  "seed": 1,
+  "destino": "llévame al sillón",
+  "llego": true,
+  "pasos": 46,
+  "instrucciones": 25,
+  "bloqueos": 0,
+  "dReal": 2.156384697978688
+ },
+ {
+  "seed": 1,
+  "destino": "llévame a la mesa",
+  "llego": true,
+  "pasos": 21,
+  "instrucciones": 9,
+  "bloqueos": 0,
+  "dReal": 2.494711530011017
+ },
+ {
+  "seed": 1,
+  "destino": "llévame a la planta",
+  "llego": true,
+  "pasos": 16,
+  "instrucciones": 15,
+  "bloqueos": 0,
+  "dReal": 0.309894987524937
+ },
+ {
+  "seed": 1,
+  "destino": "ve a la silla",
+  "llego": true,
+  "pasos": 7,
+  "instrucciones": 6,
+  "bloqueos": 0,
+  "dReal": 1.1792380801331215
+ },
+ {
+  "seed": 2,
+  "destino": "llévame al sillón",
+  "llego": true,
+  "pasos": 57,
+  "instrucciones": 28,
+  "bloqueos": 0,
+  "dReal": 1.9512052947216125
+ },
+ {
+  "seed": 2,
+  "destino": "llévame a la mesa",
+  "llego": true,
+  "pasos": 48,
+  "instrucciones": 26,
+  "bloqueos": 0,
+  "dReal": 1.8076771305822326
+ },
+ {
+  "seed": 2,
+  "destino": "llévame a la planta",
+  "llego": true,
+  "pasos": 3,
+  "instrucciones": 1,
+  "bloqueos": 0,
+  "dReal": 0.8153178410506274
+ },
+ {
+  "seed": 2,
+  "destino": "ve a la silla",
+  "llego": true,
+  "pasos": 6,
+  "instrucciones": 4,
+  "bloqueos": 0,
+  "dReal": 1.16258595502693
+ },
+ {
+  "seed": 3,
+  "destino": "llévame al sillón",
+  "llego": true,
+  "pasos": 67,
+  "instrucciones": 33,
+  "bloqueos": 0,
+  "dReal": 1.4873401640483754
+ },
+ {
+  "seed": 3,
+  "destino": "llévame a la mesa",
+  "llego": true,
+  "pasos": 23,
+  "instrucciones": 13,
+  "bloqueos": 0,
+  "dReal": 2.189312445963131
+ },
+ {
+  "seed": 3,
+  "destino": "llévame a la planta",
+  "llego": true,
+  "pasos": 4,
+  "instrucciones": 3,
+  "bloqueos": 0,
+  "dReal": 0.7309474720605615
+ },
+ {
+  "seed": 3,
+  "destino": "ve a la silla",
+  "llego": true,
+  "pasos": 24,
+  "instrucciones": 20,
+  "bloqueos": 0,
+  "dReal": 0.7277297138865011
+ },
+ {
+  "seed": 4,
+  "destino": "llévame al sillón",
+  "llego": true,
+  "pasos": 33,
+  "instrucciones": 20,
+  "bloqueos": 0,
+  "dReal": 2.1593287226428246
+ },
+ {
+  "seed": 4,
+  "destino": "llévame a la mesa",
+  "llego": true,
+  "pasos": 21,
+  "instrucciones": 10,
+  "bloqueos": 0,
+  "dReal": 2.494711530011017
+ },
+ {
+  "seed": 4,
+  "destino": "llévame a la planta",
+  "llego": true,
+  "pasos": 4,
+  "instrucciones": 3,
+  "bloqueos": 0,
+  "dReal": 0.7309474720605615
+ },
+ {
+  "seed": 4,
+  "destino": "ve a la silla",
+  "llego": true,
+  "pasos": 9,
+  "instrucciones": 8,
+  "bloqueos": 0,
+  "dReal": 1.0591367619060212
+ }
+]

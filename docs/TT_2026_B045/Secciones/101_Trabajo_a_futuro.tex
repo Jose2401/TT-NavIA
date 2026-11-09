@@ -1,0 +1,57 @@
+% ==============================================================================
+\section{Trabajo a futuro}
+\label{sec:trabajo_futuro}
+% ==============================================================================
+
+El trabajo pendiente se ordena según su efecto sobre la seguridad del usuario y
+según lo que se aprendió en las mediciones de esta etapa.
+
+\textbf{Correcciones identificadas en el software.} Varias deficiencias quedaron
+localizadas con precisión y su corrección es acotada:
+
+\begin{itemize}
+    \item Exigir que la llegada por percepción se cumpla durante varios cuadros
+    seguidos, o combinarla con la distancia en el mapa, para que un error monocular
+    aislado no termine la sesión.
+    \item Agrupar el tiempo de espera de las alertas por tipo y sector, para que una
+    precaución lateral no silencie una frontal, y unificar la ortografía de las frases.
+    \item Permitir que los rayos precisos reduzcan el log-odds de las celdas
+    consolidadas y que la capa de peligros pierda impactos con el tiempo, de modo que
+    los obstáculos que desaparecen se borren del mapa (RF-17).
+    \item Traducir al español las etiquetas de los \emph{landmarks} en los mensajes de
+    llegada y en la descripción del entorno.
+    \item Ampliar las frases de referencia del PLN con las expresiones que fallaron en la
+    evaluación y revisar la relación entre ``ayuda'' y ``emergencia''.
+    \item Hacer que la petición de ruta alternativa obligue al agente a evitar el
+    camino anterior.
+\end{itemize}
+
+\textbf{Integración del hardware.} Montar los componentes en el armazón diseñado,
+conectar la IMU BNO055 y los sensores MB1232 por I2C, medir con regla la geometría
+real y ajustarla en \texttt{montaje.py}, ejecutar la calibración de la IMU con los
+lentes puestos y calibrar la longitud de paso de cada usuario. Con
+los sensores montados se debe medir el ruido real de la odometría, ajustar el
+simulador y reentrenar el agente de navegación. También hay que medir los tiempos de
+cada módulo en la Raspberry Pi y, si no alcanzan los requerimientos, probar los
+modelos de visión en sus versiones más pequeñas o la arquitectura con una computadora
+externa que se planteó en TT1.
+
+\textbf{Percepción con datos propios.} Etiquetar imágenes de los pasillos, puertas y
+mamparas de la escuela para reentrenar el detector con el script preparado y, con el
+mismo conjunto, medir la precisión que exige RNF-06. Separar la banqueta del arroyo
+vehicular en la segmentación, para que el sistema no considere transitable la calle.
+
+\textbf{Localización.} Agregar cierre de lazo o una prueba de compatibilidad conjunta
+en la asociación de datos para evitar los \emph{landmarks} duplicados y la
+divergencia de orientación observada en recorridos largos.
+
+\textbf{Voz en condiciones reales.} Repetir la evaluación de reconocimiento con
+personas reales, con el micrófono del prototipo y en lugares con ruido de calle, y
+probar un modelo de Vosk más grande si la Raspberry Pi lo permite. Implementar el
+aviso a un contacto de emergencia.
+
+\textbf{Pruebas con usuarios.} La validación final del sistema requiere pruebas con
+personas con discapacidad visual, en escenarios controlados, acompañadas y con el
+bastón blanco en uso. Antes de ello conviene probar el sistema con personas con los
+ojos vendados en un entorno conocido, para ajustar el ritmo y la redacción de las
+indicaciones.
