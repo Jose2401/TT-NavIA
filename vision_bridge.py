@@ -23,8 +23,10 @@ TYPICAL_HEIGHTS_M = {
     "sign": 0.70, "ladder": 2.00, "shelf": 1.70, "tree": 4.0,
     "fountain": 1.20, "bench": 0.80, "fire hydrant": 0.75,
     "desk": 0.75, "cabinet": 1.40, "counter": 0.90,
-    "whiteboard": 1.20,
+    "whiteboard": 1.20, "exit sign": 0.25,
 }
+# van en la pared, no en el piso: su distancia no sale del plano del piso
+SIN_PISO = {"exit sign"}
 
 # clases EXTRA del detector open images v7 (600 clases): solo las que
 # coco no tiene y nos sirven pa navegar. Stairs va como hazard (riesgo
@@ -41,6 +43,32 @@ EXTRA_OIV7 = {
     "Wardrobe": "cabinet",
 }
 EXTRA_HAZARD = {"escalera"}
+# confianza minima por clase extra (las demas, la del detector). la
+# puerta se acepta mas bajito: es el destino mas pedido ("salida") y en
+# los recorridos del 2026-11-12 open images la veia con 0.20-0.49
+EXTRA_CONF_MIN = {"door": 0.20}
+# lo que el detector extra corrige: si ve una PUERTA encima de algo que
+# coco llamo de otra forma, manda la puerta (en el salon la puerta
+# amarilla salia como "refrigerador" con 0.94 y la puerta se tiraba)
+EXTRA_MANDA = {"door", "escalera"}
+
+# clases de coco que aqui solo salen por error (un pilar negro era
+# "parquimetro" con 0.91, un cubiculo "tren" con 0.85, la corbata de un
+# anuncio) o que no sirven pa caminar. no pasan de la vision
+CLASES_IGNORADAS = {
+    "train", "airplane", "boat", "parking meter", "kite", "frisbee",
+    "skis", "snowboard", "surfboard", "tennis racket", "baseball bat",
+    "baseball glove", "sports ball", "skateboard", "giraffe", "zebra",
+    "elephant", "bear", "toaster", "microwave", "hair drier", "toothbrush",
+    "tie", "wine glass", "fork", "knife", "spoon", "bowl", "banana",
+    "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog",
+    "pizza", "donut", "cake", "scissors", "teddy bear", "remote",
+}
+# cosas que la gente CARGA: se detectan (pa describir) pero no son
+# marcas del mapa (en la calle quedaban "mochilas" sembradas por donde
+# paso alguien caminando)
+PORTABLES = {"backpack", "handbag", "suitcase", "umbrella", "bottle", "cup",
+             "cell phone", "book"}
 
 SIGMA_R_ULTRASONIC = 0.05
 SIGMA_R_MONOCULAR_PCT = 0.30
@@ -55,6 +83,46 @@ CAMERA_PROFILES = {
 
 DEFAULT_CAM_HEIGHT_M = 1.55
 DEFAULT_CAM_PITCH_DEG = 10.0
+
+
+def detectarLetrerosSalida(frameBgr):
+    """los letreros VERDES de salida / ruta de evacuacion (rectangulo
+    verde con la flecha o el monito en blanco), por color: ningun yolo
+    de los que usamos los trae y en una oficina son lo unico que dice
+    donde queda la salida. barato (~3 ms a 640 px). afuera tambien
+    caen los letreros verdes de transito, por eso solo se usan como
+    destino de respaldo de "la salida" y no se describen ni alertan.
+    -> [{"label": "exit sign", "confidence", "bbox"}]"""
+    import cv2
+    import numpy as np
+    hsv = cv2.cvtColor(frameBgr, cv2.COLOR_BGR2HSV)
+    verde = cv2.inRange(hsv, (60, 90, 60), (95, 255, 255))
+    # cierre grande: la flecha blanca no debe partir el letrero en dos
+    verde = cv2.morphologyEx(verde, cv2.MORPH_CLOSE,
+                             np.ones((9, 9), np.uint8))
+    n, _lab, st, _c = cv2.connectedComponentsWithStats(verde, 8)
+    escala = frameBgr.shape[1] / 640.0
+    out = []
+    for i in range(1, n):
+        x, y, w, h, area = (int(v) for v in st[i])
+        if (h < 10 * escala or w < 12 * escala or w > 200 * escala
+                or h > 150 * escala or not 0.5 <= w / h <= 3.2):
+            continue
+        relleno = area / float(w * h)
+        if relleno < 0.55:                    # rectangulo, no hojas
+            continue
+        # lo blanco se busca en el CENTRO de la caja (las esquinas de un
+        # circulo verde son fondo, no pictograma)
+        mx, my = int(0.15 * w), int(0.15 * h)
+        roi = hsv[y + my:y + h - my, x + mx:x + w - mx]
+        if roi.size == 0:
+            continue
+        blanco = float(np.mean((roi[..., 1] < 70) & (roi[..., 2] > 150)))
+        if not 0.04 <= blanco <= 0.50:        # la flecha / el monito
+            continue
+        out.append({"label": "exit sign", "confidence": round(relleno, 2),
+                    "bbox": (x, y, x + w, y + h), "mask": None})
+    return out
 
 
 def groundDistanceFromRow(row, imgH, vfovRad,
@@ -116,13 +184,16 @@ class VisionBridge:
         self.extraEvery = max(1, extraEvery)
         self._nFrame = 0
         self._extraIds = {}
+        self._puertasVistas = []      # [(bbox, etiqueta, cuadro)] recientes
         if extraModelPath == "auto":
             ruta = _modeloRapido("yolov8s-oiv7")
             extraModelPath = ruta if os.path.exists(ruta) else None
         if extraModelPath:
             try:
                 self.extraDetector = ObjectDetector(
-                    model_path=extraModelPath, confidence=extraConf)
+                    model_path=extraModelPath,
+                    confidence=min([extraConf] + list(EXTRA_CONF_MIN.values())))
+                self.extraConf = extraConf
                 nombres = self.extraDetector.model.names
                 self._extraIds = {i: EXTRA_OIV7[n]
                                   for i, n in nombres.items()
@@ -156,7 +227,9 @@ class VisionBridge:
         vfovEff = 2.0 * math.atan(0.5 * h / fPx)
         self._nFrame += 1
 
-        raw = self.detector.detect(frame)
+        raw = [d for d in self.detector.detect(frame)
+               if self.aliases.get(d["label"].lower(), d["label"].lower())
+               not in CLASES_IGNORADAS]
         self._compensarGiro(egoYaw, w)
         flagsMov = self.tracker.update(raw)
 
@@ -164,6 +237,7 @@ class VisionBridge:
         if (self.extraDetector is not None
                 and self._nFrame % self.extraEvery == 0):
             extras = self._detectarExtras(frame)
+        self._corregirConExtras(raw, extras, egoYaw, w)
 
         detecciones = []
         # ojo: "en movimiento" solo lo que se mueve por si solo (gente,
@@ -179,13 +253,21 @@ class VisionBridge:
                 moving=det["label"].lower() in DYNAMIC_LABELS
                 or (seMueve and porRastreo)))
         for det in extras:
-            # sin chocar con lo que coco ya vio ahi mismo
+            # sin chocar con lo que coco ya vio ahi mismo (si era una
+            # puerta, _corregirConExtras ya le cambio el nombre a esa caja)
             if any(_iou(det["bbox"], d["bbox"]) > 0.55 for d in raw):
                 continue
             label = det["label"]
             detecciones.append(self._aDeteccion(
                 det, w, h, fPx, vfovEff, moving=False,
                 hazard=label in EXTRA_HAZARD))
+        if getattr(self, "letrerosSalida", True):
+            try:
+                for det in detectarLetrerosSalida(frame):
+                    detecciones.append(self._aDeteccion(
+                        det, w, h, fPx, vfovEff, moving=False))
+            except Exception:
+                pass
         return detecciones
 
     def _aDeteccion(self, det, w, h, fPx, vfovEff, moving, hazard=False):
@@ -200,7 +282,7 @@ class VisionBridge:
         else:
             rangoEst = 2.5 * (h / bboxH)
 
-        if self.useGroundPlane and y2 < h * 0.97:
+        if self.useGroundPlane and y2 < h * 0.97 and label not in SIN_PISO:
             gd = groundDistanceFromRow(
                 y2, h, vfovEff, self.camHeightM, self.camPitchDeg)
             if gd is not None:
@@ -213,6 +295,33 @@ class VisionBridge:
             range_est=rangoEst, moving=moving,
             confidence=det["confidence"], hazard=hazard)
 
+    def _corregirConExtras(self, raw, extras, egoYaw, imgW):
+        """una puerta (o escalera) del detector extra encima de una caja
+        de coco le cambia el nombre a esa caja. como el extra no corre
+        en todos los cuadros, la correccion se recuerda unos cuadros
+        (corriendola con el giro de la cabeza) pa que la misma puerta no
+        sea "puerta" un cuadro y "refrigerador" los dos siguientes."""
+        dx = egoYaw * imgW / self.hfov if (egoYaw and self.hfov > 0) else 0.0
+        vistas = getattr(self, "_puertasVistas", [])
+        vigentes = [((b[0] + dx, b[1], b[2] + dx, b[3]), lab, n)
+                    for b, lab, n in vistas
+                    if self._nFrame - n <= self.extraEvery + 1]
+        for det in extras:
+            if det["label"] in EXTRA_MANDA:
+                vigentes = [v for v in vigentes
+                            if _iou(v[0], det["bbox"]) < 0.3]
+                vigentes.append((tuple(det["bbox"]), det["label"],
+                                 self._nFrame))
+        self._puertasVistas = vigentes
+        for d in raw:
+            label = self.aliases.get(d["label"].lower(), d["label"].lower())
+            if label in DYNAMIC_LABELS:
+                continue
+            for bbox, lab, _n in vigentes:
+                if _iou(d["bbox"], bbox) > 0.55:
+                    d["label"] = lab
+                    break
+
     def _detectarExtras(self, frame):
         res = self.extraDetector.model(frame, stream=False, verbose=False,
                                        conf=self.extraDetector.confidence,
@@ -223,8 +332,12 @@ class VisionBridge:
                 cls = int(box.cls[0])
                 if cls not in self._extraIds:
                     continue
+                label = self._extraIds[cls]
+                if float(box.conf[0]) < EXTRA_CONF_MIN.get(
+                        label, getattr(self, "extraConf", 0.25)):
+                    continue
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                out.append({"label": self._extraIds[cls],
+                out.append({"label": label,
                             "confidence": float(box.conf[0]),
                             "bbox": (x1, y1, x2, y2), "mask": None})
         return out
@@ -617,7 +730,7 @@ def fuseObservations(visionDets, ultrasonicReadings,
     usUsados = set()
 
     for det in visionDets:
-        if det.moving:
+        if det.moving or det.label in PORTABLES:
             continue
         if det.hazard:
             if det.range_est is not None:
@@ -640,11 +753,14 @@ def fuseObservations(visionDets, ultrasonicReadings,
                 label=det.label,
                 sigma_r=SIGMA_R_ULTRASONIC, sigma_phi=SIGMA_PHI_VISION))
         elif det.range_est is not None:
+            # solo camara: hay que verlo varias veces pa creerlo. la
+            # puerta con 3 (el detector que la ve no corre en cada cuadro)
             observaciones.append(Observation(
                 range_m=det.range_est, bearing=det.bearing, label=det.label,
                 sigma_r=SIGMA_R_MONOCULAR_PCT * det.range_est,
                 sigma_phi=SIGMA_PHI_VISION,
-                min_confirm_hits=4))
+                min_confirm_hits=3 if det.label in ("door", "exit sign")
+                else 4))
 
     for i, u in enumerate(usValidos):
         if i not in usUsados:

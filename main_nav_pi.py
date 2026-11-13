@@ -12,7 +12,8 @@ from vision_bridge import fuseObservations, validarConUltrasonido
 from navigation_feed import buildNavigationFrame
 from alertas import ModuloAlertas, BotonPullUp, conectarUltrasonido
 from navigation.navigator import Navigator
-from main_pi import abrirGafas, engancharEcos, Cronometro, _aprenderPaso
+from main_pi import (abrirGafas, engancharEcos, Cronometro, _aprenderPaso,
+                     _alDisco)
 from odometry import makeMotionEstimator
 from interaccion import armarInteraccion, conectarOido
 
@@ -36,7 +37,13 @@ def main():
     p.add_argument("--model", default=None, help="pesos YOLOv8-seg")
     p.add_argument("--sin-extra", action="store_true",
                    help="apagar el detector extra (puertas/escaleras, oiv7)")
-    p.add_argument("--extra-every", type=int, default=8)
+    p.add_argument("--extra-every", type=int, default=3,
+                   help="cada cuántos cuadros corre el detector de "
+                        "puertas/escaleras (con 8 una puerta nunca llegaba "
+                        "a quedar en el mapa)")
+    p.add_argument("--grabar", action="store_true",
+                   help="grabar la corrida (cuadros, sensores, lo que oyó "
+                        "y dijo) en sesiones/nav_FECHA pa repasarla después")
     p.add_argument("--model-nav", default="models/nav_ppo_policy.npz",
                    help="política de navegación (el .npz corre con numpy)")
     p.add_argument("--hazards", action="store_true")
@@ -217,6 +224,24 @@ def main():
         mgr.marcarRelocPendiente()
         voz.decir("Mapa conocido cargado.", prioridad=2)
 
+    grab = None
+    if args.grabar:
+        try:
+            from grabar_sesion import GrabadorCorrida
+            grab = GrabadorCorrida(sensores, meta={
+                "umbrales": [modAlertas.criticaM, modAlertas.precaucionM],
+                "mapa": args.map_dir})
+            print(f"[GRABAR] esta corrida queda en {grab.carpeta}")
+            decirOrig = voz.decir
+
+            def decirYAnotar(texto, prioridad=2, *a, **k):
+                grab.evento(f"voz{prioridad}", texto)
+                return decirOrig(texto, prioridad, *a, **k)
+            voz.decir = decirYAnotar
+        except Exception as e:
+            print(f"[GRABAR] no se pudo grabar la corrida ({e})")
+            grab = None
+
     # el mic y el teclado meten frases a la misma cola
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
@@ -254,7 +279,14 @@ def main():
 
             try:
                 while True:
-                    msgs = inter.manejarTexto(colaCmd.get_nowait(), navFrame)
+                    dicho = colaCmd.get_nowait()
+                    if grab is not None:
+                        conocidas = sorted({lm.get("label") for lm in
+                                            (navFrame.landmarks if navFrame
+                                             else [])})
+                        grab.evento("usuario", f"{dicho} | marcas conocidas: "
+                                               f"{', '.join(conocidas) or 'ninguna'}")
+                    msgs = inter.manejarTexto(dicho, navFrame)
                     voz.decirMsgs(msgs)
                     if any(m.kind == "despedida" for m in msgs):
                         raise KeyboardInterrupt
@@ -318,6 +350,16 @@ def main():
             alertas, recalc = modAlertas.evaluar(navFrame)
             for prio, msg in alertas:
                 print(f"[ALERTA p{prio}] {msg}")
+            if grab is not None:
+                grab.cuadro(frame, getattr(cap, "tFrame", None))
+                for prio, msg in alertas:
+                    grab.evento(f"alerta{prio}", msg)
+                st = navigator.status
+                grab.evento("pose", f"{output.x:.2f} {output.y:.2f} "
+                            f"{math.degrees(output.theta):.0f} pasos "
+                            f"{odo['steps_total']} sesion {st.session} "
+                            f"meta {st.goal_label} "
+                            f"{'' if st.d_goal is None else round(st.d_goal, 1)}")
             voz.decirMsgs(inter.ciclo(navFrame, mgr, alertas,
                                       recalcular=recalc))
             crono.etapa("alertas+nav")
@@ -331,6 +373,7 @@ def main():
             if ahora - lastSave > args.save_every:
                 mgr.saveAll()
                 mgr.saveLandmarks(slam.exportLandmarks())
+                _alDisco()
                 lastSave = ahora
     except KeyboardInterrupt:
         pass
@@ -338,10 +381,16 @@ def main():
         cap.release()
         mgr.saveAll()
         mgr.saveLandmarks(slam.exportLandmarks())
+        _alDisco()
         if oido is not None:
             oido.cerrar()
+        os.sync()          # todo en la tarjeta antes de despedirse
         voz.decir("Sistema detenido.", prioridad=2)
         voz.cerrar()
+        if grab is not None:
+            grab.cerrar(pasos=odo["steps_total"] if frames else 0)
+            print(f"[GRABAR] corrida guardada en {grab.carpeta} "
+                  f"({grab.n} cuadros)")
         if sensores is not None:
             _aprenderPaso(sensores)
             sensores.cerrar()

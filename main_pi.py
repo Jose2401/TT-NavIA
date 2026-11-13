@@ -134,6 +134,13 @@ def engancharEcos(sensores, modAlertas, pitchFn):
     return True
 
 
+def _alDisco():
+    """lo recien guardado (mapa, calibracion) de verdad a la tarjeta, en
+    otro hilo pa no frenar el ciclo: sin monitor la pi se apaga
+    desconectandola y lo de los ultimos ~30 s se perdia."""
+    threading.Thread(target=os.sync, daemon=True).start()
+
+
 def _aprenderPaso(sensores):
     """al salir: si en esta corrida el ultrasonido pudo medir el avance,
     se afina el largo de paso de quien trae los lentes."""
@@ -374,6 +381,7 @@ def main():
             if ahora - lastSave > args.save_every:
                 mgr.saveAll()
                 mgr.saveLandmarks(slam.exportLandmarks())
+                _alDisco()
                 lastSave = ahora
     except KeyboardInterrupt:
         pass
@@ -384,6 +392,7 @@ def main():
             sensores.cerrar()
         n = mgr.saveAll()
         mgr.saveLandmarks(slam.exportLandmarks())
+        _alDisco()
         print(f"\n[mapa] {n} chunks + landmarks guardados en {args.map_dir}")
         voz.say("Sistema detenido", priority=2)
 

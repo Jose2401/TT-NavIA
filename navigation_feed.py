@@ -10,6 +10,9 @@ CAUTION_DISTANCE_M = 1.50
 LATERAL_CRITICAL_M = 0.45
 LATERAL_CAUTION_M = CRITICAL_DISTANCE_M
 
+# se detectan pa usarlos de destino, pero estan en la pared: no estorban
+NO_SON_OBSTACULO = {"exit sign"}
+
 FRONT_HALF_ANGLE = math.radians(30)
 SIDE_MAX_ANGLE = math.radians(90)
 
@@ -105,6 +108,8 @@ def alertasDeObstaculo(frame: NavigationFrame, critica=None, precaucion=None):
         papu = None
         for det in frame.detections:
             if _sectorOf(det.bearing) != sector or det.range_est is None:
+                continue
+            if det.label in NO_SON_OBSTACULO:
                 continue
             if papu is None or det.range_est < papu.range_est:
                 papu = det

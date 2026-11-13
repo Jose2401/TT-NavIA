@@ -395,6 +395,29 @@ class TestUltrasonido(unittest.TestCase):
         # se acerco de verdad
         self.assertTrue(mod._pasa(llave, 1, 121.0, 1.00))
 
+    def test_lo_que_suena_no_sale_de_la_memoria_del_mapa(self):
+        """recorridos reales del 2026-11-12: "obstaculo a 13 cm,
+        detengase" salio del mapa con el ultrasonido midiendo 1.3-3.9 m.
+        por defecto solo suena lo que los sensores ven en ese momento;
+        el navegador si sigue enterandose (recalcular)."""
+        from dataclasses import replace
+        f = _frame([])
+        f = replace(f, d_front=0.13, d_left=0.05,
+                    slam=replace(f.slam, confidence=0.9))
+        mod = ModuloAlertas(conPip=False)
+        mod.salida = SalidaFalsa()
+        als, rec = mod.evaluar(f)
+        self.assertEqual((als, mod.salida.pips), ([], []))
+        self.assertTrue(rec)
+        # lo que la camara ve en ESE cuadro si cuenta
+        f2 = replace(f, detections=[VisionDetection(
+            bearing=0.0, label="chair", range_est=0.22)])
+        als, _ = ModuloAlertas(conPip=False).evaluar(f2)
+        self.assertEqual([p for p, _t in als], [0])
+        # y se puede volver a prender
+        als, _ = ModuloAlertas(conPip=False, delMapa=True).evaluar(f)
+        self.assertTrue(any(p == 0 for p, _t in als))
+
     def test_histeresis_en_el_umbral_de_la_voz(self):
         """el eco de algo quieto brinca unos cm: a 24 y luego a 28 cm
         era 'critica' y 'precaucion' por turnos (doble de avisos)."""
@@ -420,7 +443,7 @@ class TestUltrasonido(unittest.TestCase):
         self.assertEqual(safetyAlerts(f, 0.25, 0.60),
                          [(p, t) for p, t, _s, _d in det])
         # con la distancia, el mapa tambien deja de repetir lo quieto
-        mod = ModuloAlertas(conPip=False)
+        mod = ModuloAlertas(conPip=False, delMapa=True)
         mod.caminandoFn = lambda: False
         self.assertTrue(mod.evaluar(f)[0])
         mod._ultimo = {k: (t - 60.0, d, e)

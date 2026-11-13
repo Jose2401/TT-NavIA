@@ -451,7 +451,7 @@ class OidoVoz:
         self._tVoz = time.time()
         self._sucio = False
         self._cola = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()     # todo lo que toca a vosk
         self._sAudio = 0.0             # segundos de audio dados a vosk
         self._tramosEco = []           # (s0, s1, palabras del sistema)
         self._tParcial = 0.0           # ultima vez que iba a media frase
@@ -610,7 +610,16 @@ class OidoVoz:
     def alimentar(self, datos, mudo=False, tCaptura=None):
         """un bloque de audio pcm16 mono 16 kHz (publico pa las pruebas:
         asi se le puede dar un wav sin microfono). tCaptura: cuando se
-        grabo ese audio (time.time()), pa saber si el sistema hablaba."""
+        grabo ese audio (time.time()), pa saber si el sistema hablaba.
+        ojo: va con candado. el boton cierra el micro desde OTRO hilo
+        (escuchar -> FinalResult) y vosk no aguanta dos hilos a la vez:
+        tronaba todo el programa con un assert de kaldi (SIGABRT;
+        reproducido, y es lo mas probable de la corrida de navegacion
+        que termino con -6 el 2026-11-12)."""
+        with self._lock:
+            self._alimentar(datos, mudo, tCaptura)
+
+    def _alimentar(self, datos, mudo, tCaptura):
         if not self._escuchando or mudo:
             if self._sucio:
                 self._kaldi.Reset()      # no arrastrar audio a medias
@@ -978,6 +987,8 @@ class Interaccion:
                                 -math.radians(30))):
             cerca = None
             for d in frame.detections:
+                if d.label == "exit sign":
+                    continue          # afuera es cualquier letrero verde
                 if lo <= d.bearing <= hi and d.range_est is not None:
                     if cerca is None or d.range_est < cerca.range_est:
                         cerca = d

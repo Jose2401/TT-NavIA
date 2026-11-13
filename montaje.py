@@ -89,6 +89,8 @@ def guardarUsuario(ruta=CALIBRACION_USUARIO, **valores):
     c.update(valores)
     with open(ruta, "w", encoding="utf-8") as fh:
         json.dump(c, fh, indent=1)
+        fh.flush()
+        os.fsync(fh.fileno())      # la pi se apaga desconectandola
     cargarUsuario(ruta)
     return c
 

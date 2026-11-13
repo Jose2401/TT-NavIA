@@ -141,12 +141,21 @@ def _armarSalidaPip(hablarFn=None, interrumpirFn=None):
 
 class ModuloAlertas:
     def __init__(self, activo=True, hablarFn=None, interrumpirFn=None,
-                 conPip=True, criticaM=None, precaucionM=None):
+                 conPip=True, criticaM=None, precaucionM=None,
+                 delMapa=False):
         """hablarFn(texto): voz pa la alerta critica (ColaVoz.alerta).
         conPip=False: sin audio (tests / --sin-pip), las criticas se
         hablan con hablarFn como antes.
         criticaM / precaucionM: a que distancia suena un obstaculo fijo
-        (None = CRITICA_M / PRECAUCION_M de arriba)."""
+        (None = CRITICA_M / PRECAUCION_M de arriba).
+        delMapa: que tambien SUENE lo que el mapa guardado dice que hay
+        cerca. apagado: en los recorridos reales del 2026-11-12 las 4
+        alertas habladas de interiores ("obstaculo a 13 cm, detengase")
+        salieron del mapa mientras el ultrasonido media de 1.3 a 3.9 m o
+        nada. la pose y las marcas del mapa traen error de medio metro
+        o mas: pa avisar a 25-60 cm solo sirve lo que los sensores ven
+        en ese momento (ultrasonido y la deteccion del cuadro actual).
+        el navegador si sigue usando el mapa pa decidir."""
         self.activo = activo
         self.hablarFn = hablarFn
         self.criticaM = CRITICA_M if criticaM is None else criticaM
@@ -156,7 +165,11 @@ class ModuloAlertas:
         # con los pasos de la imu). parado junto a algo que no se mueve,
         # la alerta se dice UNA vez; se repite cuando vuelve a caminar
         self.caminandoFn = None
+        self.delMapa = delMapa
         self._enCritica = False
+        # el reloj de las esperas; al repasar una grabacion se le pone el
+        # tiempo de la grabacion (sesion_a_mapa.py)
+        self.reloj = time.time
         self._ultimo = {}
         self._pendSensor = []
         self._lock = threading.Lock()
@@ -194,7 +207,7 @@ class ModuloAlertas:
         self._enCritica = critico
         prio = 0 if critico else 1
         if not self._pasa((prio, direccion, "obstaculo"), prio,
-                          time.time(), distanciaM):
+                          self.reloj(), distanciaM):
             return False
         if self.salida is not None:
             self.salida.pip(self.salida.CRITICAL if critico
@@ -276,7 +289,7 @@ class ModuloAlertas:
         va dosificado igual que las alertas."""
         if not self.activo:
             return [], False
-        ahora = time.time()
+        ahora = self.reloj()
         crudas = []        # dicts con estructura pa poder sonar bien
         recalcular = False
 
@@ -299,6 +312,11 @@ class ModuloAlertas:
                                   d_left=float("inf"),
                                   d_right=float("inf"))
             recalcular = self._recalcularNav(navFrame, frameAl, ahora)
+            if not self.delMapa:
+                # lo que SUENA: sin la memoria del mapa (el navegador,
+                # arriba, si la uso)
+                frameAl = replace(frameAl, d_front=float("inf"),
+                                  d_left=float("inf"), d_right=float("inf"))
             ecoUS = _alertaEcoUltrasonico(navFrame, self._umbralCritica(),
                                           self.precaucionM)
             for prio, texto, sector, dist in alertasDeObstaculo(

@@ -283,7 +283,7 @@ class TestOidoBoton(unittest.TestCase):
         oido.hayMic, oido.medioDuplex, oido._ecoOido = True, False, 0
         oido._cola = queue.Queue()
         import threading
-        oido._lock = threading.Lock()
+        oido._lock = threading.RLock()
 
         class Kaldi:
             def __init__(self):
@@ -597,6 +597,14 @@ class _MotorFalso:
         self._parar.set()
 
 
+def _esperar(condicion, maxS=5.0):
+    """hasta que pase (las pruebas con hilos no deben depender de que la
+    pi este desocupada)."""
+    t0 = time.time()
+    while not condicion() and time.time() - t0 < maxS:
+        time.sleep(0.005)
+
+
 def _colaVoz(duraS=0.25):
     import threading
     from interaccion import ColaVoz
@@ -628,21 +636,22 @@ class TestColaVozAlertas(unittest.TestCase):
         self.assertEqual(voz.engine.dichas, ["primera"])
 
     def test_alerta_corta_la_platica_pero_no_al_reves(self):
-        voz = _colaVoz(duraS=0.4)
+        voz = _colaVoz(duraS=1.5)
         voz.decir("una respuesta larga", prioridad=2)
-        time.sleep(0.1)
+        _esperar(lambda: voz.hablando)          # ya la va diciendo
         voz.alerta("cuidado")
-        time.sleep(0.1)
+        _esperar(lambda: voz._actual is not None
+                 and voz._actual[1] == voz.ALERTA)
         voz._interrumpir()              # un pip critico: la alerta sigue
         voz.cerrar(esperaS=5)
         self.assertEqual(voz.engine.cortadas, ["una respuesta larga"])
         self.assertEqual(voz.engine.dichas, ["cuidado"])
 
     def test_callar_tira_lo_pendiente_menos_las_alertas(self):
-        voz = _colaVoz(duraS=0.3)
+        voz = _colaVoz(duraS=1.5)
         voz.decir("frase uno", prioridad=2)
         voz.decir("frase dos", prioridad=2)
-        time.sleep(0.1)
+        _esperar(lambda: voz.hablando)
         voz.callar()                    # el usuario pico el boton
         voz.decir("respuesta al usuario", prioridad=2)
         voz.cerrar(esperaS=5)
@@ -811,3 +820,74 @@ class TestCamaraQueFalla(unittest.TestCase):
         self.assertFalse(cam.sinImagen(5.0))
         cam.tFrame = time.time() - 9.0
         self.assertTrue(cam.sinImagen(5.0))
+
+
+class TestGrabacionesQueSobreviven(unittest.TestCase):
+    """2026-11-12: la pi se apaga desconectandola y se perdian los
+    ultimos 15-20 s de cada recorrido, el indice de tiempos y el meta."""
+
+    def test_tiempos_rescatados_de_los_archivos(self):
+        import os, tempfile
+        from sesion_a_mapa import tiemposDeCuadros
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "cuadros"))
+            for k, (tam, mt) in enumerate(((10, 1000.10), (10, 1000.30),
+                                           (10, 1000.50), (0, 1000.70))):
+                ruta = os.path.join(d, "cuadros", f"{k:06d}.jpg")
+                with open(ruta, "wb") as fh:
+                    fh.write(b"x" * tam)
+                os.utime(ruta, (mt, mt))
+            open(os.path.join(d, "cuadros.csv"), "w").close()   # vacio
+            cu = tiemposDeCuadros(d)
+            self.assertEqual(len(cu), 3)          # el de 0 bytes no cuenta
+            self.assertAlmostEqual(cu[0][0], 0.1, places=2)
+            self.assertAlmostEqual(cu[2][0] - cu[0][0], 0.4, places=2)
+            # con el indice bueno, manda el indice (y sigue saltando vacios)
+            with open(os.path.join(d, "cuadros.csv"), "w") as fh:
+                fh.write("indice,t\n0,0.05\n1,0.25\n3,0.65\n")
+            self.assertEqual([round(t, 2) for t, _r in tiemposDeCuadros(d)],
+                             [0.05, 0.25])
+
+    def test_carpeta_nunca_se_reusa(self):
+        import os, tempfile
+        from grabar_sesion import carpetaNueva
+        aqui = os.getcwd()
+        with tempfile.TemporaryDirectory() as d:
+            os.chdir(d)
+            try:
+                a = carpetaNueva("nav_")
+                os.makedirs(a)
+                b = carpetaNueva("nav_")
+                os.makedirs(b)
+                c = carpetaNueva("nav_")
+            finally:
+                os.chdir(aqui)
+        self.assertEqual(len({a, b, c}), 3)
+
+    def test_corrida_de_navegacion_grabada(self):
+        import json, os, tempfile
+        import numpy as np
+        from grabar_sesion import GrabadorCorrida
+        from sesion_a_mapa import leerSesion
+        with tempfile.TemporaryDirectory() as d:
+            s = SensoresGafas(iniciar=False)
+            g = GrabadorCorrida(s, carpeta=os.path.join(d, "nav"))
+            s.alLinea(_imu(20) + "\n", g.t0 + 0.02)
+            s.alLinea("U,40,I,153\n", g.t0 + 0.04)
+            g.evento("usuario", "llévame a la salida")
+            g.evento("voz2", "Todavía no veo la salida.")
+            for _ in range(3):
+                g.cuadro(np.zeros((720, 1280, 3), dtype=np.uint8))
+                time.sleep(0.05)
+            g.cerrar(pasos=0)
+            self.assertIsNone(s.alLinea)
+            cuadros, lineas = leerSesion(g.carpeta)
+            self.assertEqual(len(cuadros), 3)
+            self.assertEqual([l[1][:2] for l in lineas], ["I,", "U,"])
+            meta = json.load(open(os.path.join(g.carpeta, "meta.json")))
+            self.assertEqual((meta["tipo"], meta["cuadros"]),
+                             ("navegacion", 3))
+            ev = open(os.path.join(g.carpeta, "eventos.txt")).read()
+            self.assertIn("usuario llévame a la salida", ev)
+            import cv2
+            self.assertEqual(cv2.imread(cuadros[0][1]).shape[1], 640)

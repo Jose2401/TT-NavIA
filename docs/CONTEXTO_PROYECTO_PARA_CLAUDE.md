@@ -16,7 +16,7 @@
 3. El hardware real está descrito en **`docs/GAFAS_HARDWARE.md`** (manda sobre el CAD y sobre el TT): Raspberry Pi **5** (16 GB); la IMU BNO055 y los 2 MB1232 **no van al I²C de la Pi**, los lee un **RP2040-Zero** dentro de las gafas y llegan por **USB serie** (`/dev/ttyACM0`); la cámara va en **CAM1 desde el 2026-11-12 (antes CAM0; da igual para el código), girada 180°**; botón en **GPIO17** (pull-up interno) con LED en **GPIO27**; audio por **diadema USB**. No hay contraseña de sudo: todo se instala sin root (`instalar_pi.sh`).
 4. Lo que **ya quedó hecho y probado con el hardware** (detalle en §0.1): firmware nuevo del RP2040, lector serie con conteo de pasos a 50 Hz, cámara por picamera2, botón (1 click = escuchar / dejar de escuchar, doble click = alertas sí/no), voz sin internet (Piper), micrófono por PipeWire, YOLO en NCNN, alertas de ultrasonido desde su propio hilo, mains de laptop en la Pi, herramientas de grabación y calibración.
 5. Lo que **falta y necesita a una persona con los lentes puestos** (§0.3): grabar recorridos caminando (ahora se puede sin monitor, con el botón al prender la Pi) y con eso validar odometría, mapas y navegación.
-6. Pruebas: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"` → **278 pruebas, todas pasan en la Pi** (205 de antes + las de `tests/test_gafas.py`, `tests/test_alertas_ruta.py` y `tests/test_montaje.py`).
+6. Pruebas: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"` → **290 pruebas, todas pasan en la Pi** (205 de antes + las de `tests/test_gafas.py`, `tests/test_alertas_ruta.py` y `tests/test_montaje.py`).
 7. **Segunda ronda del mismo día (§0.5)**, tras la primera prueba con una persona: alertas más calladas (voz solo a ≤ 25 cm, de una ráfaga solo se dice la última), micrófono abierto mientras el sistema habla, contador de pasos ajustado con una caminata real, distancia por cadencia y **arranque por botón al prender la Pi** (script aparte del repo, en `~/gafas/arranque/`).
 
 ### 0.1 Qué cambió en la Pi (2026-11-10)
@@ -125,6 +125,32 @@ Datos reales nuevos: `sesiones/20261110_163633/serie.txt` (95 s caminando con la
 | Peligros del piso (`--hazards`, SegFormer) en la escena real | 2.2 s por pasada (bloquea el ciclo). Sin hoyos falsos, pero tomó las puertas del ropero por puertas. | Sigue apagado por defecto. **Ojo: sin `--hazards` el sistema no detecta hoyos ni escalones hacia abajo**; solo obstáculos (YOLO + ultrasonido) y escaleras con el detector extra. |
 
 Sigue sin validarse (no hay recorridos caminando con cuadros): distancias de la visión por el plano del piso, mapas reales, navegación guiada en un espacio real.
+
+### 0.7 Cuarta ronda (2026-11-13, primeros recorridos reales CON imagen)
+
+El usuario grabó 6 recorridos con el doble clic del arranque (`sesiones/20261112_1047xx`): tres de banqueta, uno de avenida con gente y motos, una oficina de cubículos (donde además probó la navegación y "nunca identificó la salida ni la puerta") y un salón con puerta amarilla. Son ~4 min de video útil. Mapas en `maps/real/g01…g06`; videos en `~/Videos/NavIA/` y en cada sesión (`video.mp4` = imagen + sensores, `video_sistema.mp4` = lo que detecta y las alertas que daría).
+
+| Hallazgo (medido en esas grabaciones) | Cambio |
+|---|---|
+| **Se perdieron los últimos 15–20 s de cada grabación**, el índice de tiempos y el `meta.json`: sin monitor la Pi se apaga desconectándola y lo escrito en los últimos ~30 s no estaba en la tarjeta. | `grabar_sesion.py` baja todo al disco cada 2 s y antes de decir "Recorrido guardado"; mapas, calibración y bitácora igual (`os.sync`/`fsync`). `sesion_a_mapa.tiemposDeCuadros` rescata los tiempos de la hora de cada jpg. Las carpetas ya no se pueden pisar (la Pi no tiene reloj con pila y la fecha se repite). |
+| Una corrida de navegación terminó con **−6 (SIGABRT)**. Reproducido: el botón cierra el micrófono desde otro hilo mientras Vosk procesa audio y Kaldi aborta. | `OidoVoz` con candado (`RLock`) en todo lo que toca a Vosk. |
+| **"Llévame a la salida / puerta" → "no conozco"**. El detector de puertas (Open Images) corría 1 de cada 8 cuadros (cada 3.5 s) y, cuando veía la puerta, se descartaba por encimarse con una caja de COCO (la puerta amarilla salía "refrigerador" con 0.94). Hacen falta varias observaciones para confirmar una marca. | Detector extra cada **3** cuadros (`--extra-every`, cuesta 2.1 → 1.8 cuadros/s); la puerta **corrige** la etiqueta de COCO y se recuerda entre cuadros (`_corregirConExtras`); puerta con confianza ≥ 0.20 y 3 observaciones. En el salón la puerta queda en el mapa a los **2.5 s** (antes nunca). |
+| En la oficina ni Open Images ni ADE20K ven la salida hasta los últimos 3 s (1 y 2 detecciones). Lo que sí se ve desde lejos son los **letreros verdes de evacuación** (15 de 49 cuadros). | `vision_bridge.detectarLetrerosSalida` (por color, 2.5 ms): marca `exit sign`, usada **solo como respaldo** de "la salida" si no hay puerta conocida, y si luego aparece la puerta el destino cambia a ella. No se describe ni alerta (afuera caen letreros de tránsito). Idea del asistente, sin validar caminando. |
+| Pedir un destino que aún no se ha visto no servía de nada. | **Destino pendiente** (`Navigator._pendiente`): "Todavía no veo la salida… en cuanto aparezca te aviso y te llevo" y arranca solo al aparecer. También "la mesa más lejana / más cercana" y "Conozco 3; te llevo a la más cercana". |
+| **Las 4 alertas habladas de interiores eran falsas**: "obstáculo a 13 cm, deténgase" salía del mapa guardado mientras el ultrasonido medía 1.3–3.9 m o nada. | Lo que SUENA ya no sale de la memoria del mapa (`ModuloAlertas(delMapa=False)`): solo ultrasonido y lo que la cámara ve en ese cuadro. El navegador sí sigue usando el mapa. Repaso de las 6 grabaciones: 0 alertas con voz; pitidos 0/1/8/5 en calle (gente a < 2 m), 0 en la oficina, 2 en el salón. |
+| Clases imposibles con confianza alta: "parquímetro" 0.91 (un pilar), "tren" 0.85 (un cubículo), "corbata". Mochilas de peatones sembradas como marcas. | `CLASES_IGNORADAS` y `PORTABLES` en `vision_bridge.py`. |
+| Peligros del piso con ADE20K (`--hazards`) en calle: la coladera abierta de la esquina se detectó en 1 de 7 cuadros (ya a 1.3 m) y hubo 5 "hoyos" falsos (plantas, banqueta); en interiores 5 falsos en 55 cuadros. 2.2 s por pasada. | Ninguno: **no conviene activarlo así**. El sistema sigue sin avisar de hoyos, banquetas ni escalones. Pendiente de diseño (ver abajo). |
+| Largo de paso: se fue afinando solo con las grabaciones (0.439 → 0.495 m); en interiores el ultrasonido da 0.49–0.50 m. En calle casi no hay nada enfrente (74–86 % sin eco) y no se puede medir. | — |
+| Las corridas de **navegación** no dejaban rastro (el registro se sobrescribía). | `main_nav_pi.py --grabar` (lo pasa el arranque): `sesiones/nav_FECHA/` con cuadros a 640 px, sensores y `eventos.txt` (lo que oyó, lo que dijo, alertas, pose). El arranque guarda un registro por corrida en `~/gafas/arranque/registros/`. |
+
+Herramientas nuevas: `sesion_a_video.py` (video rápido), `sesion_a_mapa.py --video` (video con detecciones, distancias y alertas; además imprime qué vio la visión y las alertas que habría dado), `ModuloAlertas.reloj` (para repasar grabaciones con su propio tiempo).
+
+Pendiente tras esta ronda:
+- **Probar la guía caminando** con estos cambios; ahora cada corrida queda grabada y se puede repasar.
+- **Conciencia del piso** (hoyos, banquetas, escalones): ADE20K tal cual no sirve. Opciones: afinar un modelo con cuadros etiquetados de estos recorridos, o usar el cabeceo + ultrasonido mirando al piso. Sin decidir.
+- ADE20K solo para **puertas** en un hilo aparte (vio la del salón en 13 de 35 cuadros) si las puertas siguen costando.
+- El paso en calle (más largo que en interiores) no está medido.
+- Apagar la Pi sin desconectarla: `systemctl poweroff` funciona sin sudo (`CanPowerOff = yes`); falta un gesto del botón para eso.
 
 ---
 

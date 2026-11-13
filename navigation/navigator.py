@@ -74,6 +74,18 @@ def parse_command(text: str) -> NavCommand:
 
 
 # sinónimos españo etiquetas de landmarks del SLAM
+# si no se conoce ninguna puerta, "la salida" es el letrero verde de
+# salida / ruta de evacuacion (en la oficina de la prueba del 2026-11-12
+# el vano abierto nunca salio como puerta, pero los letreros si se ven)
+DEST_RESPALDO = {"salida": "exit sign"}
+# "la mesa mas lejana", "la silla mas cercana"
+_LEJOS = ("lejan", "lejos", "del fondo", "al fondo")
+_RELLENO = {"mas", "más", "la", "el", "los", "las", "un", "una", "que",
+            "esta", "está", "cercana", "cercano", "cerca", "proxima",
+            "próxima", "proximo", "próximo", "lejana", "lejano", "lejos",
+            "del", "al", "fondo", "de"}
+PENDIENTE_MAX_S = 180.0      # cuanto se sigue buscando un destino pedido
+
 DEST_ALIASES = {
     "salida": "door", "puerta": "door", "entrada": "door",
     "silla": "chair", "mesa": "table", "sofa": "sofa", "sillon": "sofa",
@@ -293,6 +305,10 @@ class Navigator:
         self._forced_streak = 0
         self._progress_ref = None
         self._route = []
+        self._pendiente = None          # (comando, t): destino aun no visto
+        self._conRespaldo = None        # comando que va hacia un respaldo
+        self._buscable = False
+        self._eleccion = (0, False, False)   # (cuantos habia, lejos, respaldo)
         self._near_announced = False
         self._cuadrosLlegada = 0
 
@@ -306,16 +322,20 @@ class Navigator:
         if command.tipo == "navegar":
             goal, label, err = self._resolve_destination(command, frame)
             if goal is None:
+                if command.destino and self._buscable:
+                    # todavia no se ha visto: se queda pendiente y en
+                    # cuanto aparezca en el mapa se avisa y se arranca
+                    # (antes decia "no conozco" y ahi moria)
+                    self._pendiente = (command, time.time())
+                    return [NavMessage(
+                        f"Todavía no veo {self._articulado(command.destino)}. "
+                        "Camina o gira despacio; en cuanto aparezca te "
+                        "aviso y te llevo.", priority=2, kind="respuesta")]
                 return [NavMessage(err, priority=2, kind="respuesta")]
-            st.goal, st.goal_label = goal, label
-            st.goal_nombre = command.destino if command.punto is None else None
-            self._cuadrosLlegada = 0
-            st.waypoints = list(self._route)
-            st.session = "activo"
-            self._progress_ref = None
-            self._near_announced = False
-            return [NavMessage("Ruta calculada. Iniciando navegación.",
-                               priority=2, kind="respuesta")]
+            self._pendiente = None
+            extra = self._arrancar(command, goal, label)
+            return ([NavMessage("Ruta calculada. Iniciando navegación.",
+                                priority=2, kind="respuesta")] + extra)
         if command.tipo == "pausar":
             if st.session == "activo":
                 st.session = "pausado"
@@ -334,6 +354,8 @@ class Navigator:
             st.session = "en_espera"
             st.goal = st.goal_label = None
             st.waypoints = []
+            self._pendiente = None
+            self._conRespaldo = None
             self._quitarBloqueos()
             return [NavMessage("Navegación detenida.", priority=2,
                                kind="respuesta")]
@@ -349,6 +371,75 @@ class Navigator:
         return [NavMessage("No entendí la instrucción. "
                            "¿Puede repetirla?", priority=2,
                            kind="respuesta")]
+
+    def _arrancar(self, command, goal, label):
+        """pone la sesion activa hacia goal. -> mensajes extra (si habia
+        varios del mismo tipo, dice cuantos y a cual va)."""
+        st = self.status
+        st.goal, st.goal_label = goal, label
+        st.goal_nombre = command.destino if command.punto is None else None
+        self._cuadrosLlegada = 0
+        st.waypoints = list(self._route)
+        st.session = "activo"
+        self._progress_ref = None
+        self._near_announced = False
+        msgs = []
+        n, lejos, respaldo = self._eleccion
+        # si va hacia el letrero y luego aparece la puerta de verdad, se
+        # cambia a la puerta (update -> _cambiarARealSiAparece)
+        self._conRespaldo = command if respaldo else None
+        if respaldo:
+            msgs.append(NavMessage(
+                "No veo una puerta, pero sí un letrero de salida. "
+                "Te llevo hacia él.", priority=2, kind="respuesta"))
+        elif n > 1:
+            msgs.append(NavMessage(
+                f"Conozco {n}; te llevo a {'la más lejana' if lejos else 'la más cercana'}.",
+                priority=2, kind="respuesta"))
+        return msgs
+
+    @staticmethod
+    def _articulado(destino):
+        try:
+            from nombres import conArticulo
+            return conArticulo(destino)
+        except Exception:
+            return destino
+
+    def _cambiarARealSiAparece(self, frame):
+        """iba al letrero de salida por no conocer ninguna puerta: en
+        cuanto una puerta queda en el mapa, el destino es la puerta."""
+        command = getattr(self, "_conRespaldo", None)
+        if command is None:
+            return []
+        goal, label, _err = self._resolve_destination(command, frame)
+        if goal is None or self._eleccion[2]:
+            return []                    # sigue sin haber puerta
+        self._conRespaldo = None
+        self.status.goal, self.status.goal_label = goal, label
+        self._progress_ref = None
+        self._near_announced = False
+        return [NavMessage("Ya vi la puerta. Te llevo a ella.",
+                           priority=1, kind="respuesta")]
+
+    def _revisarPendiente(self, frame):
+        """¿ya aparecio en el mapa lo que se pidio y no se conocia?"""
+        if self._pendiente is None:
+            return []
+        command, t0 = self._pendiente
+        if time.time() - t0 > PENDIENTE_MAX_S:
+            self._pendiente = None
+            return [NavMessage(
+                f"No encontré {self._articulado(command.destino)}.",
+                priority=2, kind="respuesta")]
+        goal, label, _err = self._resolve_destination(command, frame)
+        if goal is None:
+            return []
+        self._pendiente = None
+        extra = self._arrancar(command, goal, label)
+        return [NavMessage(
+            f"Ya vi {self._articulado(command.destino)}. Te llevo.",
+            priority=1, kind="respuesta")] + extra
 
     def set_route(self, waypoints, destino_label=None):
         """pal futuro módulo de rutas globales: waypoints (x, y), el
@@ -373,8 +464,11 @@ class Navigator:
 
         if st.session != "activo" or st.goal is None:
             st.d_goal = st.phi_goal = None
+            if st.session == "en_espera":
+                msgs += self._revisarPendiente(frame)
             return msgs
 
+        msgs += self._cambiarARealSiAparece(frame)
         pose = (frame.slam.x, frame.slam.y)
         target = st.waypoints[0] if st.waypoints else st.goal
         if st.waypoints and math.hypot(target[0] - pose[0],
@@ -538,23 +632,47 @@ class Navigator:
     def _resolve_destination(self, command, frame):
         """destino (texto) o punto -> (x, y), usando los landmarks
         etiquetados del SLAM."""
+        self._buscable = False
+        self._eleccion = (0, False, False)
         if command.punto is not None:
             return tuple(command.punto), "punto", None
         if not command.destino:
             return None, None, "¿A dónde desea ir?"
-        wanted = DEST_ALIASES.get(command.destino, command.destino)
+        # "la mesa mas lejana" -> mesa, la de mas lejos
+        dicho = command.destino.lower().strip()
+        lejos = any(k in dicho for k in _LEJOS)
+        base = " ".join(w for w in dicho.split() if w not in _RELLENO) or dicho
+        wanted = DEST_ALIASES.get(dicho, DEST_ALIASES.get(base, base))
+        # solo se puede "buscar" lo que la vision sabe reconocer (una
+        # puerta si; "la cocina" no: no hay con que verla)
+        try:
+            from nombres import _ES
+            self._buscable = wanted in _ES
+        except Exception:
+            self._buscable = False
+        self._eleccion = (0, lejos, False)
         if frame is None or not frame.landmarks:
             return None, None, ("Aún no conozco ese lugar. "
                                 "Recorra el entorno para mapearlo.")
         px, py = frame.slam.x, frame.slam.y
-        candidates = [lm for lm in frame.landmarks
-                      if lm.get("confirmed", True)
-                      and lm.get("label") == wanted]
+
+        def conocidos(label):
+            return [lm for lm in frame.landmarks
+                    if lm.get("confirmed", True) and lm.get("label") == label]
+        candidates = conocidos(wanted)
+        respaldo = False
+        if not candidates and base in DEST_RESPALDO:
+            candidates = conocidos(DEST_RESPALDO[base])
+            respaldo = bool(candidates)
+            if respaldo:
+                wanted = DEST_RESPALDO[base]
         if not candidates:
             return None, None, (f"No conozco ningún '{command.destino}' "
                                 "en el mapa todavía.")
-        best = min(candidates,
-                   key=lambda lm: math.hypot(lm["x"] - px, lm["y"] - py))
+        elegir = max if lejos else min
+        best = elegir(candidates,
+                      key=lambda lm: math.hypot(lm["x"] - px, lm["y"] - py))
+        self._eleccion = (len(candidates), lejos, respaldo)
         return (best["x"], best["y"]), wanted, None
 
     def _status_text(self, frame):

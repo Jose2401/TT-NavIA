@@ -253,3 +253,69 @@ class TestMuebleNoSeMueve(unittest.TestCase):
             b.detector = FakeYolo(self._dets(dx))
             out = b.process(_frame169())
         self.assertTrue([d for d in out if d.label == "bed"][0].moving)
+
+
+class TestPuertasYClasesFalsas(unittest.TestCase):
+    """recorridos reales del 2026-11-12 (oficina y salon)."""
+
+    def test_la_puerta_del_extra_corrige_al_refrigerador(self):
+        """la puerta amarilla del salon salia como 'refrigerador' (0.94)
+        y la puerta que SI veia el detector extra se tiraba por encimarse."""
+        caja = (220, 110, 330, 300)
+        coco = [{"label": "refrigerator", "confidence": 0.94,
+                 "bbox": caja, "mask": None}]
+        puerta = [{"label": "door", "confidence": 0.41,
+                   "bbox": (225, 112, 328, 298), "mask": None}]
+        b = _bridgeSinModelos(coco, extras=puerta)
+        b.aliases = {"refrigerator": "fridge"}
+        b.extraEvery = 3
+        etiquetas = []
+        for _ in range(6):               # el extra corre en el 3 y el 6
+            b.detector = FakeYolo([dict(coco[0])])
+            etiquetas.append([d.label for d in b.process(_frame169())])
+        self.assertEqual(etiquetas[0], ["fridge"])       # aun no corre
+        for e in etiquetas[2:]:                          # y se recuerda
+            self.assertEqual(e, ["door"])
+
+    def test_a_una_persona_no_se_le_cambia_el_nombre(self):
+        caja = (220, 110, 330, 300)
+        coco = [{"label": "person", "confidence": 0.9, "bbox": caja,
+                 "mask": None}]
+        puerta = [{"label": "door", "confidence": 0.41, "bbox": caja,
+                   "mask": None}]
+        b = _bridgeSinModelos(coco, extras=puerta)
+        self.assertEqual([d.label for d in b.process(_frame169())],
+                         ["person"])
+
+    def test_clases_imposibles_no_pasan(self):
+        dets = [{"label": "parking meter", "confidence": 0.91,
+                 "bbox": (500, 10, 600, 340), "mask": None},
+                {"label": "train", "confidence": 0.85,
+                 "bbox": (10, 100, 200, 300), "mask": None},
+                {"label": "chair", "confidence": 0.8,
+                 "bbox": (300, 200, 360, 320), "mask": None}]
+        b = _bridgeSinModelos(dets)
+        b.letrerosSalida = False
+        self.assertEqual([d.label for d in b.process(_frame169())],
+                         ["chair"])
+
+    def test_lo_que_se_carga_no_es_marca_del_mapa(self):
+        from interfaces import VisionDetection
+        from vision_bridge import fuseObservations
+        dets = [VisionDetection(0.0, "backpack", range_est=2.0),
+                VisionDetection(0.3, "chair", range_est=2.0)]
+        self.assertEqual([o.label for o in fuseObservations(dets, [])],
+                         ["chair"])
+
+    def test_letrero_verde_de_salida(self):
+        import cv2
+        from vision_bridge import detectarLetrerosSalida
+        img = np.full((360, 640, 3), 200, dtype=np.uint8)
+        cv2.rectangle(img, (400, 100), (470, 150), (60, 160, 0), -1)   # verde
+        cv2.arrowedLine(img, (455, 125), (415, 125), (255, 255, 255), 6)
+        cv2.circle(img, (100, 250), 60, (40, 140, 30), -1)   # un arbol no
+        r = detectarLetrerosSalida(img)
+        self.assertEqual(len(r), 1)
+        self.assertEqual(r[0]["label"], "exit sign")
+        x1, y1, x2, y2 = r[0]["bbox"]
+        self.assertTrue(395 <= x1 <= 405 and 465 <= x2 <= 475)

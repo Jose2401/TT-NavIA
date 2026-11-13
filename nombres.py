@@ -48,6 +48,7 @@ _ES = {
     "scissors": ("las", "tijeras"), "teddy bear": ("el", "peluche"),
     "hair drier": ("la", "secadora"), "toothbrush": ("el", "cepillo"),
     # detector extra (open images v7)
+    "exit sign": ("el", "letrero de salida"),
     "door": ("la", "puerta"), "window": ("la", "ventana"),
     "trash can": ("el", "bote de basura"), "street light": ("el", "poste"),
     "sign": ("el", "letrero"), "ladder": ("la", "escalera de mano"),

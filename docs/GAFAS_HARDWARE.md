@@ -361,8 +361,17 @@ Usa el Python del sistema (`/usr/bin/python3`: gpiozero + pygame), no el venv.
   `~/.cache/navia/arranque_boot_id`). Para probar sin reiniciar:
   `python3 ~/gafas/arranque/arranque_boton.py --forzar` (con `--simular 5` o
   `--simular 5,5.4` hace como si picaran el botón).
-- Qué pasó: `~/gafas/arranque/arranque.log` (el arranque, con hora) y
-  `~/gafas/arranque/ultimo_programa.log` (lo que imprimió el programa).
+- Qué pasó: `~/gafas/arranque/arranque.log` (el arranque) y un registro por corrida en
+  `~/gafas/arranque/registros/NNNN_programa.log` (`ultimo_programa.log` apunta al más
+  nuevo). La navegación además queda grabada en `~/TT-NavIA/sesiones/nav_FECHA/`.
+- ⚠️ **La Pi no tiene reloj con pila**: sin internet arranca con la hora del último
+  apagado, así que las fechas de carpetas y bitácoras se repiten y no sirven para ordenar.
+  Por eso los registros van numerados y las carpetas de grabación nunca se reusan.
+- ⚠️ **Apagarla desconectándola pierde lo escrito en los últimos ~30 s** (pasó el
+  2026-11-12: grabaciones sin sus últimos 15–20 s). Ahora los programas bajan todo a la
+  tarjeta cada 2–5 s y antes de avisar por voz: **esperar a oír "Recorrido guardado" o
+  "Sistema detenido" antes de desconectar.** Apagar bien sí se puede sin sudo
+  (`systemctl poweroff`), falta ponerlo en un gesto del botón.
 - Parar lo que esté corriendo (guarda el mapa o la grabación):
   `systemctl --user stop navia-arranque`. Desactivar: `systemctl --user disable navia-arranque`.
 - ⚠️ **La espera del botón corre en un proceso aparte** (`--fase esperar`) que termina
@@ -427,6 +436,7 @@ Después hay que volver a copiar `~/Desktop/code.py` para restaurar el programa 
 | `audio_pi.py` | Audio sin sudo (PortAudio local en `~/.local/lib/navia/`, diadema USB por PipeWire). |
 | `calibrar_gafas.py` | Calibración guiada con las gafas puestas. El largo de paso se mide caminando hacia una pared (el ultrasonido mide el avance). |
 | `grabar_sesion.py` | Graba un recorrido (cámara + todo lo que manda el RP2040) y al final dice cuánto se caminó. |
+| `sesion_a_video.py` | Convierte una grabación en `video.mp4` para verla (`vlc`). Con `sesion_a_mapa.py --video` sale `video_sistema.mp4`, con lo que detecta el sistema. Copias en `~/Videos/NavIA/`. |
 | `instalar_pi.sh` | Instala todo sin sudo y copia el firmware a `CIRCUITPY`. |
 
 ### Otros

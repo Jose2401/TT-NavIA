@@ -216,6 +216,73 @@ class TestNavigatorSession(unittest.TestCase):
         self.assertEqual(nav.status.session, "en_espera")
         self.assertIn("conozco", msgs[0].text)
 
+    def testDestinoPendienteSeBuscaYArrancaSolo(self):
+        """2026-11-12: 'llevame a la salida' sin puerta conocida decia
+        'no conozco' y ahi moria. ahora se queda buscando y arranca en
+        cuanto la puerta aparece en el mapa."""
+        from dataclasses import replace
+        nav = self._navigator()
+        frame, mgr = self._frame()
+        frame = replace(frame, landmarks=[
+            {"x": 1.0, "y": 0.5, "label": "chair", "confirmed": True}])
+        msgs = nav.handle_command("ve a la salida", frame)
+        self.assertEqual(nav.status.session, "en_espera")
+        self.assertIn("Todavía no veo", msgs[0].text)
+        self.assertEqual(nav.update(frame, mgr), [])       # sigue sin verla
+        conPuerta = replace(frame, landmarks=frame.landmarks + [
+            {"x": 3.0, "y": 1.0, "label": "door", "confirmed": True}])
+        msgs = nav.update(conPuerta, mgr)
+        self.assertIn("Ya vi", msgs[0].text)
+        self.assertEqual(nav.status.session, "activo")
+        self.assertEqual(nav.status.goal, (3.0, 1.0))
+        # "detener" tambien cancela una busqueda
+        nav2 = self._navigator()
+        nav2.handle_command("ve a la salida", frame)
+        nav2.handle_command("detener", frame)
+        self.assertEqual(nav2.update(conPuerta, mgr), [])
+        self.assertEqual(nav2.status.session, "en_espera")
+
+    def testSalidaPorLetreroSiNoHayPuerta(self):
+        from dataclasses import replace
+        nav = self._navigator()
+        frame, _ = self._frame()
+        frame = replace(frame, landmarks=[
+            {"x": 4.0, "y": -1.0, "label": "exit sign", "confirmed": True}])
+        msgs = nav.handle_command("ve a la salida", frame)
+        self.assertEqual(nav.status.goal, (4.0, -1.0))
+        self.assertTrue(any("letrero de salida" in m.text for m in msgs))
+        # iba al letrero y aparece la puerta de verdad: cambia a la puerta
+        conPuerta = replace(frame, landmarks=frame.landmarks + [
+            {"x": 3.5, "y": -0.5, "label": "door", "confirmed": True}])
+        _f, mgr = self._frame()
+        msgs = nav.update(conPuerta, mgr)
+        self.assertEqual(nav.status.goal, (3.5, -0.5))
+        self.assertTrue(any("Ya vi la puerta" in m.text for m in msgs))
+        # con puerta conocida, manda la puerta
+        nav = self._navigator()
+        frame = replace(frame, landmarks=frame.landmarks + [
+            {"x": 2.0, "y": 0.0, "label": "door", "confirmed": True}])
+        nav.handle_command("ve a la salida", frame)
+        self.assertEqual(nav.status.goal, (2.0, 0.0))
+
+    def testLaMasLejanaYLaMasCercana(self):
+        from dataclasses import replace
+        frame, _ = self._frame()
+        frame = replace(frame, landmarks=[
+            {"x": 1.0, "y": 0.0, "label": "table", "confirmed": True},
+            {"x": 5.0, "y": 0.0, "label": "table", "confirmed": True},
+            {"x": 3.0, "y": 0.0, "label": "table", "confirmed": True}])
+        nav = self._navigator()
+        msgs = nav.handle_command("ve a la mesa", frame)
+        self.assertEqual(nav.status.goal, (1.0, 0.0))        # la mas cercana
+        self.assertTrue(any("Conozco 3" in m.text for m in msgs))
+        nav = self._navigator()
+        nav.handle_command("ve a la mesa mas lejana", frame)
+        self.assertEqual(nav.status.goal, (5.0, 0.0))
+        nav = self._navigator()
+        nav.handle_command("ve a la mesa más cercana", frame)
+        self.assertEqual(nav.status.goal, (1.0, 0.0))
+
     def testPointGoalAndObservationShapes(self):
         nav = self._navigator()
         frame, mgr = self._frame()
