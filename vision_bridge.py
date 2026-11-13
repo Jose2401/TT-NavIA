@@ -67,6 +67,21 @@ def groundDistanceFromRow(row, imgH, vfovRad,
     return camHeightM / math.tan(phi)
 
 
+def _modeloRapido(base):
+    """si existe la version exportada a ncnn (exportar_modelos.py) y
+    esta instalado ncnn, se usa esa: mismos pesos, ~4x mas rapido en la
+    pi (medido: yolov8s-seg 1390 -> 370 ms, oiv7 740 -> 225 ms, con las
+    mismas detecciones). si no, el .pt de siempre."""
+    ncnnDir = os.path.join(VISION_DIR, base + "_ncnn_model")
+    if os.path.isdir(ncnnDir) and os.environ.get("NAVIA_SIN_NCNN") != "1":
+        try:
+            import ncnn  # noqa: F401
+            return ncnnDir
+        except ImportError:
+            pass
+    return os.path.join(VISION_DIR, base + ".pt")
+
+
 class VisionBridge:
     def __init__(self, modelPath=None, confidence=0.45,
                  hfovDeg=None, vfovDeg=None, inferWidth=640,
@@ -89,9 +104,10 @@ class VisionBridge:
         from vision.motion import ObjectMotionTracker
 
         if modelPath is None:
-            modelPath = os.path.join(VISION_DIR, "yolov8s-seg.pt")
+            modelPath = _modeloRapido("yolov8s-seg")
 
-        self.detector = ObjectDetector(model_path=modelPath, confidence=confidence)
+        self.detector = ObjectDetector(model_path=modelPath,
+                                       confidence=confidence, masks=False)
         self.classifier = ObstacleClassifier()
         self.tracker = ObjectMotionTracker()
         self.aliases = LABEL_ALIASES
@@ -101,7 +117,7 @@ class VisionBridge:
         self._nFrame = 0
         self._extraIds = {}
         if extraModelPath == "auto":
-            ruta = os.path.join(VISION_DIR, "yolov8s-oiv7.pt")
+            ruta = _modeloRapido("yolov8s-oiv7")
             extraModelPath = ruta if os.path.exists(ruta) else None
         if extraModelPath:
             try:
@@ -150,11 +166,18 @@ class VisionBridge:
             extras = self._detectarExtras(frame)
 
         detecciones = []
+        # ojo: "en movimiento" solo lo que se mueve por si solo (gente,
+        # animales, vehiculos). el rastreador marcaba muebles: con la
+        # camara en la cabeza toda caja se desplaza al caminar, y aun
+        # quieto basta un ajuste de 1° del rumbo (6 px al compensar el
+        # giro) pa pasar su umbral de 8 px. medido 2026-11-12 con todo
+        # quieto: "Alto. Se acerca algo al frente" por una cama
+        porRastreo = getattr(self, "moverEstaticos", False)
         for det, seMueve in zip(raw, flagsMov):
             detecciones.append(self._aDeteccion(
                 det, w, h, fPx, vfovEff,
-                moving=seMueve
-                or det["label"].lower() in DYNAMIC_LABELS))
+                moving=det["label"].lower() in DYNAMIC_LABELS
+                or (seMueve and porRastreo)))
         for det in extras:
             # sin chocar con lo que coco ya vio ahi mismo
             if any(_iou(det["bbox"], d["bbox"]) > 0.55 for d in raw):
@@ -192,7 +215,8 @@ class VisionBridge:
 
     def _detectarExtras(self, frame):
         res = self.extraDetector.model(frame, stream=False, verbose=False,
-                                       conf=self.extraDetector.confidence)
+                                       conf=self.extraDetector.confidence,
+                                       **self.extraDetector.predict_kwargs())
         out = []
         for r in res:
             for box in r.boxes:
@@ -640,9 +664,24 @@ def _rangosCompatibles(usRange, monoRange):
 
 
 # rayos sin eco = corredor libre, solo pal mapa
-def freeSpaceRays(ultrasonicReadings):
-    return [
-        Observation(range_m=u.max_range + 0.01, bearing=u.sensor_bearing,
-                    label="libre")
-        for u in ultrasonicReadings if not u.valid
-    ]
+def freeSpaceRays(ultrasonicReadings, maxLibreM=None):
+    """maxLibreM (sensores reales): que "no hubo eco" no garantiza que
+    este libre hasta el fondo — el mb1232 no ve una pared lisa de lado
+    ni cosas chicas o blandas. con el limite solo se despeja ese tramo,
+    y un "sin eco" total solo cuenta si NINGUN sensor oyo nada (las
+    lecturas recortadas por eco de piso si valen cada una)."""
+    invalidas = [u for u in ultrasonicReadings if not u.valid]
+    if maxLibreM is None:
+        return [Observation(range_m=u.max_range + 0.01,
+                            bearing=u.sensor_bearing, label="libre")
+                for u in invalidas]
+    from montaje import US_MAX_M
+    todosSinEco = len(invalidas) == len(ultrasonicReadings)
+    out = []
+    for u in invalidas:
+        dePiso = u.max_range < US_MAX_M - 0.05
+        if not dePiso and not todosSinEco:
+            continue
+        out.append(Observation(range_m=min(u.max_range, maxLibreM),
+                               bearing=u.sensor_bearing, label="libre"))
+    return out

@@ -115,14 +115,24 @@ class TestAlertasCruzadas(unittest.TestCase):
 
     def test_eco_sin_vision_es_pared_al_frente(self):
         from alertas import ModuloAlertas
+        # a 60 cm: pip de precaucion (la voz es hasta los 25 cm), pero
+        # el navegador si recalcula (eso sigue a 0.80 m)
         f = self._frame([], par(0.6, 0.62))
         als, rec = ModuloAlertas(conPip=False).evaluar(f)
         self.assertTrue(rec)
+        self.assertTrue(any(p == 1 and "pared" in t for p, t in als))
+        f = self._frame([], par(0.22, 0.23))
+        als, rec = ModuloAlertas(conPip=False).evaluar(f)
+        self.assertTrue(any(p == 0 and "pared" in t for p, t in als))
+        # con los umbrales del documento, a 60 cm ya es critica
+        f = self._frame([], par(0.6, 0.62))
+        als, rec = ModuloAlertas(conPip=False, criticaM=0.8,
+                                 precaucionM=1.5).evaluar(f)
         self.assertTrue(any(p == 0 and "pared" in t for p, t in als))
 
     def test_contradicha_no_grita(self):
         from alertas import ModuloAlertas
-        d = VisionDetection(0.0, "fridge", range_est=0.7,
+        d = VisionDetection(0.0, "fridge", range_est=0.5,
                             confirmado="contradicho")
         f = self._frame([d], par(5.0, 5.0))
         als, rec = ModuloAlertas(conPip=False).evaluar(f)

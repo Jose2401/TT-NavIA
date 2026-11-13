@@ -146,7 +146,10 @@ class OccupancyGrid(BloqueosTemporales):
                         break
                 self._addLogOdds(cx, cy, self.lFree)
 
-            if finAdentro and not bloqueado and obs.range_m <= maxRange:
+            # un rayo "libre" (ultrasonido sin eco, o que solo vio piso)
+            # nunca pinta ocupado en la punta, aunque sea corto
+            if (finAdentro and not bloqueado and obs.range_m <= maxRange
+                    and getattr(obs, "label", "") != "libre"):
                 if esHoyo:
                     self._addHazard(gx1, gy1)
                 elif not impreciso:

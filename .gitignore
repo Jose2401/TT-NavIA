@@ -13,3 +13,10 @@ models/vosk-*
 tts_cache/
 runs_finetune/
 datasets/
+models/piper/
+vision/*_ncnn_model/
+vision/*.onnx
+vision/*.torchscript
+imu_montaje.json
+sesiones/
+calibracion_usuario.json

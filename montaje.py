@@ -3,18 +3,26 @@ montaje.py — geometria fisica de los lentes segun el CAD (docs/Render,
 VistaPrincipal, VistaReal). una sola fuente de verdad pa todos los
 modulos que necesitan saber donde y hacia donde ve cada sensor.
 
-  - camara: centro del frente, sobre el puente de la nariz (origen)
+  - camara: centro del frente, sobre el puente de la nariz (origen).
+    va montada AL REVES (camara.py gira la imagen 180°)
   - 2 ultrasonicos MB1232: en el FRENTE, uno sobre cada lente,
     apuntando HACIA ADELANTE (paralelos a la camara), separados
     US_SEPARACION_M. ojo: no son laterales.
-  - imu bno055: plana arriba al centro del armazon. todo va en el
-    mismo frente rigido, asi que el pitch de la imu = pitch de la
-    camara = pitch de los ultrasonicos.
+  - imu bno055: DE PIE en el puente de arriba (el firmware del rp2040
+    le remapea los ejes). todo va en el mismo frente rigido, asi que
+    el pitch de la imu = pitch de la camara = pitch de los ultrasonicos.
+  - la imu y los ultrasonicos NO van al i2c de la pi: los lee el
+    RP2040-Zero de las gafas y llegan por usb (sensores.py). el boton
+    y su led si van a la pi (GPIO17 y GPIO27). docs/GAFAS_HARDWARE.md
 
 convencion del sistema: x adelante, y a la IZQUIERDA, bearing + = izq.
-medir con regla en el prototipo real y ajustar estos valores.
+medir con regla en el prototipo real y ajustar estos valores. lo que
+cambia con la PERSONA (altura de los ojos y largo del paso) se guarda
+en calibracion_usuario.json con `python calibrar_gafas.py`.
 """
+import json
 import math
+import os
 
 US_SEPARACION_M = 0.10            # entre centros de los dos ultrasonicos
 # toe-out de cada uno (0 = paralelos). el ez3 es de haz ANGOSTO: si
@@ -26,8 +34,66 @@ US_APERTURA_DEG = 0.0
 US_MEDIO_CONO_DEG = 15.0
 US_MAX_M = 7.65                   # lo que reporta cuando NO hay eco
 US_MIN_M = 0.20                   # reporta 20 cm pa todo lo que este MAS cerca
-US_VOLTS = 3.3                    # en la pi se alimenta a 3.3 V: menos alcance
+US_VOLTS = 3.3                    # van a 3.3 V (el rp2040 no aguanta 5): menos alcance
 CAM_ALTURA_M = 1.55               # altura de los ojos/camara al piso
+# largo de paso. SIN calibrar: el de un adulto promedio, 0.68 m a paso
+# normal (~105 pasos/min), acortado en proporcion a la cadencia (largoPaso
+# de abajo). CALIBRADO (calibracion_usuario.json): el de esa persona,
+# fijo. con las dos caminatas reales del 2026-11-10 el paso del usuario
+# salio de 0.43-0.48 m sin importar la cadencia (68 a 100 pasos/min)
+LARGO_PASO_M = 0.68
+CADENCIA_PASO_PPM = 105.0         # cadencia a la que el paso promedio mide eso
+PASO_CALIBRADO = False            # True = LARGO_PASO_M es de quien trae los lentes
+
+CALIBRACION_USUARIO = "calibracion_usuario.json"
+
+
+def cargarUsuario(ruta=CALIBRACION_USUARIO):
+    """altura de la camara y largo de paso de quien trae los lentes
+    (los mide calibrar_gafas.py). sin archivo quedan los de arriba."""
+    global CAM_ALTURA_M, LARGO_PASO_M, PASO_CALIBRADO
+    try:
+        with open(ruta, encoding="utf-8") as fh:
+            c = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if 1.0 <= float(c.get("alturaCamaraM", 0)) <= 2.2:
+        CAM_ALTURA_M = float(c["alturaCamaraM"])
+    if 0.25 <= float(c.get("largoPasoM", 0)) <= 1.1:
+        LARGO_PASO_M = float(c["largoPasoM"])
+        PASO_CALIBRADO = True
+    return c
+
+
+def largoPaso(cadenciaPpm=None):
+    """cuanto avanza un paso. calibrado: el largo de esa persona, fijo
+    (medido por ultrasonido caminando hacia una pared; se afina solo con
+    cada corrida, sensores.SensoresGafas.aprenderPaso). sin calibrar: el
+    promedio de un adulto, proporcional a la cadencia (la gente acorta
+    el paso al ir despacio; con 0.68 fijo una caminata lenta de 4.6 m
+    salia de 6.8 m y asi de 4.8), recortado pa que un hueco raro entre
+    pasos no lo dispare."""
+    if PASO_CALIBRADO or not cadenciaPpm:
+        return LARGO_PASO_M
+    f = cadenciaPpm / CADENCIA_PASO_PPM
+    return LARGO_PASO_M * max(0.45, min(1.30, f))
+
+
+def guardarUsuario(ruta=CALIBRACION_USUARIO, **valores):
+    c = {}
+    try:
+        with open(ruta, encoding="utf-8") as fh:
+            c = json.load(fh)
+    except (OSError, ValueError):
+        pass
+    c.update(valores)
+    with open(ruta, "w", encoding="utf-8") as fh:
+        json.dump(c, fh, indent=1)
+    cargarUsuario(ruta)
+    return c
+
+
+cargarUsuario()
 
 # alcance maximo por tamaño del objetivo (datasheet, graficas A-D). el
 # ez3 "filtra lo chico": una botella o una pata de silla casi no la ve

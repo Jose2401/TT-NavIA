@@ -20,3 +20,10 @@ stable-baselines3>=2.3    # PPO (solo para ENTRENAR)
 # smbus2                  # I2C en la Pi: MB1232 + IMU BNO055
 # edge-tts               # voz natural de VozYPLN/Tts.py (requiere internet)
 # pygame                 # reproduce el audio de edge-tts
+
+# En la Raspberry Pi NO se instala a mano: correr `bash instalar_pi.sh`
+# (venv con los paquetes del sistema + todo lo de abajo, sin sudo).
+# ncnn                   # yolo exportado: ~4x mas rapido que el .pt en la pi
+# piper-tts              # voz neuronal sin internet (trae onnxruntime)
+# onnx onnxruntime       # los ocupa la exportacion / piper
+# del sistema (raspberry pi os): picamera2, gpiozero + lgpio, pyserial, pygame

@@ -84,7 +84,21 @@ def effectiveFrontDistance(frame: NavigationFrame):
 
 
 # alertas fijas, 0 critica 1 precaucion
-def safetyAlerts(frame: NavigationFrame):
+def safetyAlerts(frame: NavigationFrame, critica=None, precaucion=None):
+    """[(prioridad, texto)]; ver alertasDeObstaculo."""
+    return [(p, t) for p, t, _s, _d in
+            alertasDeObstaculo(frame, critica, precaucion)]
+
+
+def alertasDeObstaculo(frame: NavigationFrame, critica=None, precaucion=None):
+    """[(prioridad, texto, sector, distancia)].
+    critica / precaucion: distancias al frente (None = las del
+    documento, que son las que usa el navegador). las laterales se
+    escalan en la misma proporcion."""
+    critica = CRITICAL_DISTANCE_M if critica is None else critica
+    precaucion = CAUTION_DISTANCE_M if precaucion is None else precaucion
+    latCrit = LATERAL_CRITICAL_M * critica / CRITICAL_DISTANCE_M
+    latCaut = LATERAL_CAUTION_M * precaucion / CAUTION_DISTANCE_M
     alertas = []
 
     def detMasCerca(sector):
@@ -108,16 +122,17 @@ def safetyAlerts(frame: NavigationFrame):
         riesgoAlto= detGana and detectionRisk(det) >= 3
 
         if sector == "front" or riesgoAlto:
-            crit, caut = CRITICAL_DISTANCE_M, CAUTION_DISTANCE_M
+            crit, caut = critica, precaucion
         else:
-            crit, caut = LATERAL_CRITICAL_M, LATERAL_CAUTION_M
+            crit, caut = latCrit, latCaut
 
         if eff < crit:
             cm =int(round(eff * 10.0)) * 10
             alertas.append((0, f"Atención: {label} a {cm} centímetros "
-                               f"{donde}. Deténgase."))
+                               f"{donde}. Deténgase.", sector, eff))
         elif eff < caut:
-            alertas.append((1, f"Precaución: {label} cerca {donde}."))
+            alertas.append((1, f"Precaución: {label} cerca {donde}.",
+                            sector, eff))
     return alertas
 
 

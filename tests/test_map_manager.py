@@ -445,3 +445,28 @@ class TestRelocalizacion(unittest.TestCase):
         class SlamFalso:
             correccionesTotales = 99
         self.assertFalse(mgr.checarReloc(SlamFalso()))   # nada pendiente
+
+
+class TestCambioDeZona(unittest.TestCase):
+    """2026-11-12: quieto en el origen (esquina de 4 chunks) el temblor de
+    la pose cambiaba de chunk y el sistema decia "Zona nueva" varias veces."""
+
+    def test_temblor_en_la_esquina_no_cambia_de_zona(self):
+        from map_manager import ChunkedMapManager
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=8.0)
+        cambios = []
+        for x, y in ((0.0, 0.0), (-0.02, 0.01), (0.03, -0.04), (-0.05, -0.05),
+                     (0.1, 0.2), (-0.2, -0.25)):
+            cambios += [e for e in mgr.updatePosition((x, y, 0.0))
+                        if e["type"] == "chunk_change"]
+        self.assertEqual(len(cambios), 1)            # solo el primero
+
+    def test_si_cambia_al_entrar_de_verdad(self):
+        from map_manager import ChunkedMapManager
+        mgr = ChunkedMapManager(mapDir=None, chunkSizeM=8.0)
+        mgr.updatePosition((1.0, 1.0, 0.0))
+        primero = mgr.currentChunk
+        self.assertEqual(mgr.updatePosition((-0.2, 1.0, 0.0)), [])
+        ev = mgr.updatePosition((-0.6, 1.0, 0.0))
+        self.assertEqual(ev[0]["type"], "chunk_change")
+        self.assertNotEqual(mgr.currentChunk, primero)

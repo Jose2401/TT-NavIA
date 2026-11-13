@@ -9,19 +9,122 @@
 
 ---
 
-## 0. TL;DR para el Claude de la Pi
+## 0. TL;DR (actualizado 2026-11-10, ya con el hardware real en la Pi 5)
 
-1. El programa final es **`main_nav_pi.py`** (navegación + alertas + voz, sin GUI). `main_pi.py` es solo mapeo + alertas, sin navegación ni voz.
-2. **Ejecuta todo desde la raíz del repo**: las rutas son relativas (`models/`, `maps/`, `imu_montaje.json`, `navigation_nlp_memory.json`, `tts_cache/`).
-3. El hardware real (según el CAD en `docs/Render.jpeg`, `VistaPrincipal.jpeg`, `VistaReal.jpeg`) es: cámara Raspberry Pi Camera Module 3 **Wide** al centro del frente; **2× MB1232 (I2CXL-MaxSonar-EZ3) en el frente, uno sobre cada lente, apuntando AL FRENTE** (no a los lados); **IMU BNO055 plana arriba al centro**. La geometría está centralizada en **`montaje.py`** (medir el prototipo y ajustar).
-4. Lo que **falta implementar o verificar en hardware**:
-   - Captura de cámara: el código usa `cv2.VideoCapture(index)`. Con la Camera Module 3 en Raspberry Pi OS (stack libcamera) eso **probablemente no funcione directo** [VERIFICAR]; lo usual es `picamera2`. Hay que adaptar la captura.
-   - `BotonPullUp` (alertas.py): el `gpiozero` está comentado (TODO). Pin sugerido GPIO27; el diseño de TT usa GPIO17 para el botón de sesión.
-   - Driver MB1232 (`main_pi.Mb1232Array`): **ya está escrito** (smbus2, hilo, disparo alternado), pero nunca se ha probado con el chip.
-   - Driver BNO055 (`odometry.Bno055`): ya escrito, sin probar con el chip. Hay **calibración guiada**: `python odometry.py --calibrar`.
-   - Rendimiento: YOLOv8s-seg + YOLOv8s-oiv7 + SegFormer en CPU de la Pi no se ha medido. Probablemente haya que exportar a NCNN/ONNX o bajar la frecuencia [VERIFICAR].
-   - Audio: el TT especifica bocina vía PAM8403 por jack 3.5 mm. **La Raspberry Pi 5 no tiene jack de audio analógico** (la 4B sí) → en Pi 5 se necesita USB audio, I2S/DAC o HDMI [VERIFICAR qué Pi usan; el doc dice Pi 4B 4GB, el usuario habla de Pi 5].
-5. Corre las pruebas antes y después de cada cambio: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"` → **205 pruebas, todas pasan** (2026-11-09).
+1. El programa final es **`main_nav_pi.py`** (navegación + alertas + voz, sin GUI). `main_pi.py` es solo mapeo + alertas. Los dos mains de laptop (`main_lap.py`, `main_nav_lap.py`) **también corren en la Pi** con su interfaz en el monitor: abren solos la cámara de las gafas y, si está el RP2040, usan la IMU, los ultrasónicos y el botón.
+2. **Ejecuta todo desde la raíz del repo** con `.venv/bin/python` (rutas relativas: `models/`, `maps/`, `imu_montaje.json`, `calibracion_usuario.json`, `tts_cache/`).
+3. El hardware real está descrito en **`docs/GAFAS_HARDWARE.md`** (manda sobre el CAD y sobre el TT): Raspberry Pi **5** (16 GB); la IMU BNO055 y los 2 MB1232 **no van al I²C de la Pi**, los lee un **RP2040-Zero** dentro de las gafas y llegan por **USB serie** (`/dev/ttyACM0`); la cámara va en **CAM1 desde el 2026-11-12 (antes CAM0; da igual para el código), girada 180°**; botón en **GPIO17** (pull-up interno) con LED en **GPIO27**; audio por **diadema USB**. No hay contraseña de sudo: todo se instala sin root (`instalar_pi.sh`).
+4. Lo que **ya quedó hecho y probado con el hardware** (detalle en §0.1): firmware nuevo del RP2040, lector serie con conteo de pasos a 50 Hz, cámara por picamera2, botón (1 click = escuchar / dejar de escuchar, doble click = alertas sí/no), voz sin internet (Piper), micrófono por PipeWire, YOLO en NCNN, alertas de ultrasonido desde su propio hilo, mains de laptop en la Pi, herramientas de grabación y calibración.
+5. Lo que **falta y necesita a una persona con los lentes puestos** (§0.3): grabar recorridos caminando (ahora se puede sin monitor, con el botón al prender la Pi) y con eso validar odometría, mapas y navegación.
+6. Pruebas: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"` → **278 pruebas, todas pasan en la Pi** (205 de antes + las de `tests/test_gafas.py`, `tests/test_alertas_ruta.py` y `tests/test_montaje.py`).
+7. **Segunda ronda del mismo día (§0.5)**, tras la primera prueba con una persona: alertas más calladas (voz solo a ≤ 25 cm, de una ráfaga solo se dice la última), micrófono abierto mientras el sistema habla, contador de pasos ajustado con una caminata real, distancia por cadencia y **arranque por botón al prender la Pi** (script aparte del repo, en `~/gafas/arranque/`).
+
+### 0.1 Qué cambió en la Pi (2026-11-10)
+
+Archivos nuevos:
+| Archivo | Rol |
+|---|---|
+| `firmware/code.py` | Firmware del RP2040 (CircuitPython). Manda líneas CSV: `I,ms,h,r,p,wx,wy,wz,lx,ly,lz,gx,gy,gz,cal` (IMU a **50 Hz**: euler, giroscopio, aceleración lineal, gravedad) y `U,ms,D|I,cm` (ultrasónicos por turnos, ~4.9 Hz cada uno, **sin bloquear la IMU**). Copia maestra también en `~/Desktop/code.py`; el anterior está en `~/rp2040-sensores/respaldo/code_pruebas_2026-11-09.py`. |
+| `sensores.py` | `SensoresGafas` (hilo que lee el puerto, se reconecta solo), `ImuGafas` (misma interfaz que `Bno055` + `tomarMovimiento()`), `UltrasonicosGafas` (mismo `read()` que `Mb1232Array`). `python sensores.py` = monitor en vivo. |
+| `camara.py` | `CamaraPi` (picamera2, modo 2304×1296 de sensor completo → 1280×720, girada 180°, foco fijo, hilo con el cuadro más reciente) y `abrirCamara()` (cae a `cv2.VideoCapture` en laptop). |
+| `audio_pi.py` | Audio sin sudo: PortAudio local, elegir la diadema USB en PipeWire, tonitos de interfaz. |
+| `exportar_modelos.py` | Exporta los dos YOLO a NCNN (`vision/*_ncnn_model/`, en .gitignore). |
+| `instalar_pi.sh` | Instalación completa y repetible en la Pi sin sudo. |
+| `calibrar_gafas.py` | Calibración guiada: montaje de la IMU, altura de los ojos, largo de paso → `imu_montaje.json` y `calibracion_usuario.json`. |
+| `grabar_sesion.py` / `sesion_a_mapa.py` | Graban un recorrido (cuadros + todo lo del RP2040) y lo convierten en mapa con el pipeline real. Hermano de `video_a_mapa.py` pero con sensores reales. |
+| `servicio/navia.service` | Servicio de usuario de systemd para arrancar directo (**no está activado**; el que sí está activado es el arranque por botón de `~/gafas/arranque/`, §0.5). |
+| `tests/test_gafas.py` | Pruebas sin hardware del lector, pasos, botón, oído y rayos libres. |
+
+Cambios en lo que ya existía:
+- `odometry.py`: `MontajeImu` (base común), `StepDetector(confirmar=True)` (un pico suelto no es un paso; hacen falta dos seguidos), `MotionEstimator` usa `tomarMovimiento()` cuando la IMU lo trae (pasos y giro acumulados a 50 Hz; antes se muestreaba la aceleración una vez por cuadro de visión y a 2 Hz no se ve un paso), `abrirImu()`.
+- `sensores.py` vigila el rumbo: si el heading del BNO055 brinca y el giroscopio dice que la cabeza no giró (pasa en NDOF cuando el magnetómetro se recalibra), ese brinco se ignora.
+- `alertas.py`: los pitidos salen por **pygame** (por sounddevice/ALSA tardaban de 3 a 49 s); `reportarSensor` ahora va **dosificado** con la misma llave que las alertas del mapa y con espera creciente si la cosa sigue quieta (2.5 → 5 → 10 → 20 → 30 s); `BotonPullUp` real con gpiozero; `ModuloAlertas.activar()`.
+- `interaccion.py`: `VozPiper` (voz neuronal sin internet, caché en `tts_cache/`, 1 hilo), `armarMotorVoz()`, `OidoVoz` reescrito (audio por `pw-record`, modo `boton` o `continuo`, se apaga solo tras 30 s de silencio), `ColaVoz.cerrar()`, alertas por voz ("desactiva las alertas" / "activa las alertas", RF-06), y la respuesta de EMERGENCIA ya no dice que está avisando a alguien (no existe ese módulo).
+- `vision/detector.py` y `vision_bridge.py`: usan el modelo NCNN si existe (`NAVIA_SIN_NCNN=1` fuerza el `.pt`), 3 hilos (`NAVIA_HILOS_VISION`), sin sacar máscaras (nadie las usa).
+- `occupancy_grid.py` / `map_manager.py`: un rayo con etiqueta `"libre"` **nunca pinta ocupado en la punta** (antes un rayo libre más corto que `maxRange`, como el recortado por eco de piso, marcaba un obstáculo falso al final).
+- `vision_bridge.freeSpaceRays(lecturas, maxLibreM=2.0)`: versión conservadora para sensores reales (los mains de la Pi ya la usan).
+- `montaje.py`: `LARGO_PASO_M`, `cargarUsuario()`/`guardarUsuario()`.
+- `navigation/navigator.py`: si se pide `models/nav_ppo_policy.npz` usa numpy aunque esté SB3 instalado (default de `main_nav_pi`).
+- `main_nav_pi.py`: flags nuevos `--voz {auto,piper,edge}`, `--escucha {auto,boton,continua}`, `--sin-boton`, `--sin-pip`, `--sin-gafas`, `--puerto`, `--cam-height`, `--estadisticas N`; avisa por voz si se desconectan los sensores; con SIGTERM guarda el mapa.
+
+### 0.2 Mediciones en la Raspberry Pi 5 (2026-11-10)
+
+| Qué | Resultado |
+|---|---|
+| YOLOv8s-seg, cuadro 640×360 | PyTorch 990–1390 ms → **NCNN 350–380 ms** (las mismas 8 detecciones en 6 cuadros de prueba, confianza ±0.005, cajas a ≤1 px salvo un borde a 8 px) ; ONNX Runtime 671 ms |
+| YOLOv8s-oiv7 | PyTorch 740 ms → **NCNN 225 ms** (9/9 detecciones iguales) ; ONNX 455 ms |
+| SegFormer-B0 (peligros) | 1.9 s por cuadro (PyTorch). Sigue apagado por defecto (`--hazards`) |
+| Flujo óptico | 16 ms |
+| Ciclo completo `main_nav_pi` | **2.0–2.4 cuadros/s** (visión 410–500 ms con el extra cada 8 cuadros); 1.7 mientras se sintetiza una frase nueva |
+| Representación por ciclo | fusión 0.01, EKF 0.23, ray casting 0.79, cuadro de navegación 1.36, alertas 0.04 ms (total 2.4 ms) |
+| Navegación | observación 2.6 ms, política numpy 0.05 ms (SB3 2.0 ms), `planear` 64 ms con SB3 |
+| Eco de ultrasonido → inicio del pitido | **1 ms** en software (+ hasta 200 ms de la medición alternada del sensor) |
+| Memoria / temperatura | ~1 GB de RAM, 60–62 °C con ventilador, sin throttling |
+| Piper (voz es_MX-claude-high) | carga 3 s; 0.2 s de síntesis por segundo de audio con 4 hilos, 0.3 con 1 hilo |
+| Vosk (small-es) | carga 0.75 s; 0.12 s de proceso por segundo de audio |
+| IMU quieta, 60 s | 50.0 Hz exactos; rumbo sin deriva (0.00°); giroscopio σ 0.07–0.11 °/s; aceleración lineal máx 0.30 m/s² (umbral de paso 1.8) |
+| MB1232 a un plano a 1.87 m | ±1 cm (279 de 292 lecturas idénticas); 4.87 Hz por sensor; sin interferencia entre los dos |
+| Hilos | NCNN 4 + Piper 4 = 1160 ms por cuadro mientras habla; **NCNN 3 + Piper 1 = ~600 ms** (y 350 ms cuando no habla) |
+
+### 0.3 Lo que falta (necesita a una persona con los lentes)
+
+1. **Calibración**: el usuario ya corrió `calibrar_gafas.py` (hay `imu_montaje.json`: cabeceo con cero en −4.62°, rumbo invertido; ojos a 1.58 m). El **largo de paso** salió de sus dos caminatas reales por ultrasonido (0.439 m, §0.6) y se afina solo en cada corrida; ya no hace falta medir 10 m.
+2. **Diadema USB** (Jabra EVOLVE 20): ya probada por el usuario (se oye y entiende). Medido: la voz del sistema **no se cuela** a su micrófono (§0.5). Falta que el usuario confirme, hablando, que ahora sí lo entiende mientras el sistema habla.
+3. **Contador de pasos**: ajustado con UNA caminata real de 10 pasos (§0.5). Falta validarlo con más recorridos (otras velocidades, escaleras, cabeceos) — `grabar_sesion.py` guarda la señal cruda para eso.
+4. **Recorridos reales con imagen**: no hay ninguno caminando todavía (el del día 10 quedó sin cuadros). Grabar con dos clicks al prender la Pi (o `grabar_sesion.py`), convertir con `sesion_a_mapa.py` y evaluar el modelo de navegación sobre esos mapas antes de decidir si se reentrena (ver §0.4).
+5. Fuera de esa caminata de 5 m, las pruebas en vivo se hicieron con las gafas **quietas sobre el escritorio**. No se ha medido caminando: ni la deriva del rumbo en movimiento, ni el error de posición, ni la visión con escenas reales del prototipo.
+6. `--hazards` (SegFormer) tarda 1.9 s por pasada y detiene el ciclo mientras corre. Si se quiere en la Pi, hay que pasarlo a un hilo aparte o exportarlo.
+7. Pendientes del doc de hardware que siguen: resistencia del LED del botón sin verificar.
+
+### 0.4 ¿Reentrenar el modelo de navegación?
+
+**Todavía no.** Razones medidas:
+- La política ve rayos sacados del **mapa**, no de los sensores crudos; el ruido real del ultrasonido (±1 cm) es menor que el que ya se simula (2 cm, y 5 % en los rayos).
+- En la Pi no están los mapas reales `maps/real/v01…v19` (están en .gitignore): reentrenar aquí sin ellos perdería esa cobertura.
+- Lo que sí puede cambiar el resultado es la **forma de los mapas hechos con los sensores reales** (haz angosto al centro, pasos contados por la IMU). Eso se mide grabando 3–5 recorridos con las gafas, pasándolos por `sesion_a_mapa.py` y corriendo `python -m navigation.train --eval models/nav_ppo.zip --real-maps maps/real/pNN`. Si el éxito baja de ~90 %, se reentrena mezclando esos mapas con los v01–v19 (copiarlos de la laptop). En la Pi una campaña de 8M pasos tarda del orden de una hora.
+
+### 0.5 Segunda ronda (2026-11-10, tras la primera prueba con una persona)
+
+Lo que reportó el usuario y qué se hizo:
+
+| Reporte | Causa medida | Cambio |
+|---|---|---|
+| "Cuando habla el sistema no me entiende" | No era eco: el micrófono se **silenciaba a propósito** mientras la voz hablaba (`muteFn`). Con la Jabra puesta en el escritorio, el micrófono marca −65 dBFS mientras el sistema habla (igual que en silencio, −67) y Vosk no oye nada de esa fuga. | `OidoVoz` sigue oyendo mientras el sistema habla (`conectarOido`). Vosk da el tiempo de cada palabra: las que cayeron encima de la voz del sistema **y** son palabras de lo que decía se quitan (`_sinEco`). Si el usuario le habla encima, el sistema **se calla** (`ColaVoz.callar`, a ~1.3 s de que empieza a hablar en el banco de prueba). Un click del botón también lo calla. Si el micrófono sí oye a la bocina (≥ 6 palabras de eco), pasa solo a medio dúplex; `--mic-mudo-al-hablar` lo fuerza. |
+| "En alertas habla muchísimo, las dice todas una por una" | Cada alerta crítica interrumpía a la anterior y todas quedaban en fila; en interiores todo está a < 1 m. | `ColaVoz.alerta()`: las alertas se pisan (de una ráfaga se oye la que ya sonaba y **la última**) y caducan a los 3 s. Un pip crítico ya no corta una alerta a medias; el pip de precaución ya no corta la voz. Lo mismo quieto que cambia de lado ya no vuelve a pitar. |
+| "El umbral está alto, bájalo a 25 cm" | Crítica a 1.0 m (ultrasonido) / 0.80 m (mapa), precaución a 1.5 m. | `alertas.CRITICA_M = 0.25` (voz) y `PRECAUCION_M = 0.60` (solo pip), con `--umbral-alerta` / `--umbral-precaucion`. Personas en movimiento y peligros del piso conservan sus distancias. **El navegador sigue recalculando a 0.80 m** (`ModuloAlertas._recalcularNav` → `Interaccion.ciclo(recalcular=)`), suene o no. Ojo: a 0.6 m/s, 25 cm son 0.4 s; la voz a esa distancia ya no frena a nadie, para eso está el pip. |
+| "No pude medir 10 m; déjalo con el paso promedio" | El detector contaba **5 de 10** pasos (umbral 1.8 m/s²; sus picos van de 1.3 a 2.9) y con paso fijo de 0.68 m una caminata de ~5 m habría salido de 6.8 m. | `sensores.detectorPasosGafas()`: umbral 1.1 / rearme 0.4 / hueco máx 1.4 s (cuenta los 10; parado y volteando no pasa de 0.9). `montaje.largoPaso(cadencia)`: 0.68 m a 105 pasos/min, proporcional a la cadencia (recortado a 0.45–1.30×). En esa caminata da **4.8 m**; el ultrasonido, que vio la pared acercarse, midió 4.6 m en los tramos con eco (paso real 0.48 m a 75 pasos/min; factor 0.99). |
+| "Que el script de recorridos saque solo la distancia" | — | `sensores.resumenCaminata()` / `avancePorEco()`: pasos × largo por cadencia, y de comprobación el avance por ultrasonido donde hubo algo enfrente acercándose. Lo usan `grabar_sesion.py` (queda en `meta.json` y lo dice la voz), `sesion_a_mapa.py` y `calibrar_gafas.py --solo paso` (ya no pide 10 m). `python sensores.py sesiones/x/serie.txt` lo imprime. |
+| "Sin monitor no puedo abrir el programa" | — | **`~/gafas/arranque/arranque_boton.py`** (fuera del repo, servicio de usuario `navia-arranque`, **activado**): al prender suena un pip y espera 1 min: 1 click = `main_nav_pi.py`, 2 clicks = `grabar_sesion.py --boton parar --voz` (un click la termina), nada = se acaba. Una vez por encendido. Ver `~/gafas/arranque/LEEME.txt` y `docs/GAFAS_HARDWARE.md` §4.4. |
+| "Que no salude ni se presente" | — | `main_nav_pi.py` ya solo dice "Listo." al terminar de cargar. |
+
+Tercera vuelta (misma tarde, tras el primer arranque real sin monitor):
+- **El programa lanzado por el arranque no tenía botón** (y por eso el micrófono quedaba siempre abierto): el script abría el GPIO y, aunque lo cerraba, el programa recibía `GPIO busy` mientras el script siguiera vivo. Ahora la espera del botón corre en un proceso aparte que termina antes de lanzar. `main_nav_pi.py` imprime `[BOTON] listo` y, si con las gafas puestas no hay botón, lo dice por voz.
+- **"Carga mapa conocido aunque no lo conozca"**: `main_nav_pi.py` siempre cargaba `maps/default` de corridas pasadas. Se agregó **`--fresh`** a `main_nav_pi.py` y `main_pi.py` (el mismo flag de los mains de laptop: borra el mapa guardado y empieza de cero). El arranque por botón lanza `--map-dir maps/arranque --fresh`, así no borra `maps/default`.
+- **Cámara sin imagen**: `rpicam-hello` daba "Camera frontend has timed out" con la cámara detectada. Se comprobó con PipeWire apagado y nada usando la cámara: es el **cable plano** (hardware), no el software. De paso se arregló que `abrirCamara` cayera a `cv2.VideoCapture` cuando la cámara CSI fallaba: `/dev/video0` "abre" pero nunca da un cuadro y el main corría a ciegas sin avisar. Ahora `CamaraPi` reintenta 3 veces, exige el primer cuadro en 6 s y, si no llega, el main termina con el motivo; si la imagen se pierde a media corrida lo dice por voz.
+
+Otros hallazgos de esta ronda:
+- **Sin micrófono, PipeWire le conecta a `pw-record` el monitor de la bocina** y el sistema se oía a sí mismo. Ahora se graba pidiendo el micrófono por nombre (`audio_pi.microfono()`, `--target`) y sin micrófono no se graba (espera a que conecten la diadema).
+- `pw-record` quedaba **huérfano** al salir con `os._exit`; ahora muere con el padre (`PR_SET_PDEATHSIG`) y `OidoVoz.cerrar()`.
+- Vosk entrega la frase ~1.5 s después de que el usuario termina de hablar (su detector de fin de frase; esta versión no deja ajustarlo).
+- Banco de prueba del oído sin diadema: un micrófono virtual con `pw-loopback` (sink `navia-mic-entrada` → source `navia-mic-prueba`) al que se le reproduce un wav con `pw-play --target`.
+
+### 0.6 Tercera ronda (2026-11-12, cámara ya en CAM1 y primeros datos caminando)
+
+Datos reales nuevos: `sesiones/20261110_163633/serie.txt` (95 s caminando con las gafas, **sin cuadros**: la cámara no daba imagen y el botón estaba tomado por el script viejo) y `sesiones/20261112_101239` (13 s quieto, con cuadros). Con eso:
+
+| Qué se revisó | Resultado medido | Cambio |
+|---|---|---|
+| "La mala navegación de ese día" (arranque del 10, 16:46) | El programa corrió **sin cámara**: no hubo ni un ciclo (ni visión, ni mapa, ni navegación, ni respuesta a comandos, que se atienden dentro del ciclo). Solo sonaba el hilo del ultrasonido. Además cargó `maps/default` viejo. | Ya corregido en §0.5 (termina y avisa; `--fresh`). |
+| Alertas en la caminata real (95 s) | Con los umbrales viejos habrían sido **10 alertas habladas + 7 pips**; con 0.25/0.60 m: **0 habladas, 1 pip**. Los ultrasónicos casi nunca vieron algo a < 60 cm (0 % de las lecturas; < 1 m: 3–6 %). | — |
+| Algo quieto pegado a los sensores (68 s, como en la corrida sin cámara) | 5 alertas habladas de lo mismo | **Parado, una alerta se dice una vez**: `ModuloAlertas.caminandoFn` (pasos de la IMU, `SensoresGafas.caminando`); se repite cuando vuelve a caminar o cambia la distancia. Queda en 1. Histéresis de 8 cm en el umbral de la voz (`HISTERESIS_M`), y lo mismo quieto que cambia de lado o de nivel no vuelve a sonar. Las alertas del mapa ahora llevan su distancia (`navigation_feed.alertasDeObstaculo`) y también se espacian. |
+| Visión, con todo quieto | **"Alto. Se acerca algo al frente" por una cama**: el rastreador de `vision/motion.py` marca movimiento con 8 px de desplazamiento y basta un ajuste de 1° del rumbo (6 px al compensar el giro). | Solo gente, animales y vehículos van "en movimiento" (`VisionBridge.moverEstaticos=False`). "Alto" solo si viene de **frente**; al lado es precaución (quien acompaña al usuario). Tolerancia del 25 % a los brincos de distancia de la cámara. Corrida en vivo de 130 cuadros quieto: 0 alertas. |
+| Eco de piso de los ultrasónicos | Con la cabeza agachada 10–15° la mediana de las lecturas fue 3.45 m y la geometría predice 3.32 m; a > 15°, un tercio de las lecturas son piso (el resto sin eco) y todas caen donde `montaje.esEcoDePiso` las descarta. El piso nunca llega a < 2.5 m: no puede disparar alertas. | Ninguno: el modelo quedó validado con datos reales. |
+| Largo de paso | El ultrasonido midió 4.6 m en 10 pasos y 15.6 m en 36 pasos: **0.46 y 0.43 m, sin relación con la cadencia** (68–100 pasos/min). El modelo "promedio × cadencia" daba 38.3 m en la caminata larga; a 0.59 m/s fueron ~28. | Calibrado = **fijo** (`montaje.PASO_CALIBRADO`); el promedio por cadencia queda solo para quien no esté calibrado. Guardado `largoPasoM = 0.439` del usuario (`calibrar_gafas.py --archivo a b`). **Se afina solo** al terminar cada corrida o grabación en que el ultrasonido vio acercarse algo ≥ 5 m (`SensoresGafas.aprenderPaso`, 30 % hacia lo medido). |
+| "Zona nueva" repetido estando quieto | El origen es la esquina de 4 chunks y la pose tiembla. | Histéresis de 0.3 m al cambiar de chunk (`ChunkedMapManager.MARGEN_CAMBIO_M`). |
+| Arranque por botón, de punta a punta | Con pulsaciones **en el pin** (`pinctrl set 17 pd/pu`): 1 clic lanza la navegación; ya dentro, 1 clic abre/cierra el micrófono (LED) y 2 clics apagan/prenden las alertas; 2 clics al arrancar graban (63 cuadros en 13 s) y 1 clic termina. | — |
+| Peligros del piso (`--hazards`, SegFormer) en la escena real | 2.2 s por pasada (bloquea el ciclo). Sin hoyos falsos, pero tomó las puertas del ropero por puertas. | Sigue apagado por defecto. **Ojo: sin `--hazards` el sistema no detecta hoyos ni escalones hacia abajo**; solo obstáculos (YOLO + ultrasonido) y escaleras con el detector extra. |
+
+Sigue sin validarse (no hay recorridos caminando con cuadros): distancias de la visión por el plano del piso, mapas reales, navegación guiada en un espacio real.
 
 ---
 
@@ -48,6 +151,8 @@
 ---
 
 ## 2. Hardware final y montaje físico (lo más importante para la Pi)
+
+> **Ojo (2026-11-10):** esta sección describe el diseño del TT y del CAD. El prototipo construido difiere en varias cosas (RP2040 intermedio, IMU de pie, direcciones 0x70/0x71, cámara girada, botón en GPIO17). **La fuente de verdad del hardware es `docs/GAFAS_HARDWARE.md`** y el resumen de §0. Lo de abajo se deja por historia y porque la geometría (dos ultrasónicos al frente, todo en el mismo frente rígido) sí es la real.
 
 ### 2.1 Lo que dice el TT (docs/TT_2026_B045.pdf, cap. 6–7)
 - Raspberry Pi **4 Model B 4 GB** ("o equivalente", RNF-05). El usuario ha dicho "Raspberry Pi 5" en conversaciones → **[VERIFICAR con el equipo cuál es]**.
@@ -154,7 +259,7 @@ Por cuadro:
 
 Diferencias con la laptop: `main_nav_lap --sim` dibuja una ventana con el mapa global y otra **"NavIA - ruta en vivo"** (zoom de 10 m, ruta planeada en cian o roja si está bloqueada, etiquetas legibles); teclas `b` (caja de demo), `m` (persona de demo), `x` (alertas on/off), `o` (wasd manual), `q` (salir).
 
-**Huecos conocidos de `main_nav_pi`/`main_pi`** (verificados 2026-11-09):
+**Huecos conocidos de `main_nav_pi`/`main_pi`** (verificados 2026-11-09; **los tres se resolvieron el 2026-11-10**, ver §0.1: rayos libres conservadores, `--cam-height`, y la cámara, los sensores y la voz ya van en hilos aparte):
 - **No pasan `freeSpaceRays(usLecturas)` al mapa** (las laptops en `--sim` sí): los rayos ultrasónicos sin eco no pintan "libre". Agregarlo es trivial: `+ freeSpaceRays(usLecturas)` en el `updateFromScan`.
 - `main_nav_pi` no tiene `--cam-height`/`--cam-pitch` (usa los defaults 1.55 m / 10°; la IMU sobrescribe el pitch si está activa).
 - Bucle síncrono de un solo hilo: el FPS lo dicta la inferencia de visión.
@@ -319,13 +424,14 @@ Diferencias con la laptop: `main_nav_lap --sim` dibuja una ventana con el mapa g
 
   Errores que invierten la orden en el set apartado: 0. **RNF-07 (≥92 %) NO se cumple en frases nuevas.** El PLN es el punto más débil.
 - **Voz (ASR Vosk)**: voces naturales 95.0 % en limpio, 62–74 % con ruido a 5–10 dB (RNF-07 no se cumple con ruido).
-- **Suite**: 205 pruebas OK.
+- **Suite**: 237 pruebas OK en la Pi (2026-11-10).
+- **En la Pi**: ver la tabla de §0.2.
 
 ---
 
 ## 8. Pendientes y limitaciones conocidas (honestas)
 
-Hardware/Pi (tu trabajo):
+Hardware/Pi (los puntos 1, 2, 4, 5, 6, 7 ya están hechos; del 3, 8 y 9 falta la parte que requiere caminar, ver §0.3):
 1. Captura con Camera Module 3 (picamera2/libcamera) [VERIFICAR].
 2. Probar el driver MB1232 real: direcciones, re-direccionamiento, 3.3 V vs 5 V, crosstalk.
 3. Probar la BNO055: dirección, `python odometry.py --calibrar`, longitud de paso (caminar 10 m y ajustar `--step-length`).
@@ -347,7 +453,17 @@ Software:
 
 ---
 
-## 9. Checklist de puesta en marcha en la Pi (propuesta)
+## 9. Checklist de puesta en marcha en la Pi
+
+**Vigente (2026-11-10):**
+1. `bash instalar_pi.sh` (venv, dependencias, PortAudio local, Vosk, Piper, NCNN, firmware).
+2. `.venv/bin/python sensores.py` → deben verse rumbo, cabeceo y las dos distancias cambiando.
+3. `.venv/bin/python calibrar_gafas.py` con los lentes puestos (una vez por persona).
+4. `.venv/bin/python main_nav_pi.py --estadisticas 10` (con `--no-voz` se escriben los comandos en la terminal: "punto 2 0", "que hay enfrente", "pausa", "desactiva las alertas", "apagar sistema").
+5. Para verlo en el monitor: `.venv/bin/python main_nav_lap.py --sin-hazards` o `.venv/bin/python main_lap.py`.
+6. Sin monitor: al prender la Pi suena un pip y espera el botón (1 click = navegar, 2 = grabar recorrido). Es `~/gafas/arranque/arranque_boton.py`, fuera del repo, servicio de usuario `navia-arranque` (ya activado). `servicio/navia.service` es la otra opción (arrancar directo, sin preguntar); **no activar los dos**.
+
+### Checklist original (2026-11-09, antes de tener el hardware; se deja por historia)
 1. Clonar el repo; Python 3 de 64 bits; `pip install -r requirements.txt` (torch/opencv para ARM) + `smbus2 vosk sounddevice pyttsx3` (+ `gpiozero`, `picamera2` del sistema) [VERIFICAR las versiones de ARM].
 2. Habilitar I2C (`raspi-config`); `i2cdetect -y 1` debe mostrar 0x28 (BNO055) y los dos MB1232 (0x20/0x21 tras re-direccionar; de fábrica 0x70).
 3. Copiar `models/nav_ppo_policy.npz` + `nav_ppo_meta.json` (con eso basta para navegar sin SB3), `vision/*.pt`, `models/vosk-model-small-es-0.42/`; dejar que SegFormer se descargue la primera vez o copiarlo de la caché de HuggingFace.
@@ -380,6 +496,15 @@ Software:
 .venv/bin/python -m vision.finetune datasets/X/data.yaml
 # IMU
 python odometry.py --calibrar
+# --- en la Pi (2026-11-10) ---
+bash instalar_pi.sh                                  # instalación sin sudo
+.venv/bin/python sensores.py                         # imu + ultrasónicos en vivo
+.venv/bin/python camara.py foto.jpg                  # probar la cámara
+.venv/bin/python calibrar_gafas.py                   # calibración guiada
+.venv/bin/python main_nav_pi.py --estadisticas 10    # sistema completo
+.venv/bin/python main_nav_lap.py --sin-hazards       # lo mismo con interfaz
+.venv/bin/python grabar_sesion.py sesiones/pasillo1  # grabar un recorrido
+.venv/bin/python sesion_a_mapa.py sesiones/pasillo1 --map-dir maps/real/p01 --fresh
 ```
 
 ---

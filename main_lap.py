@@ -159,11 +159,39 @@ def describeEvents(events, log):
         log.append(txt)
 
 
+def hudGafas(usLecturas, odo):
+    """renglon con lo que dicen los sensores reales de las gafas."""
+    ecos = {u.lado: (f"{u.range_m:.2f}" if u.valid else "---")
+            for u in usLecturas}
+    pitch = odo.get("pitch_deg")
+    return ("US izq %s der %s m | cabeceo %s | pasos %d"
+            % (ecos.get("izq", "?"), ecos.get("der", "?"),
+               "?" if pitch is None else f"{pitch:+.0f}",
+               odo.get("steps_total", 0)))
+
+
 # loop con camara real
 def runCamera(args):
     import cv2
-    from vision_bridge import VisionBridge, GroundHazardDetector
+    from vision_bridge import (VisionBridge, GroundHazardDetector,
+                               validarConUltrasonido, freeSpaceRays)
     from odometry import makeMotionEstimator
+    from camara import abrirCamara, prepararGui, gafasConectadas
+
+    # en la pi: la camara csi de las gafas (girada y con su perfil) y,
+    # si esta el rp2040, tambien la imu y los ultrasonicos reales
+    prepararGui()
+    fuente = args.video if args.video else args.camera
+    cap, perfil = abrirCamara(fuente)
+    if not cap.isOpened():
+        raise SystemExit(f"No se pudo abrir la fuente de video: {fuente} "
+                         f"{getattr(cap, 'razon', '')}")
+    if args.camera_profile is None:
+        args.camera_profile = perfil
+    sensores = ultrasonico = None
+    if not args.video and not args.sin_gafas and gafasConectadas():
+        from main_pi import abrirGafas
+        sensores, ultrasonico = abrirGafas()
 
     print("Cargando módulo de visión (YOLOv8-seg de paquete vision/)...")
     bridge = VisionBridge(modelPath=args.model,
@@ -173,9 +201,10 @@ def runCamera(args):
                           extraModelPath=None if args.sin_extra else "auto",
                           extraEvery=args.extra_every)
     motionEst = makeMotionEstimator(
-        useImu=args.imu, imuBus=args.imu_bus, imuAddr=args.imu_addr,
+        useImu=args.imu or sensores is not None,
+        imuBus=args.imu_bus, imuAddr=args.imu_addr,
         stepLengthM=args.step_length,
-        hfovDeg=math.degrees(bridge.hfov))
+        hfovDeg=math.degrees(bridge.hfov), sensores=sensores)
     detPeligros = None
     if args.hazards:
         print("Cargando segmentación de escena (SegFormer ADE20K) para "
@@ -183,11 +212,6 @@ def runCamera(args):
         detPeligros = GroundHazardDetector(
             cameraProfile=args.camera_profile,
             camHeightM=args.cam_height, camPitchDeg=args.cam_pitch)
-
-    fuente = args.video if args.video else args.camera
-    cap = cv2.VideoCapture(fuente)
-    if not cap.isOpened():
-        raise SystemExit(f"No se pudo abrir la fuente de video: {fuente}")
 
     slam, mgr = _armarSlamYMapa(args)
     trayectoria = []
@@ -198,8 +222,10 @@ def runCamera(args):
     fps = 0.0
     frames= 0
 
-    print("Mapeando con la cámara (sin ultrasonido/odometría: TODO "
-          "hardware). 'q' para salir y guardar.")
+    print("Mapeando con la cámara"
+          + (" + imu y ultrasónicos de las gafas" if sensores is not None
+             else " (sin ultrasonido ni imu)")
+          + ". 'q' para salir y guardar.")
     try:
         while args.max_frames is None or frames < args.max_frames:
             ret, frame = cap.read()
@@ -226,10 +252,14 @@ def runCamera(args):
                 ultimosPeligros = detPeligros.process(frame, detections)
             detections = detections + ultimosPeligros
 
-            observaciones = fuseObservations(detections, [])
+            usLecturas = validarConUltrasonido(
+                detections, ultrasonico.read() if ultrasonico else [],
+                odo["pitch_deg"])
+            observaciones = fuseObservations(detections, usLecturas)
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
             mgr.updateFromScan(pose, slam.observationsForMap()
+                               + freeSpaceRays(usLecturas, maxLibreM=2.0)
                                + (detPeligros.tomarPisoLibre() if detPeligros else []),
                            maxRange=args.max_range)
             mgr.clearFootprint(output.x, output.y)
@@ -241,7 +271,8 @@ def runCamera(args):
 
             nav = buildNavigationFrame(
                 slam, mgr, detections, maxRange=args.max_range,
-                chunk=mgr.currentChunk, room=mgr.currentRoom)
+                chunk=mgr.currentChunk, room=mgr.currentRoom,
+                ultrasonic=usLecturas)
             alertas = safetyAlerts(nav)
             for prio, msg in alertas:
                 if prio == 0:
@@ -256,6 +287,11 @@ def runCamera(args):
                 cv2.putText(camV, hud, (10, 24),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 60, 60),
                             2, cv2.LINE_AA)
+                if sensores is not None:
+                    cv2.putText(camV, hudGafas(usLecturas, odo),
+                                (10, camV.shape[0] - 12),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                (60, 220, 255), 2, cv2.LINE_AA)
                 arriba = _hstackPad(camV, mapV)
                 barra = drawNavBar(nav, alertas, arriba.shape[1])
                 cv2.imshow("NavIA - laptop: vision | mapa por chunks",
@@ -273,6 +309,8 @@ def runCamera(args):
                       f"{nav.d_right:.1f})")
     finally:
         cap.release()
+        if sensores is not None:
+            sensores.cerrar()
         if not args.headless:
             cv2.destroyAllWindows()
     _terminar(args, mgr, slam, output, trayectoria)
@@ -293,6 +331,8 @@ def runSim(args):
     if args.headless and args.max_frames is None:
         args.max_frames = 400
 
+    from camara import prepararGui
+    prepararGui()
     world = SimulatedWorld.defaultRoom()
     user = KeyboardUser(world, start=(0.7, 0.7, 0.0))
     piloto = SimulatedMotion(start=(0.7, 0.7, 0.0))
@@ -456,8 +496,11 @@ def buildParser():
     p.add_argument("--sin-extra", action="store_true",
                    help="apagar el detector extra (puertas/escaleras, oiv7)")
     p.add_argument("--extra-every", type=int, default=5)
-    p.add_argument("--camera-profile", default="laptop",
-                   choices=["laptop", "picam3wide"])
+    p.add_argument("--camera-profile", default=None,
+                   choices=["laptop", "picam3wide"],
+                   help="por defecto: el de la cámara que se abra")
+    p.add_argument("--sin-gafas", action="store_true",
+                   help="no usar la imu/ultrasónicos del RP2040 de las gafas")
     p.add_argument("--cam-height", type=float, default=1.55,
                    help="altura de la cámara (m) para plano de piso")
     p.add_argument("--cam-pitch", type=float, default=10.0,
@@ -485,7 +528,7 @@ def buildParser():
                         "(giro + pasos); sin ella, flujo óptico")
     p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
     p.add_argument("--imu-bus", type=int, default=1)
-    p.add_argument("--step-length", type=float, default=0.68)
+    p.add_argument("--step-length", type=float, default=None)
     return p
 
 

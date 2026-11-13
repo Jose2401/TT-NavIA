@@ -17,7 +17,7 @@ from navigation.route_planner import PlanificadorRuta
 from main_lap import (drawChunkMapPanel, drawNavBar, annotateCamera,
                       describeEvents, _armarSlamYMapa, _hudLine,
                       _hstackPad)
-from interaccion import armarInteraccion
+from interaccion import armarInteraccion, conectarOido
 
 AYUDA = """
 main_nav_lap.py — navegación completa en laptop (gui): slam + chunks +
@@ -211,6 +211,8 @@ def runSim(args):
     if args.headless and args.max_frames is None:
         args.max_frames = 500
 
+    from camara import prepararGui
+    prepararGui()
     world = SimulatedWorld.defaultRoom()
     user = KeyboardUser(world, start=(0.7, 0.7, 0.0))
     usArray = SimulatedUltrasonicArray(world)
@@ -221,15 +223,15 @@ def runSim(args):
         navigator, usarVoz=args.voz, usarTts=args.tts,
         voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
     modAlertas = ModuloAlertas(
-        hablarFn=lambda t: voz.decir(t, prioridad=0),
-        interrumpirFn=voz._interrumpir)
+        hablarFn=voz.alerta, interrumpirFn=voz._interrumpir,
+        criticaM=args.umbral_alerta, precaucionM=args.umbral_precaucion)
     voz.esperarSi = modAlertas.sonando
+    inter.alAlertas = modAlertas.activar
     planner = PlanificadorRuta(navigator.policy)
 
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
-    if oido is not None:
-        oido.start(colaCmd, muteFn=lambda: voz.hablando)
+    conectarOido(oido, voz, colaCmd)
     print(AYUDA)
     print("[NAV p2] Sistema listo. Diga su destino. "
           "(ej: 've a la silla', 'punto 5 3')")
@@ -354,7 +356,7 @@ def runSim(args):
                               st.goal, urgente=_recalc)
         else:
             planner.limpiar()
-        msgs = inter.ciclo(navFrame, mgr, alertas)
+        msgs = inter.ciclo(navFrame, mgr, alertas, recalcular=_recalc)
         printMsgs(msgs)
         voz.decirMsgs(msgs)
 
@@ -393,8 +395,25 @@ def runSim(args):
 # lo mismo pero con camara
 def runCamera(args):
     import cv2
-    from vision_bridge import VisionBridge, GroundHazardDetector
+    from vision_bridge import (VisionBridge, GroundHazardDetector,
+                               validarConUltrasonido, freeSpaceRays)
     from odometry import makeMotionEstimator
+    from camara import abrirCamara, prepararGui, gafasConectadas
+    from main_lap import hudGafas
+
+    # en la pi: la camara csi de las gafas (girada y con su perfil) y,
+    # si esta el rp2040, tambien la imu, los ultrasonicos y el boton
+    prepararGui()
+    cap, perfil = abrirCamara(args.video if args.video else args.camera)
+    if not cap.isOpened():
+        raise SystemExit("No se pudo abrir la cámara/video "
+                         f"{getattr(cap, 'razon', '')}")
+    if args.camera_profile is None:
+        args.camera_profile = perfil
+    sensores = ultrasonico = None
+    if not args.video and not args.sin_gafas and gafasConectadas():
+        from main_pi import abrirGafas
+        sensores, ultrasonico = abrirGafas()
 
     print("Cargando módulo de visión (YOLOv8-seg)...")
     bridge = VisionBridge(modelPath=args.model,
@@ -408,28 +427,56 @@ def runCamera(args):
         print("Cargando segmentación de escena (puertas y peligros)...")
         detPeligros = GroundHazardDetector(cameraProfile=args.camera_profile)
     motionEst = makeMotionEstimator(
-        useImu=args.imu, imuBus=args.imu_bus, imuAddr=args.imu_addr,
+        useImu=args.imu or sensores is not None,
+        imuBus=args.imu_bus, imuAddr=args.imu_addr,
         stepLengthM=args.step_length,
-        hfovDeg=math.degrees(bridge.hfov))
+        hfovDeg=math.degrees(bridge.hfov), sensores=sensores)
     slam, mgr = _armarSlamYMapa(args)
     navigator = Navigator(args.model_nav)
+
+    # boton de las gafas (solo si estan): click = escuchar, doble = alertas
+    oido = None
+    boton = None
+    if sensores is not None:
+        from alertas import BotonPullUp
+
+        def _clickEscucha():
+            if oido is not None:
+                if not oido.escuchando:
+                    voz.callar()       # te cede la palabra
+                oido.alternar()
+
+        def _toggleAlertas():
+            est = "activadas" if modAlertas.alternar() else "desactivadas"
+            print(f"[alertas] {est}")
+            voz.decir(f"Alertas {est}.", prioridad=1)
+        boton = BotonPullUp(alCambiar=_toggleAlertas, alClick=_clickEscucha)
+    conBoton = boton is not None and boton.disponible
+
     inter, voz, oido = armarInteraccion(
         navigator, usarVoz=args.voz, usarTts=args.tts,
-        voskModel=args.vosk_model, micDevice=args.mic_device, echo=False)
+        voskModel=args.vosk_model, micDevice=args.mic_device, echo=False,
+        modoEscucha="boton" if conBoton else "continuo")
+    if oido is not None and conBoton:
+        def _cambioEscucha(encendido):
+            import audio_pi
+            boton.led(encendido)
+            audio_pi.tonito("escucha_on" if encendido else "escucha_off")
+        oido.alCambiar = _cambioEscucha
     modAlertas = ModuloAlertas(
-        hablarFn=lambda t: voz.decir(t, prioridad=0),
-        interrumpirFn=voz._interrumpir)
+        hablarFn=voz.alerta, interrumpirFn=voz._interrumpir,
+        criticaM=args.umbral_alerta, precaucionM=args.umbral_precaucion)
     voz.esperarSi = modAlertas.sonando
+    inter.alAlertas = modAlertas.activar
     planner = PlanificadorRuta(navigator.policy)
-
-    cap = cv2.VideoCapture(args.video if args.video else args.camera)
-    if not cap.isOpened():
-        raise SystemExit("No se pudo abrir la cámara/video")
+    pitchActual = [None]
+    if sensores is not None:
+        from main_pi import engancharEcos
+        engancharEcos(sensores, modAlertas, lambda: pitchActual[0])
 
     colaCmd = queue.Queue()
     startCommandThread(colaCmd)
-    if oido is not None:
-        oido.start(colaCmd, muteFn=lambda: voz.hablando)
+    conectarOido(oido, voz, colaCmd)
     print("[NAV p2] Sistema listo. Diga su destino.")
 
     eventsLog = []
@@ -464,16 +511,23 @@ def runCamera(args):
 
             motion, odo = motionEst.update(frame, dt)
             yawOk = odo["source"] != "ninguno"
+            pitchActual[0] = odo["pitch_deg"]
             if odo["pitch_deg"] is not None:
                 bridge.camPitchDeg = odo["pitch_deg"]
+                if detPeligros is not None:
+                    detPeligros.camPitchDeg = odo["pitch_deg"]
             detections = bridge.process(frame, egoYaw=motion.delta_rot)
             if detPeligros is not None and frames % args.hazard_every == 0:
                 ultimosPeligros = detPeligros.process(frame, detections)
             detections = detections + ultimosPeligros
-            observaciones = fuseObservations(detections, [])
+            usLecturas = validarConUltrasonido(
+                detections, ultrasonico.read() if ultrasonico else [],
+                odo["pitch_deg"])
+            observaciones = fuseObservations(detections, usLecturas)
             output = slam.step(motion, observaciones)
             pose = (output.x, output.y, output.theta)
             mgr.updateFromScan(pose, slam.observationsForMap()
+                               + freeSpaceRays(usLecturas, maxLibreM=2.0)
                                + (detPeligros.tomarPisoLibre() if detPeligros else []),
                            maxRange=args.max_range)
             mgr.clearFootprint(output.x, output.y)
@@ -484,7 +538,8 @@ def runCamera(args):
 
             navFrame = buildNavigationFrame(
                 slam, mgr, detections, maxRange=args.max_range,
-                chunk=mgr.currentChunk, room=mgr.currentRoom)
+                chunk=mgr.currentChunk, room=mgr.currentRoom,
+                ultrasonic=usLecturas)
             alertas, _recalc = modAlertas.evaluar(navFrame)
             for prio, msg in alertas:
                 print(f"[ALERTA p{prio}] {msg}")
@@ -494,13 +549,19 @@ def runCamera(args):
                                   st.goal, urgente=_recalc)
             else:
                 planner.limpiar()
-            msgs = inter.ciclo(navFrame, mgr, alertas)
+            msgs = inter.ciclo(navFrame, mgr, alertas,
+                               recalcular=_recalc)
             printMsgs(msgs)
             voz.decirMsgs(msgs)
 
             if not args.headless:
                 camV = annotateCamera(frame.copy(), detections,
                                       bridge.hfov, yawOk, 1.0 / dt)
+                if sensores is not None:
+                    cv2.putText(camV, hudGafas(usLecturas, odo),
+                                (10, camV.shape[0] - 12),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                (60, 220, 255), 2, cv2.LINE_AA)
                 mapV = drawChunkMapPanel(mgr, slam, output, eventsLog,
                                          size=camV.shape[0])
                 mapV = drawNavOverlay(mapV, navigator, mgr, planner.ruta)
@@ -520,6 +581,12 @@ def runCamera(args):
                     print(f"[alertas] {estado}")
     finally:
         cap.release()
+        voz.cerrar()
+        if sensores is not None:
+            sensores.cerrar()
+        if boton is not None:
+            boton.led(False)
+            boton.cerrar()
         if not args.headless:
             cv2.destroyAllWindows()
         if not args.no_save:
@@ -541,8 +608,17 @@ def buildParser():
     p.add_argument("--extra-every", type=int, default=5)
     p.add_argument("--model-nav", default="models/nav_ppo",
                    help="prefijo del modelo de navegación entrenado")
-    p.add_argument("--camera-profile", default="laptop",
-                   choices=["laptop", "picam3wide"])
+    p.add_argument("--camera-profile", default=None,
+                   choices=["laptop", "picam3wide"],
+                   help="por defecto: el de la cámara que se abra")
+    p.add_argument("--sin-gafas", action="store_true",
+                   help="no usar la imu/ultrasónicos/botón de las gafas")
+    p.add_argument("--umbral-alerta", type=float, default=None,
+                   help="metros a los que suena la alerta hablada de un "
+                        "obstáculo fijo (por defecto 0.25)")
+    p.add_argument("--umbral-precaucion", type=float, default=None,
+                   help="metros a los que empieza el pitido de precaución "
+                        "(por defecto 0.60)")
     p.add_argument("--map-dir", default=os.path.join("maps", "default"))
     p.add_argument("--no-save", action="store_true")
     p.add_argument("--fresh", action="store_true")
@@ -555,7 +631,7 @@ def buildParser():
                    help="usar IMU BNO055 como odometria")
     p.add_argument("--imu-addr", type=lambda s: int(s, 0), default=0x28)
     p.add_argument("--imu-bus", type=int, default=1)
-    p.add_argument("--step-length", type=float, default=0.68)
+    p.add_argument("--step-length", type=float, default=None)
     p.add_argument("--voz", action="store_true",
                    help="comandos por micrófono (vosk)")
     p.add_argument("--tts", action="store_true",

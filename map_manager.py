@@ -61,6 +61,8 @@ class MapChunk:
 
 
 class ChunkedMapManager(BloqueosTemporales):
+    MARGEN_CAMBIO_M = 0.3      # metros dentro del chunk nuevo pa cambiar
+
     def __init__(self, mapDir=None, chunkSizeM=8.0, resolution=0.05,
                  keepLoaded=25, doorRadius=0.7, doorCooldownSteps=60):
         self.resolution = resolution
@@ -182,6 +184,14 @@ class ChunkedMapManager(BloqueosTemporales):
         self.events = []
         x, y = pose[0], pose[1]
         index = self.chunkOfPose(x, y)
+        if self.currentChunk is not None and index != self.currentChunk:
+            # histeresis: pegado al borde no se cambia de zona. se arranca
+            # justo en la esquina de 4 chunks (0, 0) y con el temblor de
+            # la pose, quieto, decia "Zona nueva" varias veces
+            m = self.MARGEN_CAMBIO_M
+            if any(self.chunkOfPose(x + dx, y + dy) == self.currentChunk
+                   for dx in (-m, 0.0, m) for dy in (-m, 0.0, m)):
+                index = self.currentChunk
 
         if index != self.currentChunk:
             yaExiste = self.chunks.get(index)
@@ -320,7 +330,8 @@ class ChunkedMapManager(BloqueosTemporales):
                         break
                 self._addLogOdds(cx, cy, L_FREE)
 
-            if not bloqueado and obs.range_m <= maxRange:
+            if (not bloqueado and obs.range_m <= maxRange
+                    and getattr(obs, "label", "") != "libre"):
                 if esHoyo:
                     self._addHazard(gx1, gy1)
                 elif not impreciso:

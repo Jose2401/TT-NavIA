@@ -155,6 +155,10 @@ def load_policy(model_base):
             obs_mode = json.load(fh).get("obs_mode", "extended")
 
     zip_path, npz_path = base + ".zip", base + "_policy.npz"
+    # si piden el .npz tal cual, numpy aunque haya SB3 instalado (en la
+    # pi: 0.05 ms por decisión contra 2 ms, y no carga torch pa esto)
+    if model_base.endswith("_policy.npz") and os.path.exists(npz_path):
+        return NumpyPolicy(npz_path), obs_mode
     if os.path.exists(zip_path):
         try:
             return SB3Policy(zip_path), obs_mode
@@ -356,10 +360,12 @@ class Navigator:
             self.status.goal_label = destino_label
             self.status.session = "activo"
 
-    def update(self, frame, grid, alerts=None) -> List[NavMessage]:
+    def update(self, frame, grid, alerts=None,
+               replan=False) -> List[NavMessage]:
         """llamar cada ciclo con el frame, el mapa y las alertas de
         seguridad; devuelve solo los mensajes nuevos. una alerta
-        crítica hace que el modelo decida de inmediato."""
+        crítica (o replan=True, lo que diga el módulo de alertas) hace
+        que el modelo decida de inmediato."""
         st = self.status
         msgs = []
         self._ultimoGrid = grid
@@ -395,7 +401,7 @@ class Navigator:
                                kind="evento")]
 
         now = time.time()
-        replan = needsReplan(alerts or [])
+        replan = replan or needsReplan(alerts or [])
         if not replan and now - self._last_decide_t < self.decide_every_s:
             return msgs
         self._last_decide_t = now

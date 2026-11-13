@@ -1,0 +1,33 @@
+# navia.service — arranca el sistema solo al prender la pi (sin monitor
+# ni teclado). es un servicio de USUARIO (no ocupa sudo):
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp servicio/navia.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now navia      # prender y dejar activado
+#   systemctl --user stop navia              # parar (guarda el mapa)
+#   systemctl --user disable navia           # ya no arrancar solo
+#   journalctl --user -u navia -f            # ver lo que imprime
+#
+# ojo: la pi ya trae activado el arranque POR BOTON (~/gafas/arranque/,
+# servicio navia-arranque): pregunta con un click si navegar o grabar.
+# este servicio arranca directo sin preguntar; no activar los dos a la
+# vez (se pelean la camara y el boton).
+#
+# corre dentro de la sesion de escritorio (autologin), que es donde vive
+# pipewire: por eso es WantedBy=default.target y no un servicio del sistema.
+[Unit]
+Description=NavIA - lentes de navegacion asistida
+After=pipewire.service wireplumber.service
+
+[Service]
+WorkingDirectory=%h/TT-NavIA
+ExecStart=%h/TT-NavIA/.venv/bin/python -u main_nav_pi.py --map-dir maps/default
+Restart=on-failure
+RestartSec=5
+# SIGTERM -> el main guarda el mapa y se despide
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

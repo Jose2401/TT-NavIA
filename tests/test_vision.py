@@ -222,3 +222,34 @@ class TestVarios(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMuebleNoSeMueve(unittest.TestCase):
+    """2026-11-12, gafas quietas: una cama salia 'en movimiento' y el
+    sistema decia 'Alto. Se acerca algo al frente'."""
+
+    def _dets(self, dx):
+        return [{"label": "bed", "confidence": 0.8,
+                 "bbox": (100 + dx, 150, 400 + dx, 330), "mask": None},
+                {"label": "person", "confidence": 0.8,
+                 "bbox": (450, 80, 520, 330), "mask": None}]
+
+    def test_solo_lo_vivo_va_en_movimiento(self):
+        b = _bridgeSinModelos(self._dets(0))
+        out = []
+        for dx in (0, 12, 24, 36):          # la caja de la cama se corre
+            b.detector = FakeYolo(self._dets(dx))
+            out = b.process(_frame169())
+        cama = [d for d in out if d.label == "bed"][0]
+        persona = [d for d in out if d.label == "person"][0]
+        self.assertFalse(cama.moving)
+        self.assertTrue(persona.moving)
+
+    def test_se_puede_volver_a_prender_el_rastreo(self):
+        b = _bridgeSinModelos(self._dets(0))
+        b.moverEstaticos = True
+        out = []
+        for dx in (0, 12, 24, 36):
+            b.detector = FakeYolo(self._dets(dx))
+            out = b.process(_frame169())
+        self.assertTrue([d for d in out if d.label == "bed"][0].moving)
